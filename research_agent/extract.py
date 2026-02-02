@@ -1,0 +1,115 @@
+"""Content extraction from HTML using trafilatura with fallback."""
+
+from dataclasses import dataclass
+
+import trafilatura
+from readability import Document
+
+from .fetch import FetchedPage
+
+
+@dataclass
+class ExtractedContent:
+    """Extracted content from a web page."""
+    url: str
+    title: str
+    text: str
+
+
+def extract_content(page: FetchedPage) -> ExtractedContent | None:
+    """
+    Extract main content from a fetched page.
+
+    Uses trafilatura as primary extractor, readability-lxml as fallback.
+
+    Args:
+        page: The fetched page to extract content from
+
+    Returns:
+        ExtractedContent if successful, None if extraction failed
+    """
+    # Try trafilatura first (highest accuracy)
+    result = _extract_with_trafilatura(page)
+    if result and len(result.text) > 100:
+        return result
+
+    # Fallback to readability
+    result = _extract_with_readability(page)
+    if result and len(result.text) > 100:
+        return result
+
+    return None
+
+
+def _extract_with_trafilatura(page: FetchedPage) -> ExtractedContent | None:
+    """Extract content using trafilatura."""
+    try:
+        text = trafilatura.extract(
+            page.html,
+            include_comments=False,
+            include_tables=True,
+            no_fallback=False,
+        )
+
+        if not text:
+            return None
+
+        # Get metadata for title
+        metadata = trafilatura.extract_metadata(page.html)
+        title = metadata.title if metadata and metadata.title else ""
+
+        return ExtractedContent(
+            url=page.url,
+            title=title,
+            text=text,
+        )
+
+    except Exception:
+        return None
+
+
+def _extract_with_readability(page: FetchedPage) -> ExtractedContent | None:
+    """Extract content using readability-lxml."""
+    try:
+        doc = Document(page.html)
+
+        # Get clean text from summary HTML
+        summary_html = doc.summary()
+
+        # Use trafilatura to convert HTML to text (it handles this well)
+        text = trafilatura.extract(summary_html)
+
+        if not text:
+            # Manual fallback: strip tags
+            from html import unescape
+            import re
+            text = re.sub(r'<[^>]+>', ' ', summary_html)
+            text = unescape(text)
+            text = re.sub(r'\s+', ' ', text).strip()
+
+        return ExtractedContent(
+            url=page.url,
+            title=doc.title() or "",
+            text=text,
+        )
+
+    except Exception:
+        return None
+
+
+def extract_all(pages: list[FetchedPage]) -> list[ExtractedContent]:
+    """
+    Extract content from multiple pages.
+
+    Args:
+        pages: List of fetched pages
+
+    Returns:
+        List of successfully extracted content
+    """
+    results = []
+    for page in pages:
+        content = extract_content(page)
+        if content:
+            results.append(content)
+    return results
