@@ -19,3 +19,4 @@ build/
 *.md
 !RESEARCH_PLAN.md
 !README.md
+!LESSONS_LEARNED.md
