@@ -2,6 +2,7 @@
 """CLI for the research agent."""
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -14,6 +15,12 @@ from research_agent.errors import ResearchError
 def main():
     # Load environment variables from .env file
     load_dotenv()
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(levelname)s: %(message)s",
+    )
 
     parser = argparse.ArgumentParser(
         description="Research agent that searches the web and generates markdown reports.",

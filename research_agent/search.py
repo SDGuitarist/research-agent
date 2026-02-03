@@ -1,5 +1,6 @@
 """Search functionality with DuckDuckGo and fallback support."""
 
+import logging
 import time
 from dataclasses import dataclass
 
@@ -7,6 +8,8 @@ from ddgs import DDGS
 from ddgs.exceptions import DDGSException, RatelimitException
 
 from .errors import SearchError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -62,7 +65,7 @@ def _search_duckduckgo(query: str, max_results: int, retries: int = 2) -> list[S
             last_error = e
             if attempt < retries:
                 wait_time = 5 * (attempt + 1)
-                print(f"  Search rate limited, waiting {wait_time}s...")
+                logger.warning(f"Search rate limited, waiting {wait_time}s...")
                 time.sleep(wait_time)
             continue
 

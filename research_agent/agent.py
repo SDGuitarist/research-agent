@@ -1,15 +1,18 @@
 """Main research agent orchestrating the full pipeline."""
 
 import asyncio
+import logging
 
 from anthropic import Anthropic, AsyncAnthropic
 
-from .search import search, SearchResult
-from .fetch import fetch_urls, FetchedPage
-from .extract import extract_all, ExtractedContent
-from .summarize import summarize_all, Summary
+from .search import search
+from .fetch import fetch_urls
+from .extract import extract_all
+from .summarize import summarize_all
 from .synthesize import synthesize_report
 from .errors import ResearchError, SearchError
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchAgent:
@@ -25,8 +28,8 @@ class ResearchAgent:
         self,
         api_key: str | None = None,
         max_sources: int = 5,
-        haiku_model: str = "claude-sonnet-4-20250514",
-        sonnet_model: str = "claude-sonnet-4-20250514",
+        summarize_model: str = "claude-sonnet-4-20250514",
+        synthesize_model: str = "claude-sonnet-4-20250514",
     ):
         """
         Initialize the research agent.
@@ -34,14 +37,14 @@ class ResearchAgent:
         Args:
             api_key: Anthropic API key (uses ANTHROPIC_API_KEY env var if not provided)
             max_sources: Maximum number of sources to research
-            haiku_model: Model for summarization
-            sonnet_model: Model for synthesis
+            summarize_model: Model for chunk summarization
+            synthesize_model: Model for report synthesis
         """
         self.client = Anthropic(api_key=api_key)
         self.async_client = AsyncAnthropic(api_key=api_key)
         self.max_sources = max_sources
-        self.haiku_model = haiku_model
-        self.sonnet_model = sonnet_model
+        self.summarize_model = summarize_model
+        self.synthesize_model = synthesize_model
 
     def research(self, query: str) -> str:
         """
@@ -87,11 +90,12 @@ class ResearchAgent:
             raise ResearchError("Could not extract content from any pages")
 
         # Step 4: Summarize
-        print(f"\n[4/5] Summarizing content with {self.haiku_model}...")
+        logger.info(f"Summarizing content with {self.summarize_model}...")
+        print(f"\n[4/5] Summarizing content with {self.summarize_model}...")
         summaries = await summarize_all(
             self.async_client,
             contents,
-            model=self.haiku_model,
+            model=self.summarize_model,
         )
         print(f"      Generated {len(summaries)} summaries")
 
@@ -99,12 +103,13 @@ class ResearchAgent:
             raise ResearchError("Could not generate any summaries")
 
         # Step 5: Synthesize report
-        print(f"\n[5/5] Synthesizing report with {self.sonnet_model}...\n")
+        logger.info(f"Synthesizing report with {self.synthesize_model}...")
+        print(f"\n[5/5] Synthesizing report with {self.synthesize_model}...\n")
         report = synthesize_report(
             self.client,
             query,
             summaries,
-            model=self.sonnet_model,
+            model=self.synthesize_model,
         )
 
         return report

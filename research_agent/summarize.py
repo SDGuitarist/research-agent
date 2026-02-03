@@ -1,12 +1,14 @@
 """Chunk summarization using Claude."""
 
 import asyncio
-import sys
+import logging
 from dataclasses import dataclass
 
 from anthropic import AsyncAnthropic, RateLimitError, APIError
 
 from .extract import ExtractedContent
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -113,17 +115,25 @@ async def summarize_content(
     """
     chunks = _chunk_text(content.text)
 
-    summaries = []
-    for chunk in chunks:
-        summary = await summarize_chunk(
+    # Summarize chunks in parallel
+    tasks = [
+        summarize_chunk(
             client=client,
             chunk=chunk,
             url=content.url,
             title=content.title,
             model=model,
         )
-        if summary:
-            summaries.append(summary)
+        for chunk in chunks
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    summaries = []
+    for result in results:
+        if isinstance(result, Summary):
+            summaries.append(result)
+        elif isinstance(result, Exception):
+            logger.warning(f"Chunk summarization failed: {result}")
 
     return summaries
 
@@ -152,8 +162,8 @@ async def summarize_all(
         if isinstance(result, list):
             all_summaries.extend(result)
         elif isinstance(result, RateLimitError):
-            print(f"      Rate limited during summarization: {result}", file=sys.stderr)
+            logger.warning(f"Rate limited during summarization: {result}")
         elif isinstance(result, Exception):
-            print(f"      Summarization error: {result}", file=sys.stderr)
+            logger.error(f"Summarization error: {result}")
 
     return all_summaries
