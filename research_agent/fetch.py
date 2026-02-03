@@ -2,10 +2,9 @@
 
 import asyncio
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 import httpx
-
-from .errors import FetchError
 
 
 @dataclass
@@ -32,6 +31,58 @@ HEADERS = {
 # Status codes that indicate we should skip this URL
 SKIP_STATUS_CODES = {403, 404, 410, 451}
 
+# Blocked URL schemes (prevent SSRF)
+ALLOWED_SCHEMES = {"http", "https"}
+
+# Blocked hosts (internal/private networks)
+BLOCKED_HOSTS = {
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "::1",
+}
+
+
+def _is_safe_url(url: str) -> bool:
+    """
+    Validate URL to prevent SSRF attacks.
+
+    Blocks:
+    - Non-HTTP(S) schemes (file://, ftp://, etc.)
+    - Localhost and loopback addresses
+    - Private IP ranges
+    """
+    try:
+        parsed = urlparse(url)
+
+        # Check scheme
+        if parsed.scheme.lower() not in ALLOWED_SCHEMES:
+            return False
+
+        # Check for blocked hosts
+        host = parsed.hostname or ""
+        if host.lower() in BLOCKED_HOSTS:
+            return False
+
+        # Block private IP ranges (10.x.x.x, 172.16-31.x.x, 192.168.x.x)
+        if host.replace(".", "").isdigit():
+            parts = host.split(".")
+            if len(parts) == 4:
+                first = int(parts[0])
+                second = int(parts[1])
+                if first == 10:
+                    return False
+                if first == 172 and 16 <= second <= 31:
+                    return False
+                if first == 192 and second == 168:
+                    return False
+                if first == 169 and second == 254:
+                    return False
+
+        return True
+    except Exception:
+        return False
+
 
 async def fetch_url(url: str, timeout: float = 15.0) -> FetchedPage | None:
     """
@@ -44,6 +95,10 @@ async def fetch_url(url: str, timeout: float = 15.0) -> FetchedPage | None:
     Returns:
         FetchedPage if successful, None if should be skipped
     """
+    # Validate URL to prevent SSRF
+    if not _is_safe_url(url):
+        return None
+
     try:
         async with httpx.AsyncClient(
             timeout=timeout,
