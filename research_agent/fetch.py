@@ -31,6 +31,9 @@ HEADERS = {
 # Status codes that indicate we should skip this URL
 SKIP_STATUS_CODES = {403, 404, 410, 451}
 
+# Maximum concurrent requests
+MAX_CONCURRENT_REQUESTS = 5
+
 # Blocked URL schemes (prevent SSRF)
 ALLOWED_SCHEMES = {"http", "https"}
 
@@ -84,34 +87,24 @@ def _is_safe_url(url: str) -> bool:
         return False
 
 
-async def fetch_url(url: str, timeout: float = 15.0) -> FetchedPage | None:
-    """
-    Fetch a single URL.
-
-    Args:
-        url: URL to fetch
-        timeout: Request timeout in seconds
-
-    Returns:
-        FetchedPage if successful, None if should be skipped
-    """
+async def _fetch_single(
+    client: httpx.AsyncClient,
+    url: str,
+    semaphore: asyncio.Semaphore,
+) -> FetchedPage | None:
+    """Fetch a single URL using a shared client with concurrency control."""
     # Validate URL to prevent SSRF
     if not _is_safe_url(url):
         return None
 
-    try:
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            follow_redirects=True,
-            headers=HEADERS,
-        ) as client:
+    async with semaphore:
+        try:
             response = await client.get(url)
 
             if response.status_code in SKIP_STATUS_CODES:
                 return None
 
             if response.status_code == 429:
-                # Rate limited - could retry but we'll skip for simplicity
                 return None
 
             response.raise_for_status()
@@ -122,27 +115,41 @@ async def fetch_url(url: str, timeout: float = 15.0) -> FetchedPage | None:
                 status_code=response.status_code,
             )
 
-    except httpx.TimeoutException:
-        return None
-    except httpx.HTTPStatusError:
-        return None
-    except Exception:
-        return None
+        except httpx.TimeoutException:
+            return None
+        except httpx.HTTPStatusError:
+            return None
+        except httpx.ConnectError:
+            return None
+        except httpx.ReadError:
+            return None
 
 
-async def fetch_urls(urls: list[str], timeout: float = 15.0) -> list[FetchedPage]:
+async def fetch_urls(
+    urls: list[str],
+    timeout: float = 15.0,
+    max_concurrent: int = MAX_CONCURRENT_REQUESTS,
+) -> list[FetchedPage]:
     """
-    Fetch multiple URLs concurrently.
+    Fetch multiple URLs concurrently with connection pooling.
 
     Args:
         urls: List of URLs to fetch
         timeout: Request timeout per URL
+        max_concurrent: Maximum concurrent requests
 
     Returns:
         List of successfully fetched pages
     """
-    tasks = [fetch_url(url, timeout) for url in urls]
-    results = await asyncio.gather(*tasks)
+    semaphore = asyncio.Semaphore(max_concurrent)
 
-    # Filter out None results (failed fetches)
+    async with httpx.AsyncClient(
+        timeout=timeout,
+        follow_redirects=True,
+        headers=HEADERS,
+        limits=httpx.Limits(max_connections=max_concurrent),
+    ) as client:
+        tasks = [_fetch_single(client, url, semaphore) for url in urls]
+        results = await asyncio.gather(*tasks)
+
     return [r for r in results if r is not None]

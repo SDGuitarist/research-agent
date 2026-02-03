@@ -1,6 +1,8 @@
 """Content extraction from HTML using trafilatura with fallback."""
 
+import re
 from dataclasses import dataclass
+from html import unescape
 
 import trafilatura
 from readability import Document
@@ -64,7 +66,7 @@ def _extract_with_trafilatura(page: FetchedPage) -> ExtractedContent | None:
             text=text,
         )
 
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return None
 
 
@@ -81,8 +83,6 @@ def _extract_with_readability(page: FetchedPage) -> ExtractedContent | None:
 
         if not text:
             # Manual fallback: strip tags
-            from html import unescape
-            import re
             text = re.sub(r'<[^>]+>', ' ', summary_html)
             text = unescape(text)
             text = re.sub(r'\s+', ' ', text).strip()
@@ -93,7 +93,7 @@ def _extract_with_readability(page: FetchedPage) -> ExtractedContent | None:
             text=text,
         )
 
-    except Exception:
+    except (AttributeError, TypeError, ValueError, UnicodeDecodeError):
         return None
 
 

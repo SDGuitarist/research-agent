@@ -40,16 +40,11 @@ Examples:
         type=Path,
         help="Output file path (default: print to stdout)",
     )
-    parser.add_argument(
-        "--api-key",
-        help="Anthropic API key (default: uses ANTHROPIC_API_KEY env var)",
-    )
 
     args = parser.parse_args()
 
     try:
         agent = ResearchAgent(
-            api_key=args.api_key,
             max_sources=args.max_sources,
         )
 

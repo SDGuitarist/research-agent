@@ -66,7 +66,7 @@ def _search_duckduckgo(query: str, max_results: int, retries: int = 2) -> list[S
                 time.sleep(wait_time)
             continue
 
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             last_error = e
             break
 

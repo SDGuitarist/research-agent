@@ -1,6 +1,7 @@
-"""Chunk summarization using Claude Haiku."""
+"""Chunk summarization using Claude."""
 
 import asyncio
+import sys
 from dataclasses import dataclass
 
 from anthropic import AsyncAnthropic, RateLimitError, APIError
@@ -150,5 +151,9 @@ async def summarize_all(
     for result in results:
         if isinstance(result, list):
             all_summaries.extend(result)
+        elif isinstance(result, RateLimitError):
+            print(f"      Rate limited during summarization: {result}", file=sys.stderr)
+        elif isinstance(result, Exception):
+            print(f"      Summarization error: {result}", file=sys.stderr)
 
     return all_summaries
