@@ -39,7 +39,7 @@ class ResearchMode:
             search_passes=1,
             word_target=1000,
             max_tokens=1800,
-            auto_save=False,
+            auto_save=True,
             synthesis_instructions=(
                 "Provide a balanced report with clear sections. "
                 "Include key details and supporting context. "

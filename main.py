@@ -39,7 +39,7 @@ def sanitize_filename(query: str, max_length: int = 50) -> str:
 
 
 def get_auto_save_path(query: str) -> Path:
-    """Generate auto-save path for deep mode reports."""
+    """Generate auto-save path for standard and deep mode reports."""
     reports_dir = Path("reports")
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S%f")  # Microseconds prevent collisions
     safe_query = sanitize_filename(query)
@@ -64,6 +64,7 @@ def main():
 Research Modes:
   --quick     Fast research: 3 sources, ~300 word report (~$0.12)
   --standard  Balanced research: 7 sources, ~1000 word report (~$0.20) [default]
+              Auto-saves to reports/ folder
   --deep      Thorough research: 10+ sources, 2 search passes, ~2000 word report (~$0.50)
               Auto-saves to reports/ folder
 
@@ -89,7 +90,7 @@ Examples:
     mode_group.add_argument(
         "--standard",
         action="store_true",
-        help="Standard mode: 7 sources, ~1000 words (~$0.20) [default]",
+        help="Standard mode: 7 sources, ~1000 words (~$0.20), auto-saves [default]",
     )
     mode_group.add_argument(
         "--deep",
@@ -106,7 +107,7 @@ Examples:
     parser.add_argument(
         "--output", "-o",
         type=Path,
-        help="Output file path (default: stdout, or auto for --deep)",
+        help="Output file path (default: stdout, or auto for --standard/--deep)",
     )
 
     args = parser.parse_args()
