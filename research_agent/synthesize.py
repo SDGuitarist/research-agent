@@ -11,6 +11,8 @@ def synthesize_report(
     query: str,
     summaries: list[Summary],
     model: str = "claude-sonnet-4-20250514",
+    max_tokens: int = 4096,
+    mode_instructions: str | None = None,
 ) -> str:
     """
     Synthesize a research report from summaries.
@@ -20,6 +22,8 @@ def synthesize_report(
         query: Original research query
         summaries: List of source summaries
         model: Model to use for synthesis
+        max_tokens: Maximum tokens for the response
+        mode_instructions: Mode-specific instructions for report style/length
 
     Returns:
         Markdown report string
@@ -33,8 +37,17 @@ def synthesize_report(
     # Build sources context
     sources_text = _build_sources_context(summaries)
 
+    # Default instructions if none provided
+    if mode_instructions is None:
+        mode_instructions = (
+            "Provide a balanced report with clear sections. "
+            "Include key details and supporting context. "
+            "Cite sources where relevant. "
+            "Target approximately 1000 words."
+        )
+
     # Build the prompt
-    prompt = f"""You are a research assistant. Based on the following source summaries, write a comprehensive research report answering this query:
+    prompt = f"""You are a research assistant. Based on the following source summaries, write a research report answering this query:
 
 **Query:** {query}
 
@@ -51,7 +64,9 @@ Write a well-structured markdown report that:
 4. Notes any conflicting information or gaps in the research
 5. Ends with a "Sources" section listing all referenced URLs
 
-Keep the report focused and concise (500-1500 words). Use bullet points for lists of items.
+{mode_instructions}
+
+Use bullet points for lists of items.
 
 ## Report
 """
@@ -62,7 +77,7 @@ Keep the report focused and concise (500-1500 words). Use bullet points for list
 
         with client.messages.stream(
             model=model,
-            max_tokens=4096,
+            max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}]
         ) as stream:
             for text in stream.text_stream:
