@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Complex Page with Noise</title>
+    <style>
+        body { font-family: sans-serif; }
+        .ad { background: yellow; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">Home</a>
+        <a href="/about">About</a>
+        <a href="/contact">Contact</a>
+    </nav>
+
+    <header>
+        <h1>Site Header</h1>
+        <div class="search">
+            <input type="text" placeholder="Search...">
+        </div>
+    </header>
+
+    <aside class="sidebar">
+        <h3>Related Articles</h3>
+        <ul>
+            <li><a href="/article1">Article 1</a></li>
+            <li><a href="/article2">Article 2</a></li>
+        </ul>
+    </aside>
+
+    <main>
+        <article>
+            <h1>Main Article Title</h1>
+            <p class="byline">By Test Author | January 1, 2024</p>
+            <p>This is the main content of the article. It contains the primary
+            information that should be extracted by the content extraction system.
+            The extraction should ignore the navigation, sidebar, and footer noise.</p>
+            <p>The second paragraph continues with more substantive content about
+            the research topic. This paragraph provides additional context and
+            supporting details that are relevant to the query.</p>
+            <div class="ad">Advertisement: Buy our product!</div>
+            <p>After the advertisement, the article continues with more information.
+            Good extraction algorithms should be able to identify and extract this
+            content while filtering out the advertisement block.</p>
+        </article>
+    </main>
+
+    <footer>
+        <p>Copyright 2024 Test Site</p>
+        <nav>
+            <a href="/privacy">Privacy Policy</a>
+            <a href="/terms">Terms of Service</a>
+        </nav>
+    </footer>
+
+    <script>
+        console.log("This is JavaScript that should be ignored");
+    </script>
+</body>
+</html>
