@@ -41,7 +41,7 @@ def sanitize_filename(query: str, max_length: int = 50) -> str:
 def get_auto_save_path(query: str) -> Path:
     """Generate auto-save path for deep mode reports."""
     reports_dir = Path("reports")
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S%f")  # Microseconds prevent collisions
     safe_query = sanitize_filename(query)
     filename = f"{timestamp}_{safe_query}.md"
     return reports_dir / filename
@@ -112,6 +112,7 @@ Examples:
     args = parser.parse_args()
 
     # Determine mode
+    mode_flag_used = args.quick or args.deep or args.standard
     if args.quick:
         mode = ResearchMode.quick()
     elif args.deep:
@@ -120,14 +121,14 @@ Examples:
         mode = ResearchMode.standard()
 
     # Warn if --max-sources used with mode flag
-    if args.max_sources is not None and (args.quick or args.deep or args.standard):
+    if args.max_sources is not None and mode_flag_used:
         print(f"Note: --max-sources ignored when using --{mode.name} (uses {mode.max_sources} sources)",
               file=sys.stderr)
 
     try:
         agent = ResearchAgent(
             mode=mode,
-            max_sources=args.max_sources if not (args.quick or args.deep or args.standard) else None,
+            max_sources=args.max_sources if not mode_flag_used else None,
         )
 
         report = agent.research(args.query)

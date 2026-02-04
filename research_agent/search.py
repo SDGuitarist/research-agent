@@ -4,7 +4,7 @@ import logging
 import time
 from dataclasses import dataclass
 
-from anthropic import Anthropic
+from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError
 from ddgs import DDGS
 from ddgs.exceptions import DDGSException, RatelimitException
 
@@ -125,9 +125,15 @@ Return ONLY the query, nothing else."""
             max_tokens=50,
             messages=[{"role": "user", "content": prompt}],
         )
+        if not response.content:
+            logger.warning("Empty response from query refinement, using original query")
+            return original_query
         refined = response.content[0].text.strip().strip('"').strip("'")
+        if not refined:
+            logger.warning("Empty refined query, using original query")
+            return original_query
         logger.info(f"Refined query: {refined}")
         return refined
-    except Exception as e:
+    except (APIError, RateLimitError, APIConnectionError) as e:
         logger.warning(f"Query refinement failed: {e}, using original query")
         return original_query

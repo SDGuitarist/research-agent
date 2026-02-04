@@ -51,7 +51,7 @@ class ResearchAgent:
         self.client = Anthropic(api_key=api_key)
         self.async_client = AsyncAnthropic(api_key=api_key)
         self.mode = mode or ResearchMode.standard()
-        # Mode takes precedence over max_sources
+        # Use explicit max_sources if provided, otherwise use mode's default
         self.max_sources = max_sources if max_sources is not None else self.mode.max_sources
         self.summarize_model = summarize_model
         self.synthesize_model = synthesize_model
@@ -147,13 +147,17 @@ class ResearchAgent:
                         print(f"      Extracted {len(new_contents)} new contents")
 
                         if new_contents:
-                            new_summaries = await summarize_all(
-                                self.async_client,
-                                new_contents,
-                                model=self.summarize_model,
-                            )
-                            summaries.extend(new_summaries)
-                            print(f"      Total summaries: {len(summaries)}")
+                            try:
+                                new_summaries = await summarize_all(
+                                    self.async_client,
+                                    new_contents,
+                                    model=self.summarize_model,
+                                )
+                                summaries.extend(new_summaries)
+                                print(f"      Total summaries: {len(summaries)}")
+                            except Exception as e:
+                                logger.warning(f"Pass 2 summarization failed: {e}, continuing with pass 1 results")
+                                print(f"      Pass 2 summarization failed, continuing with {len(summaries)} summaries")
                 else:
                     print("      No new unique URLs from pass 2")
 

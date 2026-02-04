@@ -1,14 +1,6 @@
 """Research mode configurations."""
 
 from dataclasses import dataclass
-from enum import Enum
-
-
-class ResearchModeType(Enum):
-    """Available research modes."""
-    QUICK = "quick"
-    STANDARD = "standard"
-    DEEP = "deep"
 
 
 @dataclass(frozen=True)

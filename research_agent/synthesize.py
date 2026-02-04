@@ -85,7 +85,10 @@ Use bullet points for lists of items.
                 print(text, end="", flush=True)
 
         print()  # Newline after streaming
-        return full_response.strip()
+        result = full_response.strip()
+        if not result:
+            raise SynthesisError("Model returned empty response")
+        return result
 
     except RateLimitError as e:
         raise SynthesisError(f"Rate limited: {e}")
