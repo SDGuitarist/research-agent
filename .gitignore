@@ -16,7 +16,8 @@ build/
 *.swp
 
 # Output
-*.md
+reports/
 !RESEARCH_PLAN.md
 !README.md
 !LESSONS_LEARNED.md
+!FAILURE_MODES_CATALOG.md
