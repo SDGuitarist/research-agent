@@ -34,36 +34,41 @@ Get an API key at https://console.anthropic.com/settings/keys
 ## Usage
 
 ```bash
-# Standard research (default) — 7 sources, ~1000 word report
+# Standard research (default) — 7 sources, ~1000 word report, auto-saves
 python main.py "What are the best practices for Python async programming?"
 
-# Quick research — 3 sources, ~300 word report
+# Quick research — 3 sources, ~300 word report, stdout only
 python main.py "Quick summary of Python decorators" --quick
 
-# Deep research — 10+ sources, 2 search passes, ~2000 word report
+# Deep research — 10+ sources, 2 search passes, ~2000 word report, auto-saves
 python main.py "Comprehensive analysis of Kubernetes security" --deep
 
-# Save to file
+# Override auto-save location
 python main.py "Kubernetes security basics" -o report.md
 ```
 
 ## Research Modes
 
-| Mode | Sources | Search Passes | Report Length | Cost |
-|------|---------|---------------|---------------|------|
-| `--quick` | 3 | 1 | ~300 words | ~$0.12 |
-| `--standard` | 7 | 1 | ~1000 words | ~$0.20 |
-| `--deep` | 10+ | 2 | ~2000 words | ~$0.50 |
+| Mode | Sources | Search Passes | Report Length | Auto-save | Cost |
+|------|---------|---------------|---------------|-----------|------|
+| `--quick` | 3 | 1 | ~300 words | No | ~$0.12 |
+| `--standard` | 7 | 1 | ~1000 words | Yes | ~$0.20 |
+| `--deep` | 10+ | 2 | ~2000 words | Yes | ~$0.50 |
 
-**Deep mode** performs a two-pass search: after the first pass, it analyzes the results and generates a refined follow-up query to fill gaps and explore unexplored angles. Reports are automatically saved to the `reports/` folder with timestamped filenames.
+**Standard and deep modes** automatically save reports to the `reports/` folder with timestamped filenames. Quick mode outputs to stdout only.
+
+**Deep mode** also performs a two-pass search: after the first pass, it analyzes the results and generates a refined follow-up query to fill gaps and explore unexplored angles.
 
 ```bash
-# Deep mode auto-saves to reports/
-python main.py "GraphQL vs REST" --deep
+# Standard and deep modes auto-save to reports/
+python main.py "GraphQL vs REST"
 # -> reports/2026-02-03_183703056652_graphql_vs_rest.md
 
 # Override auto-save location
-python main.py "GraphQL vs REST" --deep -o custom_report.md
+python main.py "GraphQL vs REST" -o custom_report.md
+
+# Quick mode only outputs to stdout (no auto-save)
+python main.py "Quick summary" --quick
 ```
 
 ## How It Works
