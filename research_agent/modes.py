@@ -16,6 +16,26 @@ class ResearchMode:
     pass1_sources: int  # Sources for first search pass
     pass2_sources: int  # Sources for refined query search
 
+    def __post_init__(self) -> None:
+        """Validate mode configuration."""
+        errors = []
+
+        if self.pass1_sources < 1:
+            errors.append(f"pass1_sources must be >= 1, got {self.pass1_sources}")
+        if self.pass2_sources < 0:
+            errors.append(f"pass2_sources must be >= 0, got {self.pass2_sources}")
+        if self.max_sources < 1:
+            errors.append(f"max_sources must be >= 1, got {self.max_sources}")
+        if self.max_tokens < 100:
+            errors.append(f"max_tokens must be >= 100, got {self.max_tokens}")
+        if self.word_target < 50:
+            errors.append(f"word_target must be >= 50, got {self.word_target}")
+        if not self.name:
+            errors.append("name cannot be empty")
+
+        if errors:
+            raise ValueError(f"Invalid ResearchMode: {'; '.join(errors)}")
+
     @classmethod
     def quick(cls) -> "ResearchMode":
         return cls(

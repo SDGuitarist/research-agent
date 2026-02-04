@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import random
 import time
 
 from anthropic import Anthropic, AsyncAnthropic
@@ -16,6 +17,10 @@ from .modes import ResearchMode
 
 logger = logging.getLogger(__name__)
 
+# Base delay between search passes to avoid rate limits (with jitter added)
+SEARCH_PASS_DELAY_BASE = 1.0
+SEARCH_PASS_DELAY_JITTER = 0.5
+
 
 class ResearchAgent:
     """
@@ -29,6 +34,16 @@ class ResearchAgent:
         agent = ResearchAgent(mode=ResearchMode.deep())
         report = agent.research("Comprehensive analysis of X")
     """
+
+    # Prevent accidental attribute additions that could leak sensitive data
+    __slots__ = (
+        "_client",
+        "_async_client",
+        "mode",
+        "max_sources",
+        "summarize_model",
+        "synthesize_model",
+    )
 
     def __init__(
         self,
@@ -48,13 +63,34 @@ class ResearchAgent:
             synthesize_model: Model for report synthesis
             mode: Research mode configuration (quick, standard, deep)
         """
-        self.client = Anthropic(api_key=api_key)
-        self.async_client = AsyncAnthropic(api_key=api_key)
+        # Store clients as private attributes to reduce exposure risk
+        # The API key is passed to clients but not stored separately
+        self._client = Anthropic(api_key=api_key)
+        self._async_client = AsyncAnthropic(api_key=api_key)
         self.mode = mode or ResearchMode.standard()
         # Use explicit max_sources if provided, otherwise use mode's default
         self.max_sources = max_sources if max_sources is not None else self.mode.max_sources
         self.summarize_model = summarize_model
         self.synthesize_model = synthesize_model
+
+    def __repr__(self) -> str:
+        """Safe repr that doesn't expose API clients or keys."""
+        return (
+            f"ResearchAgent(mode={self.mode.name!r}, "
+            f"max_sources={self.max_sources}, "
+            f"summarize_model={self.summarize_model!r}, "
+            f"synthesize_model={self.synthesize_model!r})"
+        )
+
+    @property
+    def client(self) -> Anthropic:
+        """Access the sync Anthropic client."""
+        return self._client
+
+    @property
+    def async_client(self) -> AsyncAnthropic:
+        """Access the async Anthropic client."""
+        return self._async_client
 
     def research(self, query: str) -> str:
         """
@@ -68,8 +104,35 @@ class ResearchAgent:
 
         Raises:
             ResearchError: If research fails
+            RuntimeError: If called from within an existing async event loop
         """
-        return asyncio.run(self._research_async(query))
+        # Check if we're already in an async context
+        try:
+            loop = asyncio.get_running_loop()
+            raise RuntimeError(
+                "research() cannot be called from within an async context. "
+                "Use 'await agent.research_async(query)' instead."
+            )
+        except RuntimeError as e:
+            if "no running event loop" in str(e):
+                # No event loop running, safe to use asyncio.run()
+                return asyncio.run(self._research_async(query))
+            raise
+
+    async def research_async(self, query: str) -> str:
+        """
+        Async version of research for use in async contexts.
+
+        Args:
+            query: The research question
+
+        Returns:
+            Markdown report string
+
+        Raises:
+            ResearchError: If research fails
+        """
+        return await self._research_async(query)
 
     async def _research_async(self, query: str) -> str:
         """Async implementation of research."""
@@ -103,10 +166,15 @@ class ResearchAgent:
         # Step 1b: Refine query using snippets
         snippets = [r.snippet for r in pass1_results if r.snippet]
         refined_query = refine_query(self.client, query, snippets)
-        print(f"      Refined query: {refined_query}")
+        if refined_query == query:
+            print(f"      Query refinement skipped (using original query)")
+        else:
+            print(f"      Refined query: {refined_query}")
 
         # Step 1c: Search pass 2
-        time.sleep(1)  # Brief delay to avoid rate limits
+        # Brief delay with jitter to avoid rate limits
+        delay = SEARCH_PASS_DELAY_BASE + random.uniform(0, SEARCH_PASS_DELAY_JITTER)
+        time.sleep(delay)
         try:
             pass2_results = search(refined_query, max_results=self.mode.pass2_sources)
             # Deduplicate by URL
@@ -114,6 +182,8 @@ class ResearchAgent:
             new_results = [r for r in pass2_results if r.url not in seen_urls]
             print(f"      Pass 2 found {len(pass2_results)} results ({len(new_results)} new)")
         except SearchError as e:
+            # Pass 2 failure is non-fatal: we can still produce a report from Pass 1 results.
+            # This is intentionally different from Pass 1, which must succeed.
             logger.warning(f"Pass 2 search failed: {e}, continuing with pass 1 results")
             print(f"      Pass 2 failed, continuing with pass 1 results")
             new_results = []
@@ -213,10 +283,14 @@ class ResearchAgent:
         # Generate refined query from summaries
         summary_texts = [s.summary for s in summaries]
         refined_query = refine_query(self.client, query, summary_texts)
-        print(f"      Refined query: {refined_query}")
+        if refined_query == query:
+            print(f"      Query refinement skipped (using original query)")
+        else:
+            print(f"      Refined query: {refined_query}")
 
-        # Brief delay to avoid rate limits
-        time.sleep(1)
+        # Brief delay with jitter to avoid rate limits
+        delay = SEARCH_PASS_DELAY_BASE + random.uniform(0, SEARCH_PASS_DELAY_JITTER)
+        time.sleep(delay)
 
         # Search pass 2
         try:
@@ -251,6 +325,8 @@ class ResearchAgent:
                 print("      No new unique URLs from pass 2")
 
         except SearchError as e:
+            # Pass 2 failure is non-fatal: we can still produce a report from Pass 1 results.
+            # This is intentionally different from Pass 1, which must succeed.
             logger.warning(f"Pass 2 search failed: {e}, continuing with pass 1 results")
             print(f"      Pass 2 search failed, continuing with {len(summaries)} summaries")
 

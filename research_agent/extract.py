@@ -1,5 +1,6 @@
 """Content extraction from HTML using trafilatura with fallback."""
 
+import logging
 import re
 from dataclasses import dataclass
 from html import unescape
@@ -8,6 +9,11 @@ import trafilatura
 from readability import Document
 
 from .fetch import FetchedPage
+
+logger = logging.getLogger(__name__)
+
+# Maximum HTML size to process (5MB) - prevents memory exhaustion attacks
+MAX_HTML_SIZE = 5 * 1024 * 1024
 
 
 @dataclass
@@ -30,6 +36,13 @@ def extract_content(page: FetchedPage) -> ExtractedContent | None:
     Returns:
         ExtractedContent if successful, None if extraction failed
     """
+    # Guard against memory exhaustion from oversized HTML
+    if len(page.html) > MAX_HTML_SIZE:
+        logger.warning(
+            f"Skipping oversized HTML ({len(page.html)} bytes) from {page.url}"
+        )
+        return None
+
     # Try trafilatura first (highest accuracy)
     result = _extract_with_trafilatura(page)
     if result and len(result.text) > 100:
