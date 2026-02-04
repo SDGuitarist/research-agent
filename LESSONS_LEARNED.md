@@ -230,13 +230,115 @@ Separate user-facing progress from debug logging.
 
 ---
 
+## 5. Research Modes Feature (Session 2)
+
+### What We Built
+
+Added three research modes with different depth/cost tradeoffs:
+
+| Mode | Sources | Passes | Report | Cost |
+|------|---------|--------|--------|------|
+| `--quick` | 3 | 1 | ~300 words | ~$0.12 |
+| `--standard` | 7 | 1 | ~1000 words | ~$0.20 |
+| `--deep` | 10+ | 2 | ~2000 words | ~$0.50 |
+
+Deep mode's two-pass search is the key innovation: after gathering initial results, it analyzes them and generates a refined follow-up query to fill gaps.
+
+### Planning Before Coding Made Implementation Smooth
+
+We designed the entire feature before writing any code:
+
+1. Defined all three modes with exact parameters
+2. Mapped out two-pass search flow with deduplication
+3. Specified synthesis prompt changes per mode
+4. Designed auto-save with filename format and edge cases
+5. Listed failure modes specific to the new functionality
+
+**Result:** Implementation took one pass with zero architectural changes mid-flight. The plan served as a checklist—we just executed it sequentially.
+
+**Contrast with Session 1:** The original implementation required multiple review/fix cycles to catch issues like SSRF and bare exceptions. This time, the upfront design meant fewer surprises.
+
+### The Query Refinement Pattern
+
+Deep mode's second search pass uses a simple but effective pattern:
+
+```python
+def refine_query(original_query: str, summaries: list[str]) -> str:
+    prompt = f"""Given this research question: "{original_query}"
+
+    And these initial findings:
+    {truncated_summaries}
+
+    Generate ONE follow-up search query that:
+    - Fills gaps in the initial research
+    - Explores a specific angle not yet covered
+    - Is 3-8 words, suitable for a search engine
+
+    Return ONLY the query, nothing else."""
+```
+
+**Example transformation:**
+- Original: `"GraphQL vs REST API design"`
+- Refined: `"GraphQL REST API performance benchmarks comparison"`
+
+The refined query found 10 new unique URLs that the original query missed. This pattern is reusable for any multi-pass research system.
+
+### Haiku Model Limitation (API Tier Issue)
+
+We initially planned to use Claude Haiku for query refinement (~$0.001 per call). It failed:
+
+```
+Error: model: claude-3-5-haiku-20241022 not found
+```
+
+**Root cause:** API key tier doesn't include Haiku access.
+
+**Pragmatic fix:** Fall back to Sonnet for refinement. The cost difference for a 50-token query is negligible (~$0.002 vs ~$0.001), and reliability matters more than micro-optimization.
+
+**Lesson:** Don't optimize for cost before confirming model access. Test API calls with your actual credentials early.
+
+### Review Quality Improved
+
+| Metric | Session 1 | Session 2 |
+|--------|-----------|-----------|
+| High severity issues | 1 (SSRF) | 0 |
+| Medium severity issues | 5 | 2 |
+| Low severity issues | 7 | 4 |
+
+The improvement came from:
+1. **Upfront design** caught edge cases before they became bugs
+2. **Learned patterns** from Session 1 (specific exceptions, empty response checks)
+3. **Proactive review request** before the user asked
+
+Issues found in Session 2 review:
+- Broad `except Exception` in `refine_query()` → narrowed to specific API errors
+- Missing empty response check in synthesis → added explicit check
+- Timestamp collision risk → added microseconds
+- Unused enum → removed
+
+### Key Decisions That Worked
+
+| Decision | Why It Worked |
+|----------|---------------|
+| Mutually exclusive CLI flags | `argparse` handles conflicts automatically; cleaner than `--mode quick` |
+| Mode as frozen dataclass | Immutable config object, single source of truth for all mode parameters |
+| Auto-save only for deep mode | Quick/standard are exploratory; deep is investment worth preserving |
+| Graceful pass 2 failure | If refinement or second search fails, continue with pass 1 results |
+| Sonnet for refinement | Reliability over micro-savings; one less thing to debug |
+
+---
+
 ## Summary
 
 | Category | Key Takeaway |
 |----------|--------------|
 | **Planning** | Research existing solutions before coding—learn from their mistakes |
+| **Planning** | Design features completely before coding—fewer mid-flight changes |
 | **Security** | Validate all external URLs; never pass secrets via CLI |
 | **Error Handling** | Catch specific exceptions; log failures from `gather()` |
+| **Error Handling** | Always have graceful fallbacks for optional enhancements (pass 2, refinement) |
 | **Performance** | Use connection pooling; limit concurrency; parallelize where safe |
 | **Architecture** | One file per responsibility; dataclass pipelines; fallback chains |
+| **Architecture** | Frozen dataclasses make excellent configuration objects |
 | **Testing** | Test API calls early; review code even for personal projects |
+| **Testing** | Verify model access before optimizing for specific models |
