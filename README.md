@@ -4,6 +4,7 @@ A Python CLI tool that performs web searches and generates markdown reports usin
 
 ## Features
 
+- **Two-pass search with query refinement** — searches, then generates a smarter follow-up query to fill gaps
 - Searches the web using DuckDuckGo
 - Fetches pages concurrently with async HTTP
 - Extracts clean content using trafilatura
@@ -34,13 +35,13 @@ Get an API key at https://console.anthropic.com/settings/keys
 ## Usage
 
 ```bash
-# Standard research (default) — 7 sources, ~1000 word report, auto-saves
+# Standard research (default) — 4+3 sources, ~1000 word report, auto-saves
 python main.py "What are the best practices for Python async programming?"
 
-# Quick research — 3 sources, ~300 word report, stdout only
+# Quick research — 2+1 sources, ~300 word report, stdout only
 python main.py "Quick summary of Python decorators" --quick
 
-# Deep research — 10+ sources, 2 search passes, ~2000 word report, auto-saves
+# Deep research — 10+ sources, deeper analysis, ~2000 word report, auto-saves
 python main.py "Comprehensive analysis of Kubernetes security" --deep
 
 # Override auto-save location
@@ -51,13 +52,20 @@ python main.py "Kubernetes security basics" -o report.md
 
 | Mode | Sources | Search Passes | Report Length | Auto-save | Cost |
 |------|---------|---------------|---------------|-----------|------|
-| `--quick` | 3 | 1 | ~300 words | No | ~$0.12 |
-| `--standard` | 7 | 1 | ~1000 words | Yes | ~$0.20 |
+| `--quick` | 3 (2+1) | 2 | ~300 words | No | ~$0.12 |
+| `--standard` | 7 (4+3) | 2 | ~1000 words | Yes | ~$0.20 |
 | `--deep` | 10+ | 2 | ~2000 words | Yes | ~$0.50 |
 
-**Standard and deep modes** automatically save reports to the `reports/` folder with timestamped filenames. Quick mode outputs to stdout only.
+**All modes perform two-pass search with query refinement.** After the first search, Claude generates a smarter follow-up query to fill gaps:
 
-**Deep mode** also performs a two-pass search: after the first pass, it analyzes the results and generates a refined follow-up query to fill gaps and explore unexplored angles.
+```
+Original query: "average wedding budget San Diego"
+Refined query:  "San Diego wedding cost breakdown by venue type"
+```
+
+**Standard and deep modes** automatically save reports to the `reports/` folder. Quick mode outputs to stdout only.
+
+**Deep mode** differs by fetching and summarizing after each pass, using the full summaries (not just snippets) to generate a more informed refined query.
 
 ```bash
 # Standard and deep modes auto-save to reports/
