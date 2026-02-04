@@ -13,13 +13,15 @@ class ResearchMode:
     max_tokens: int
     auto_save: bool
     synthesis_instructions: str
+    pass1_sources: int  # Sources for first search pass
+    pass2_sources: int  # Sources for refined query search
 
     @classmethod
     def quick(cls) -> "ResearchMode":
         return cls(
             name="quick",
             max_sources=3,
-            search_passes=1,
+            search_passes=2,
             word_target=300,
             max_tokens=600,
             auto_save=False,
@@ -29,6 +31,8 @@ class ResearchMode:
                 "Use 2-3 short paragraphs max. No subsections needed unless essential. "
                 "Target approximately 300 words."
             ),
+            pass1_sources=2,
+            pass2_sources=1,
         )
 
     @classmethod
@@ -36,7 +40,7 @@ class ResearchMode:
         return cls(
             name="standard",
             max_sources=7,
-            search_passes=1,
+            search_passes=2,
             word_target=1000,
             max_tokens=1800,
             auto_save=True,
@@ -46,6 +50,8 @@ class ResearchMode:
                 "Cite sources where relevant. "
                 "Target approximately 1000 words."
             ),
+            pass1_sources=4,
+            pass2_sources=3,
         )
 
     @classmethod
@@ -65,6 +71,8 @@ class ResearchMode:
                 "Explore edge cases and caveats mentioned in sources. "
                 "Target approximately 2000 words."
             ),
+            pass1_sources=10,
+            pass2_sources=10,
         )
 
     @classmethod
