@@ -238,11 +238,11 @@ Added three research modes with different depth/cost tradeoffs:
 
 | Mode | Sources | Passes | Report | Cost |
 |------|---------|--------|--------|------|
-| `--quick` | 3 | 1 | ~300 words | ~$0.12 |
-| `--standard` | 7 | 1 | ~1000 words | ~$0.20 |
+| `--quick` | 3 (2+1) | 2 | ~300 words | ~$0.12 |
+| `--standard` | 7 (4+3) | 2 | ~1000 words | ~$0.20 |
 | `--deep` | 10+ | 2 | ~2000 words | ~$0.50 |
 
-Deep mode's two-pass search is the key innovation: after gathering initial results, it analyzes them and generates a refined follow-up query to fill gaps.
+All modes now use two-pass search with query refinement. Deep mode's refinement uses full summaries (after fetching), while quick/standard use snippets (before fetching) to keep costs the same.
 
 ### Planning Before Coding Made Implementation Smooth
 
@@ -328,6 +328,73 @@ Issues found in Session 2 review:
 
 ---
 
+## 6. Query Refinement for All Modes (Session 2 Continued)
+
+### Extending Two-Pass Search to Quick and Standard
+
+After deep mode proved that query refinement improves results, we extended it to all modes—without increasing costs.
+
+**The key insight:** Quick and standard modes can refine using **search snippets** instead of full summaries. This means:
+1. Search with partial budget (2 or 4 sources)
+2. Use snippet text to generate refined query (no fetch/summarize cost yet)
+3. Search again with remaining budget (1 or 3 sources)
+4. Fetch and summarize all results together
+
+**Cost stays the same** because total sources are unchanged—just split across two passes.
+
+### Snippets vs Summaries for Refinement
+
+| Mode | Refines Using | Why |
+|------|---------------|-----|
+| Quick/Standard | Snippets (before fetch) | Keeps cost identical; snippets are "good enough" |
+| Deep | Summaries (after fetch) | Has budget for richer context; better refined queries |
+
+The `refine_query()` function already truncates input to 150 chars, so snippets work just as well as summaries for generating a follow-up query.
+
+### Code Reuse Through Refactoring
+
+Instead of duplicating deep mode's logic, we:
+1. Extracted `_research_deep()` for deep mode's existing workflow
+2. Created `_research_with_refinement()` for quick/standard's new workflow
+3. Both share `refine_query()`, deduplication logic, and the fetch/extract/summarize pipeline
+
+**Lines of code:** +152, -56 = net +96 lines for a significant feature improvement.
+
+### Example Results
+
+**Quick mode before refinement:**
+```
+Query: "average wedding budget San Diego"
+→ 3 results, mostly generic budget articles
+```
+
+**Quick mode after refinement:**
+```
+Original query: "average wedding budget San Diego"
+Refined query:  "San Diego wedding cost breakdown by venue type"
+→ 3 results, but more specific and diverse sources
+```
+
+The refined query found venue-specific pricing data that the original query missed.
+
+### Design Decision: Show Both Queries
+
+Terminal output now displays both queries so users understand what's happening:
+
+```
+[1/5] Searching for: average wedding budget San Diego
+      Mode: quick (3 sources, 2 passes)
+      Original query: average wedding budget San Diego
+      Pass 1 found 2 results
+      Refined query: San Diego wedding cost breakdown by venue type
+      Pass 2 found 1 results (1 new)
+      Total: 3 unique sources
+```
+
+This transparency helps users understand why results improved and builds trust in the refinement process.
+
+---
+
 ## Summary
 
 | Category | Key Takeaway |
@@ -340,5 +407,7 @@ Issues found in Session 2 review:
 | **Performance** | Use connection pooling; limit concurrency; parallelize where safe |
 | **Architecture** | One file per responsibility; dataclass pipelines; fallback chains |
 | **Architecture** | Frozen dataclasses make excellent configuration objects |
+| **Architecture** | Extract shared logic into reusable methods when extending features |
 | **Testing** | Test API calls early; review code even for personal projects |
 | **Testing** | Verify model access before optimizing for specific models |
+| **UX** | Show users what's happening (both queries) to build trust in automated processes |
