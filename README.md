@@ -34,14 +34,36 @@ Get an API key at https://console.anthropic.com/settings/keys
 ## Usage
 
 ```bash
-# Basic usage
+# Standard research (default) — 7 sources, ~1000 word report
 python main.py "What are the best practices for Python async programming?"
+
+# Quick research — 3 sources, ~300 word report
+python main.py "Quick summary of Python decorators" --quick
+
+# Deep research — 10+ sources, 2 search passes, ~2000 word report
+python main.py "Comprehensive analysis of Kubernetes security" --deep
 
 # Save to file
 python main.py "Kubernetes security basics" -o report.md
+```
 
-# Use more sources
-python main.py "React vs Vue comparison" --max-sources 10
+## Research Modes
+
+| Mode | Sources | Search Passes | Report Length | Cost |
+|------|---------|---------------|---------------|------|
+| `--quick` | 3 | 1 | ~300 words | ~$0.12 |
+| `--standard` | 7 | 1 | ~1000 words | ~$0.20 |
+| `--deep` | 10+ | 2 | ~2000 words | ~$0.50 |
+
+**Deep mode** performs a two-pass search: after the first pass, it analyzes the results and generates a refined follow-up query to fill gaps and explore unexplored angles. Reports are automatically saved to the `reports/` folder with timestamped filenames.
+
+```bash
+# Deep mode auto-saves to reports/
+python main.py "GraphQL vs REST" --deep
+# -> reports/2026-02-03_183703056652_graphql_vs_rest.md
+
+# Override auto-save location
+python main.py "GraphQL vs REST" --deep -o custom_report.md
 ```
 
 ## How It Works
@@ -72,7 +94,11 @@ The foundation of Python error handling... [Source 1]
 
 ## Cost
 
-~$0.10-0.15 per query using Claude Sonnet for both summarization and synthesis.
+Costs vary by research mode (using Claude Sonnet for summarization and synthesis):
+
+- **Quick**: ~$0.12 per query
+- **Standard**: ~$0.20 per query
+- **Deep**: ~$0.50 per query
 
 ## License
 
