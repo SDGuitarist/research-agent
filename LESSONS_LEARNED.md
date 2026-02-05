@@ -548,26 +548,205 @@ But if you only want *some* issues fixed, be explicit:
 
 ---
 
+## 8. Source Relevance Gate (Cycle 6)
+
+### What We Built
+
+A quality gate between summarization and synthesis that scores each source's relevance to the original query:
+
+```
+Summaries → [Relevance Gate] → Full Report / Short Report / Insufficient Data
+```
+
+| Decision | Condition (Standard Mode) | Behavior |
+|----------|---------------------------|----------|
+| `full_report` | 4+ sources score ≥ 3 | Normal synthesis |
+| `short_report` | 2-3 sources score ≥ 3 | Shorter report with disclaimer |
+| `insufficient_data` | 0-1 sources score ≥ 3 | Helpful "no data" response |
+
+### Plan-to-Code Mismatches Are Inevitable
+
+The implementation plan referenced `config.py`, but the actual file was `modes.py`. This happened because:
+- The plan was written before fully exploring the codebase
+- File names evolved during earlier cycles
+
+**Lesson:** Always validate plans against the actual codebase before implementing. A 10-minute review phase saved hours of confusion.
+
+Other mismatches caught during plan review:
+- Plan assumed `Summary` was a dict; it's a dataclass
+- Plan assumed `ResearchMode` was mutable; it's frozen
+- Plan didn't account for `RelevanceError` needing to be added to errors.py
+
+### Sync vs Async Consistency Matters
+
+The initial implementation used sync API calls for relevance scoring while summarization used async:
+
+```python
+# Inconsistent: sync scoring (sequential)
+for summary in summaries:
+    score = score_source(query, summary, client)  # Blocks
+
+# Consistent: async scoring (parallel)
+tasks = [score_source(query, summary, client) for summary in summaries]
+results = await asyncio.gather(*tasks)  # Parallel
+```
+
+**Performance impact:** With 7 sources, parallel scoring is ~7x faster than sequential.
+
+**Pattern:** If the surrounding pipeline is async, new components should be async too. Check what client type (sync vs async) the orchestrator passes.
+
+### Duplicate Code Creeps In During Feature Addition
+
+After implementing the relevance gate, both `_research_with_refinement()` and `_research_deep()` had nearly identical 40-line blocks:
+
+```python
+# Duplicated in both methods:
+evaluation = await evaluate_sources(...)
+if evaluation["decision"] == "insufficient_data":
+    return await generate_insufficient_data_response(...)
+report = synthesize_report(...)
+return report
+```
+
+**The fix:** Extract `_evaluate_and_synthesize()` helper that both methods call.
+
+**When to extract:** If you're copy-pasting more than 10 lines, it's time for a helper. The step numbers can be parameters.
+
+### Sanitization Must Be Consistent Across All Paths
+
+The main `generate_insufficient_data_response()` sanitized source content, but the fallback function `_fallback_insufficient_response()` didn't:
+
+```python
+# Main function - sanitized
+safe_title = _sanitize_content(src.get("title", "Untitled"))
+
+# Fallback function - NOT sanitized (bug!)
+title = src.get("title", "Untitled")  # XSS risk
+```
+
+**The lesson:** Every code path that outputs user-controlled data needs sanitization. Fallback/error paths are easy to forget.
+
+### Streaming UX: Print Before, Not After
+
+The disclaimer for limited sources was prepended to the result *after* streaming completed:
+
+```python
+# Bad: User sees report stream, then disclaimer appears at top of saved file
+for text in stream:
+    print(text)  # User sees report without context
+result = disclaimer + "\n\n" + response  # Disclaimer only in saved output
+```
+
+**The fix:** Print disclaimer before streaming starts:
+
+```python
+# Good: User sees disclaimer first, then report streams
+if limited_sources:
+    print(disclaimer)
+for text in stream:
+    print(text)
+```
+
+**Pattern:** For streaming output with metadata, print metadata first so users have context while content streams.
+
+### Validation Gaps Cause Cryptic Errors
+
+Missing validation for `min_sources_short_report >= 1` would cause:
+
+```python
+# If min_sources_short_report = 0 and 0 sources pass:
+decision = "short_report"  # Not "insufficient_data"!
+synthesize_report([])  # Raises SynthesisError("No summaries to synthesize")
+```
+
+The error message doesn't mention the real cause: invalid mode configuration.
+
+**The fix:** Validate in `__post_init__` with a clear error message:
+
+```python
+if self.min_sources_short_report < 1:
+    errors.append(f"min_sources_short_report must be >= 1, got {self.min_sources_short_report}")
+```
+
+**Pattern:** If a configuration value being X would cause a confusing error downstream, validate that X can't happen.
+
+### Review Found 12 Issues, Plan Had 0
+
+The implementation plan specified zero issues—it was "complete." The code review found:
+
+| Severity | Count | Examples |
+|----------|-------|----------|
+| Medium | 4 | Unsanitized fallback, sync scoring, streaming disclaimer timing, duplicate code |
+| Low | 8 | Magic number timeout, mode instructions replaced vs appended, return type asymmetry |
+
+**Why plans miss issues:**
+- Plans focus on "what to build," not "what could go wrong"
+- Security and edge cases emerge from reading actual code
+- Performance patterns only visible in implementation
+
+**Lesson:** A "complete" plan is still incomplete. Budget review time proportional to feature complexity.
+
+### Mode Instructions: Append, Don't Replace
+
+For short reports, we originally replaced the mode's synthesis instructions entirely:
+
+```python
+# Bad: Loses mode-specific style guidance
+if limited_sources:
+    mode_instructions = "Write a shorter report..."
+
+# Good: Preserves mode style + adds constraint
+if limited_sources:
+    mode_instructions = f"{mode_instructions} Given limited sources, write a shorter report..."
+```
+
+**Why it matters:** Quick mode wants "2-3 short paragraphs"; deep mode wants "nuanced discussion." Replacing loses this. Appending preserves mode personality while adding the constraint.
+
+### Magic Numbers Require Future-You Context
+
+```python
+timeout=SCORING_TIMEOUT * 2  # Why 2x? What if scoring timeout changes?
+```
+
+**The fix:** Named constant with documentation:
+
+```python
+# Timeout for insufficient data response (longer due to more detailed output)
+INSUFFICIENT_RESPONSE_TIMEOUT = 30.0
+```
+
+**Pattern:** If a number isn't obvious, name it. Future-you (or the next developer) will thank you.
+
+---
+
 ## Summary
 
 | Category | Key Takeaway |
 |----------|--------------|
 | **Planning** | Research existing solutions before coding—learn from their mistakes |
 | **Planning** | Design features completely before coding—fewer mid-flight changes |
+| **Planning** | Validate plans against actual codebase before implementing—file names and types drift |
 | **Security** | Validate all external URLs; never pass secrets via CLI |
 | **Security** | Layer prompt injection defenses: sanitize + XML boundaries + system prompts |
 | **Security** | Security features should compound across cycles, not get replaced |
+| **Security** | Sanitize all code paths including fallbacks—error paths are easy to forget |
 | **Error Handling** | Catch specific exceptions; log failures from `gather()` |
 | **Error Handling** | Always have graceful fallbacks for optional enhancements (pass 2, refinement) |
 | **Error Handling** | Bare `except Exception` is the most recurring code smell—always fix it |
+| **Error Handling** | Validate config values that would cause confusing downstream errors |
 | **Performance** | Use connection pooling; limit concurrency; parallelize where safe |
+| **Performance** | New async pipeline components should be async—sync in async context kills parallelism |
 | **Architecture** | One file per responsibility; dataclass pipelines; fallback chains |
 | **Architecture** | Frozen dataclasses make excellent configuration objects |
 | **Architecture** | Extract shared logic into reusable methods when extending features |
 | **Architecture** | Small source budgets (3) are fragile; 5-6 minimum for reliability |
+| **Architecture** | Append to configuration (mode instructions) rather than replace—preserve existing behavior |
 | **Testing** | Test API calls early; review code even for personal projects |
 | **Testing** | Verify model access before optimizing for specific models |
 | **Testing** | Inline validation tests confirm features work but don't catch regressions |
 | **Review** | Dedicated review-only cycles find more issues than feature-building cycles |
 | **Review** | Be specific when requesting fixes—agents default to fixing everything in a category |
+| **Review** | "Complete" plans still need review—security and edge cases emerge from reading code |
 | **UX** | Show users what's happening (both queries) to build trust in automated processes |
+| **UX** | For streaming output with metadata, print metadata first so users have context |
+| **Code Quality** | Name magic numbers—future-you needs context on why "2x" or "30.0" |
