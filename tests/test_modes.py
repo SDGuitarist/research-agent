@@ -8,64 +8,64 @@ class TestResearchModeFactoryMethods:
     """Tests for ResearchMode factory methods."""
 
     def test_research_mode_quick_has_correct_parameters(self):
-        """Quick mode should have 3 sources, 2 passes, 300 word target."""
+        """Quick mode should have 4 max sources (increased for relevance filtering), 2 passes, 300 word target."""
         mode = ResearchMode.quick()
 
         assert mode.name == "quick"
-        assert mode.max_sources == 3
+        assert mode.max_sources == 4  # Increased from 3 to account for relevance filtering
         assert mode.search_passes == 2
         assert mode.word_target == 300
         assert mode.max_tokens == 600
         assert mode.auto_save is False
-        assert mode.pass1_sources == 2
-        assert mode.pass2_sources == 1
+        assert mode.pass1_sources == 4  # Increased from 2
+        assert mode.pass2_sources == 2  # Increased from 1
 
     def test_research_mode_standard_has_correct_parameters(self):
-        """Standard mode should have 7 sources, 2 passes, 1000 word target."""
+        """Standard mode should have 10 max sources (increased for relevance filtering), 2 passes, 1000 word target."""
         mode = ResearchMode.standard()
 
         assert mode.name == "standard"
-        assert mode.max_sources == 7
+        assert mode.max_sources == 10  # Increased from 7 to account for relevance filtering
         assert mode.search_passes == 2
         assert mode.word_target == 1000
         assert mode.max_tokens == 1800
         assert mode.auto_save is True
-        assert mode.pass1_sources == 4
-        assert mode.pass2_sources == 3
+        assert mode.pass1_sources == 6  # Increased from 4
+        assert mode.pass2_sources == 4  # Increased from 3
 
     def test_research_mode_deep_has_correct_parameters(self):
-        """Deep mode should have 10 sources, 2 passes, 2000 word target."""
+        """Deep mode should have 12 max sources (increased for relevance filtering), 2 passes, 2000 word target."""
         mode = ResearchMode.deep()
 
         assert mode.name == "deep"
-        assert mode.max_sources == 10
+        assert mode.max_sources == 12  # Increased from 10 to account for relevance filtering
         assert mode.search_passes == 2
         assert mode.word_target == 2000
         assert mode.max_tokens == 3500
         assert mode.auto_save is True
-        assert mode.pass1_sources == 10
-        assert mode.pass2_sources == 10
+        assert mode.pass1_sources == 12  # Increased from 10
+        assert mode.pass2_sources == 12  # Increased from 10
 
     def test_research_mode_from_name_returns_quick(self):
         """from_name('quick') should return quick mode."""
         mode = ResearchMode.from_name("quick")
 
         assert mode.name == "quick"
-        assert mode.max_sources == 3
+        assert mode.max_sources == 4  # Increased from 3
 
     def test_research_mode_from_name_returns_standard(self):
         """from_name('standard') should return standard mode."""
         mode = ResearchMode.from_name("standard")
 
         assert mode.name == "standard"
-        assert mode.max_sources == 7
+        assert mode.max_sources == 10  # Increased from 7
 
     def test_research_mode_from_name_returns_deep(self):
         """from_name('deep') should return deep mode."""
         mode = ResearchMode.from_name("deep")
 
         assert mode.name == "deep"
-        assert mode.max_sources == 10
+        assert mode.max_sources == 12  # Increased from 10
 
     def test_research_mode_from_name_raises_on_unknown(self):
         """from_name() with unknown mode should raise ValueError."""
@@ -345,6 +345,6 @@ class TestResearchModeRelevanceThresholds:
     def test_deep_mode_has_correct_relevance_thresholds(self):
         """Deep mode should have correct relevance gate thresholds."""
         mode = ResearchMode.deep()
-        assert mode.min_sources_full_report == 5
-        assert mode.min_sources_short_report == 2
+        assert mode.min_sources_full_report == 8  # Increased from 5 for more comprehensive deep reports
+        assert mode.min_sources_short_report == 5  # Increased from 2
         assert mode.relevance_cutoff == 3

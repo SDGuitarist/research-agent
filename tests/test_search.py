@@ -1,10 +1,12 @@
 """Tests for research_agent.search module."""
 
+import os
 import pytest
 from unittest.mock import patch, MagicMock
 
 from research_agent.search import (
     search,
+    _search_tavily,
     _sanitize_for_prompt,
     refine_query,
     SearchResult,
@@ -257,3 +259,126 @@ class TestRefineQuery:
         # Should have summaries 0-9 but not 10-14
         assert "Summary 9" in user_content
         assert "Summary 10" not in user_content
+
+
+class TestTavilySearch:
+    """Tests for Tavily search functionality."""
+
+    def test_search_uses_tavily_when_api_key_set(self):
+        """search() should use Tavily when TAVILY_API_KEY is set."""
+        mock_tavily_response = {
+            "results": [
+                {"title": "Tavily Result 1", "url": "https://tavily1.com", "content": "Content 1"},
+                {"title": "Tavily Result 2", "url": "https://tavily2.com", "content": "Content 2"},
+            ]
+        }
+
+        with patch.dict(os.environ, {"TAVILY_API_KEY": "test-key"}):
+            with patch("tavily.TavilyClient") as mock_tavily_class:
+                mock_client = MagicMock()
+                mock_client.search.return_value = mock_tavily_response
+                mock_tavily_class.return_value = mock_client
+
+                results = search("test query", max_results=5)
+
+                assert len(results) == 2
+                assert results[0].title == "Tavily Result 1"
+                assert results[0].url == "https://tavily1.com"
+                mock_client.search.assert_called_once_with(
+                    query="test query",
+                    max_results=5,
+                    search_depth="basic",
+                )
+
+    def test_search_falls_back_to_ddg_when_tavily_fails(self, mock_ddgs_results):
+        """search() should fall back to DuckDuckGo when Tavily fails."""
+        mock_results = mock_ddgs_results(2)
+
+        with patch.dict(os.environ, {"TAVILY_API_KEY": "test-key"}):
+            with patch("tavily.TavilyClient") as mock_tavily_class:
+                mock_tavily_class.return_value.search.side_effect = Exception("Tavily error")
+
+                with patch("research_agent.search.DDGS") as mock_ddgs_class:
+                    mock_instance = MagicMock()
+                    mock_instance.text.return_value = mock_results
+                    mock_ddgs_class.return_value.__enter__.return_value = mock_instance
+
+                    results = search("test query")
+
+                    assert len(results) == 2
+                    assert results[0].title == "Result 1"
+
+    def test_search_falls_back_to_ddg_when_tavily_returns_empty(self, mock_ddgs_results):
+        """search() should fall back to DuckDuckGo when Tavily returns no results."""
+        mock_results = mock_ddgs_results(2)
+
+        with patch.dict(os.environ, {"TAVILY_API_KEY": "test-key"}):
+            with patch("tavily.TavilyClient") as mock_tavily_class:
+                mock_tavily_class.return_value.search.return_value = {"results": []}
+
+                with patch("research_agent.search.DDGS") as mock_ddgs_class:
+                    mock_instance = MagicMock()
+                    mock_instance.text.return_value = mock_results
+                    mock_ddgs_class.return_value.__enter__.return_value = mock_instance
+
+                    results = search("test query")
+
+                    assert len(results) == 2
+
+    def test_search_uses_ddg_when_no_tavily_key(self, mock_ddgs_results):
+        """search() should use DuckDuckGo when TAVILY_API_KEY is not set."""
+        mock_results = mock_ddgs_results(2)
+
+        # Ensure TAVILY_API_KEY is not set
+        with patch.dict(os.environ, {}, clear=True):
+            # Remove TAVILY_API_KEY if it exists
+            os.environ.pop("TAVILY_API_KEY", None)
+
+            with patch("research_agent.search.DDGS") as mock_ddgs_class:
+                mock_instance = MagicMock()
+                mock_instance.text.return_value = mock_results
+                mock_ddgs_class.return_value.__enter__.return_value = mock_instance
+
+                results = search("test query")
+
+                assert len(results) == 2
+                mock_instance.text.assert_called_once()
+
+    def test_search_tavily_truncates_long_content(self):
+        """_search_tavily should truncate content longer than 500 chars."""
+        long_content = "x" * 600
+        mock_response = {
+            "results": [
+                {"title": "Title", "url": "https://example.com", "content": long_content},
+            ]
+        }
+
+        with patch("tavily.TavilyClient") as mock_tavily_class:
+            mock_client = MagicMock()
+            mock_client.search.return_value = mock_response
+            mock_tavily_class.return_value = mock_client
+
+            results = _search_tavily("test", 5, "fake-key")
+
+            assert len(results) == 1
+            assert len(results[0].snippet) == 500
+
+    def test_search_tavily_filters_results_without_url(self):
+        """_search_tavily should filter out results without URLs."""
+        mock_response = {
+            "results": [
+                {"title": "Has URL", "url": "https://example.com", "content": "Content"},
+                {"title": "No URL", "content": "Content"},  # Missing url
+                {"title": "Empty URL", "url": "", "content": "Content"},
+            ]
+        }
+
+        with patch("tavily.TavilyClient") as mock_tavily_class:
+            mock_client = MagicMock()
+            mock_client.search.return_value = mock_response
+            mock_tavily_class.return_value = mock_client
+
+            results = _search_tavily("test", 5, "fake-key")
+
+            assert len(results) == 1
+            assert results[0].title == "Has URL"

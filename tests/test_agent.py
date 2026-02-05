@@ -65,7 +65,7 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             # Configure mocks
@@ -96,7 +96,7 @@ class TestResearchAgentQuickMode:
 
     @pytest.mark.asyncio
     async def test_research_quick_mode_uses_correct_source_count(self, mock_search_results):
-        """Quick mode should use pass1=2, pass2=1 sources."""
+        """Quick mode should use pass1=4, pass2=2 sources (increased for relevance filtering)."""
         with patch("research_agent.agent.search") as mock_search, \
              patch("research_agent.agent.refine_query") as mock_refine, \
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
@@ -104,7 +104,7 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             mock_search.return_value = mock_search_results[:2]
@@ -131,9 +131,12 @@ class TestResearchAgentQuickMode:
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
             await agent.research_async("test query")
 
-            # First search call should have max_results=2 (pass1_sources)
+            # First search call should have max_results=4 (pass1_sources, increased for relevance filtering)
+            # search is called with positional args: search(query, max_results)
             first_call = mock_search.call_args_list[0]
-            assert first_call.kwargs.get("max_results") == 2 or first_call[1].get("max_results") == 2
+            # Check positional args (args[1]) or kwargs
+            max_results = first_call[0][1] if len(first_call[0]) > 1 else first_call.kwargs.get("max_results")
+            assert max_results == 4
 
     @pytest.mark.asyncio
     async def test_research_quick_mode_deduplicates_urls(self, mock_search_results):
@@ -145,7 +148,7 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             # Pass 1 returns results 1-2
@@ -195,7 +198,7 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             # Pass 1 succeeds, Pass 2 fails
@@ -244,7 +247,7 @@ class TestResearchAgentStandardMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             mock_search.return_value = [
@@ -286,7 +289,7 @@ class TestResearchAgentStandardMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             search_results = [
@@ -341,7 +344,7 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             mock_search.return_value = [
@@ -383,7 +386,7 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             mock_search.return_value = [
@@ -430,7 +433,7 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             # Pass 1 results
@@ -496,7 +499,7 @@ class TestResearchAgentErrorHandling:
         with patch("research_agent.agent.search") as mock_search, \
              patch("research_agent.agent.refine_query") as mock_refine, \
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             mock_search.return_value = [
@@ -517,7 +520,7 @@ class TestResearchAgentErrorHandling:
              patch("research_agent.agent.refine_query") as mock_refine, \
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             mock_search.return_value = [
@@ -553,7 +556,7 @@ class TestResearchAgentRepr:
         repr_str = repr(agent)
 
         assert "deep" in repr_str
-        assert "max_sources=10" in repr_str
+        assert "max_sources=12" in repr_str  # Updated from 10 to 12
 
 
 class TestResearchAgentRelevanceGate:
@@ -591,7 +594,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             mock_search.return_value = base_mocks["search_results"]
@@ -631,7 +634,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock) as mock_insufficient, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             mock_search.return_value = base_mocks["search_results"]
@@ -674,7 +677,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             mock_search.return_value = base_mocks["search_results"]
@@ -720,7 +723,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock) as mock_insufficient, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             quick_summaries = base_mocks["summaries"][:3]
@@ -761,7 +764,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             # Pass 1 and Pass 2 results
@@ -805,7 +808,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.time.sleep"), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
             mock_search.return_value = base_mocks["search_results"]

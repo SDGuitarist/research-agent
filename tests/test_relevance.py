@@ -592,14 +592,14 @@ class TestModeThresholds:
     """Tests verifying mode threshold behavior in evaluate_sources."""
 
     async def test_deep_mode_thresholds(self):
-        """Deep mode: 5+ for full, 2-4 for short, 0-1 insufficient."""
+        """Deep mode: 8+ for full, 5-7 for short, 0-4 insufficient (increased thresholds)."""
         mode = ResearchMode.deep()
         mock_client = AsyncMock()
 
-        # Test with 5 survivors (should be full_report)
+        # Test with 8 survivors (should be full_report)
         summaries = [
             Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Summary {i}")
-            for i in range(5)
+            for i in range(8)
         ]
 
         async def mock_score_high(query, summary, client):

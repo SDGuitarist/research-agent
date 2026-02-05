@@ -1,6 +1,7 @@
-"""Search functionality with DuckDuckGo and fallback support."""
+"""Search functionality with Tavily and DuckDuckGo fallback support."""
 
 import logging
+import os
 import random
 import time
 from dataclasses import dataclass
@@ -30,7 +31,10 @@ class SearchResult:
 
 def search(query: str, max_results: int = 5) -> list[SearchResult]:
     """
-    Search for a query using DuckDuckGo.
+    Search for a query using Tavily (if available) or DuckDuckGo.
+
+    Tries Tavily first if TAVILY_API_KEY is set, falls back to DuckDuckGo
+    on failure or if no API key is configured.
 
     Args:
         query: The search query
@@ -42,11 +46,63 @@ def search(query: str, max_results: int = 5) -> list[SearchResult]:
     Raises:
         SearchError: If search fails after retries
     """
+    tavily_key = os.environ.get("TAVILY_API_KEY")
+
+    if tavily_key:
+        try:
+            results = _search_tavily(query, max_results, tavily_key)
+            if results:
+                return results
+            logger.warning("Tavily returned no results, falling back to DuckDuckGo")
+        except Exception as e:
+            logger.warning(f"Tavily search failed: {e}, falling back to DuckDuckGo")
+
     results = _search_duckduckgo(query, max_results)
 
     if not results:
         raise SearchError(f"No results found for query: {query}")
 
+    return results
+
+
+def _search_tavily(query: str, max_results: int, api_key: str) -> list[SearchResult]:
+    """
+    Search using Tavily API.
+
+    Tavily is optimized for AI/RAG workloads and provides higher quality
+    results for programmatic search.
+
+    Args:
+        query: The search query
+        max_results: Maximum number of results to return
+        api_key: Tavily API key
+
+    Returns:
+        List of SearchResult objects
+    """
+    # Import here to avoid requiring tavily-python when not used
+    from tavily import TavilyClient
+
+    client = TavilyClient(api_key=api_key)
+
+    response = client.search(
+        query=query,
+        max_results=max_results,
+        search_depth="basic",
+    )
+
+    results = []
+    for item in response.get("results", []):
+        url = item.get("url")
+        if not url:
+            continue
+        results.append(SearchResult(
+            title=item.get("title", ""),
+            url=url,
+            snippet=item.get("content", "")[:500],
+        ))
+
+    logger.info(f"Tavily returned {len(results)} results")
     return results
 
 
