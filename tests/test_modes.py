@@ -89,6 +89,8 @@ class TestResearchModeValidation:
                 synthesis_instructions="Test",
                 pass1_sources=0,
                 pass2_sources=2,
+                min_sources_full_report=3,
+                min_sources_short_report=1,
             )
 
     def test_research_mode_validation_rejects_negative_pass2_sources(self):
@@ -104,6 +106,8 @@ class TestResearchModeValidation:
                 synthesis_instructions="Test",
                 pass1_sources=3,
                 pass2_sources=-1,
+                min_sources_full_report=3,
+                min_sources_short_report=1,
             )
 
     def test_research_mode_validation_rejects_empty_name(self):
@@ -119,6 +123,8 @@ class TestResearchModeValidation:
                 synthesis_instructions="Test",
                 pass1_sources=3,
                 pass2_sources=2,
+                min_sources_full_report=3,
+                min_sources_short_report=1,
             )
 
     def test_research_mode_validation_rejects_max_sources_zero(self):
@@ -134,6 +140,8 @@ class TestResearchModeValidation:
                 synthesis_instructions="Test",
                 pass1_sources=3,
                 pass2_sources=2,
+                min_sources_full_report=3,
+                min_sources_short_report=1,
             )
 
     def test_research_mode_validation_rejects_max_tokens_below_100(self):
@@ -149,6 +157,8 @@ class TestResearchModeValidation:
                 synthesis_instructions="Test",
                 pass1_sources=3,
                 pass2_sources=2,
+                min_sources_full_report=3,
+                min_sources_short_report=1,
             )
 
     def test_research_mode_validation_rejects_word_target_below_50(self):
@@ -164,6 +174,8 @@ class TestResearchModeValidation:
                 synthesis_instructions="Test",
                 pass1_sources=3,
                 pass2_sources=2,
+                min_sources_full_report=3,
+                min_sources_short_report=1,
             )
 
 
@@ -182,6 +194,8 @@ class TestResearchModeBoundaryValues:
             synthesis_instructions="Minimal test",
             pass1_sources=1,
             pass2_sources=0,
+            min_sources_full_report=1,
+            min_sources_short_report=1,
         )
 
         assert mode.name == "minimal"
@@ -190,6 +204,8 @@ class TestResearchModeBoundaryValues:
         assert mode.max_tokens == 100
         assert mode.pass1_sources == 1
         assert mode.pass2_sources == 0
+        assert mode.min_sources_full_report == 1
+        assert mode.min_sources_short_report == 1
 
     def test_research_mode_is_frozen(self):
         """ResearchMode should be immutable (frozen dataclass)."""
@@ -211,6 +227,8 @@ class TestResearchModeBoundaryValues:
                 synthesis_instructions="Test",
                 pass1_sources=0,
                 pass2_sources=-1,
+                min_sources_full_report=3,
+                min_sources_short_report=1,
             )
 
         error_message = str(exc_info.value)
@@ -218,3 +236,115 @@ class TestResearchModeBoundaryValues:
         assert "max_sources must be >= 1" in error_message
         assert "pass1_sources must be >= 1" in error_message
         assert "pass2_sources must be >= 0" in error_message
+
+
+class TestResearchModeRelevanceThresholds:
+    """Tests for relevance gate threshold validation."""
+
+    def test_relevance_cutoff_must_be_between_1_and_5(self):
+        """relevance_cutoff outside 1-5 range should raise ValueError."""
+        with pytest.raises(ValueError, match="relevance_cutoff must be between 1 and 5"):
+            ResearchMode(
+                name="test",
+                max_sources=5,
+                search_passes=1,
+                word_target=500,
+                max_tokens=1000,
+                auto_save=False,
+                synthesis_instructions="Test",
+                pass1_sources=3,
+                pass2_sources=2,
+                min_sources_full_report=3,
+                min_sources_short_report=1,
+                relevance_cutoff=6,
+            )
+
+    def test_relevance_cutoff_zero_is_invalid(self):
+        """relevance_cutoff=0 should raise ValueError."""
+        with pytest.raises(ValueError, match="relevance_cutoff must be between 1 and 5"):
+            ResearchMode(
+                name="test",
+                max_sources=5,
+                search_passes=1,
+                word_target=500,
+                max_tokens=1000,
+                auto_save=False,
+                synthesis_instructions="Test",
+                pass1_sources=3,
+                pass2_sources=2,
+                min_sources_full_report=3,
+                min_sources_short_report=1,
+                relevance_cutoff=0,
+            )
+
+    def test_min_sources_short_report_must_be_at_least_1(self):
+        """min_sources_short_report=0 should raise ValueError."""
+        with pytest.raises(ValueError, match="min_sources_short_report must be >= 1"):
+            ResearchMode(
+                name="test",
+                max_sources=5,
+                search_passes=1,
+                word_target=500,
+                max_tokens=1000,
+                auto_save=False,
+                synthesis_instructions="Test",
+                pass1_sources=3,
+                pass2_sources=2,
+                min_sources_full_report=3,
+                min_sources_short_report=0,
+            )
+
+    def test_min_sources_short_report_must_not_exceed_full_report(self):
+        """min_sources_short_report > min_sources_full_report should raise ValueError."""
+        with pytest.raises(ValueError, match="min_sources_short_report.*must be <=.*min_sources_full_report"):
+            ResearchMode(
+                name="test",
+                max_sources=5,
+                search_passes=1,
+                word_target=500,
+                max_tokens=1000,
+                auto_save=False,
+                synthesis_instructions="Test",
+                pass1_sources=3,
+                pass2_sources=2,
+                min_sources_full_report=2,
+                min_sources_short_report=3,  # Greater than full_report threshold
+            )
+
+    def test_min_sources_full_report_must_not_exceed_max_sources(self):
+        """min_sources_full_report > max_sources should raise ValueError."""
+        with pytest.raises(ValueError, match="min_sources_full_report.*must be <=.*max_sources"):
+            ResearchMode(
+                name="test",
+                max_sources=3,
+                search_passes=1,
+                word_target=500,
+                max_tokens=1000,
+                auto_save=False,
+                synthesis_instructions="Test",
+                pass1_sources=3,
+                pass2_sources=2,
+                min_sources_full_report=5,  # Greater than max_sources
+                min_sources_short_report=1,
+            )
+
+    def test_quick_mode_has_correct_relevance_thresholds(self):
+        """Quick mode should have correct relevance gate thresholds."""
+        mode = ResearchMode.quick()
+        assert mode.min_sources_full_report == 3
+        assert mode.min_sources_short_report == 1
+        assert mode.relevance_cutoff == 3
+
+    def test_standard_mode_has_correct_relevance_thresholds(self):
+        """Standard mode should have correct relevance gate thresholds."""
+        mode = ResearchMode.standard()
+        assert mode.min_sources_full_report == 4
+        assert mode.min_sources_short_report == 2
+        assert mode.relevance_cutoff == 3
+
+    def test_deep_mode_has_correct_relevance_thresholds(self):
+        """Deep mode should have correct relevance gate thresholds."""
+        mode = ResearchMode.deep()
+        assert mode.min_sources_full_report == 5
+        assert mode.min_sources_short_report == 2
+        assert mode.relevance_cutoff == 3

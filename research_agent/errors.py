@@ -24,3 +24,8 @@ class ExtractionError(ResearchError):
 class SynthesisError(ResearchError):
     """Raised when report synthesis fails."""
     pass
+
+
+class RelevanceError(ResearchError):
+    """Raised when relevance scoring fails."""
+    pass

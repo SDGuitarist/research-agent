@@ -63,6 +63,7 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.time.sleep"), \
              patch("builtins.print"):
@@ -75,6 +76,15 @@ class TestResearchAgentQuickMode:
                 ExtractedContent(url="https://example1.com", title="Test", text="Content " * 50)
             ]
             mock_summarize.return_value = mock_summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All sources passed",
+                "surviving_sources": mock_summaries,
+                "dropped_sources": [],
+                "total_scored": len(mock_summaries),
+                "total_survived": len(mock_summaries),
+                "refined_query": "refined query",
+            }
             mock_synthesize.return_value = "# Research Report\n\nContent here."
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
@@ -92,23 +102,31 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.time.sleep"), \
              patch("builtins.print"):
 
             mock_search.return_value = mock_search_results[:2]
             mock_refine.return_value = "refined query"
-            mock_fetch.return_value = []
-            mock_extract.return_value = [
-                ExtractedContent(url="https://example1.com", title="T", text="C " * 100)
-            ]
-            mock_summarize.return_value = [
-                Summary(url="https://example1.com", title="T", summary="S")
-            ]
-            mock_synthesize.return_value = "Report"
             mock_fetch.return_value = [
                 FetchedPage(url="https://example1.com", html="<html><body><p>" + "x" * 200 + "</p></body></html>", status_code=200)
             ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://example1.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://example1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
+            mock_synthesize.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
             await agent.research_async("test query")
@@ -125,6 +143,7 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.time.sleep"), \
              patch("builtins.print"):
@@ -142,9 +161,17 @@ class TestResearchAgentQuickMode:
             mock_extract.return_value = [
                 ExtractedContent(url="https://example1.com", title="T", text="C " * 100)
             ]
-            mock_summarize.return_value = [
-                Summary(url="https://example1.com", title="T", summary="S")
-            ]
+            summaries = [Summary(url="https://example1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
             mock_synthesize.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
@@ -166,6 +193,7 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.time.sleep"), \
              patch("builtins.print"):
@@ -182,9 +210,17 @@ class TestResearchAgentQuickMode:
             mock_extract.return_value = [
                 ExtractedContent(url="https://example1.com", title="T", text="C " * 100)
             ]
-            mock_summarize.return_value = [
-                Summary(url="https://example1.com", title="T", summary="S")
-            ]
+            summaries = [Summary(url="https://example1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
             mock_synthesize.return_value = "Report from pass 1 only"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
@@ -206,6 +242,7 @@ class TestResearchAgentStandardMode:
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.time.sleep"), \
              patch("builtins.print"):
@@ -221,9 +258,17 @@ class TestResearchAgentStandardMode:
             mock_extract.return_value = [
                 ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
             ]
-            mock_summarize.return_value = [
-                Summary(url="https://ex1.com", title="T", summary="S")
-            ]
+            summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
             mock_synthesize.return_value = "Standard Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
@@ -239,6 +284,7 @@ class TestResearchAgentStandardMode:
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.time.sleep"), \
              patch("builtins.print"):
@@ -255,9 +301,17 @@ class TestResearchAgentStandardMode:
             mock_extract.return_value = [
                 ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
             ]
-            mock_summarize.return_value = [
-                Summary(url="https://ex1.com", title="T", summary="S")
-            ]
+            summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
             mock_synthesize.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
@@ -285,6 +339,7 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.time.sleep"), \
              patch("builtins.print"):
@@ -300,9 +355,17 @@ class TestResearchAgentDeepMode:
             mock_extract.return_value = [
                 ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
             ]
-            mock_summarize.return_value = [
-                Summary(url="https://ex1.com", title="T", summary="S")
-            ]
+            summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
             mock_synthesize.return_value = "Deep Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
@@ -318,6 +381,7 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.time.sleep"), \
              patch("builtins.print"):
@@ -337,6 +401,15 @@ class TestResearchAgentDeepMode:
             ]
             mock_summarize.return_value = summaries
             mock_refine.return_value = "refined query"
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
             mock_synthesize.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
@@ -355,6 +428,7 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.time.sleep"), \
              patch("builtins.print"):
@@ -378,9 +452,17 @@ class TestResearchAgentDeepMode:
             mock_extract.return_value = [
                 ExtractedContent(url="https://pass1-0.com", title="T", text="C " * 100)
             ]
-            mock_summarize.return_value = [
-                Summary(url="https://pass1-0.com", title="T", summary="S")
-            ]
+            summaries = [Summary(url="https://pass1-0.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
             mock_synthesize.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
@@ -472,3 +554,280 @@ class TestResearchAgentRepr:
 
         assert "deep" in repr_str
         assert "max_sources=10" in repr_str
+
+
+class TestResearchAgentRelevanceGate:
+    """Integration tests for relevance gate behavior."""
+
+    @pytest.fixture
+    def base_mocks(self):
+        """Setup base mocks for pipeline testing."""
+        return {
+            "search_results": [
+                SearchResult(title=f"Result {i}", url=f"https://example{i}.com", snippet=f"Snippet {i}")
+                for i in range(5)
+            ],
+            "fetched_pages": [
+                FetchedPage(url=f"https://example{i}.com", html="<html><body><p>" + "x" * 200 + "</p></body></html>", status_code=200)
+                for i in range(5)
+            ],
+            "extracted_content": [
+                ExtractedContent(url=f"https://example{i}.com", title=f"Title {i}", text="Content " * 50)
+                for i in range(5)
+            ],
+            "summaries": [
+                Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Summary {i}")
+                for i in range(5)
+            ],
+        }
+
+    @pytest.mark.asyncio
+    async def test_relevance_gate_full_report_when_all_sources_pass(self, base_mocks):
+        """All sources passing should produce full report."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.time.sleep"), \
+             patch("builtins.print"):
+
+            mock_search.return_value = base_mocks["search_results"]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = base_mocks["fetched_pages"]
+            mock_extract.return_value = base_mocks["extracted_content"]
+            mock_summarize.return_value = base_mocks["summaries"]
+
+            # All sources pass with high scores
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All sources passed",
+                "surviving_sources": base_mocks["summaries"],
+                "dropped_sources": [],
+                "total_scored": 5,
+                "total_survived": 5,
+                "refined_query": "refined query",
+            }
+            mock_synthesize.return_value = "# Full Research Report\n\nComprehensive content."
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
+            result = await agent.research_async("test query")
+
+            assert "Full Research Report" in result
+            # Verify synthesize was called with surviving_sources
+            synth_call = mock_synthesize.call_args
+            assert synth_call[1].get("limited_sources") is False
+
+    @pytest.mark.asyncio
+    async def test_relevance_gate_insufficient_data_when_no_sources_pass(self, base_mocks):
+        """No passing sources should trigger insufficient data response."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock) as mock_insufficient, \
+             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.time.sleep"), \
+             patch("builtins.print"):
+
+            mock_search.return_value = base_mocks["search_results"]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = base_mocks["fetched_pages"]
+            mock_extract.return_value = base_mocks["extracted_content"]
+            mock_summarize.return_value = base_mocks["summaries"]
+
+            # No sources pass
+            mock_evaluate.return_value = {
+                "decision": "insufficient_data",
+                "decision_rationale": "No sources passed relevance threshold",
+                "surviving_sources": [],
+                "dropped_sources": [
+                    {"url": f"https://example{i}.com", "title": f"Title {i}", "score": 2, "explanation": "Not relevant"}
+                    for i in range(5)
+                ],
+                "total_scored": 5,
+                "total_survived": 0,
+                "refined_query": "refined query",
+            }
+            mock_insufficient.return_value = "# Insufficient Data Found\n\nCould not find relevant sources."
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
+            result = await agent.research_async("test query")
+
+            assert "Insufficient Data" in result
+            # Verify synthesize was NOT called
+            mock_synthesize.assert_not_called()
+            # Verify insufficient data response was called
+            mock_insufficient.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_relevance_gate_short_report_with_mixed_scores(self, base_mocks):
+        """Mixed scores with some passing should produce short report."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.time.sleep"), \
+             patch("builtins.print"):
+
+            mock_search.return_value = base_mocks["search_results"]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = base_mocks["fetched_pages"]
+            mock_extract.return_value = base_mocks["extracted_content"]
+            mock_summarize.return_value = base_mocks["summaries"]
+
+            # Only 2 sources pass (below full_report threshold for standard)
+            surviving = base_mocks["summaries"][:2]
+            mock_evaluate.return_value = {
+                "decision": "short_report",
+                "decision_rationale": "Only 2 of 5 sources passed",
+                "surviving_sources": surviving,
+                "dropped_sources": [
+                    {"url": f"https://example{i}.com", "title": f"Title {i}", "score": 2, "explanation": "Not relevant"}
+                    for i in range(2, 5)
+                ],
+                "total_scored": 5,
+                "total_survived": 2,
+                "refined_query": "refined query",
+            }
+            mock_synthesize.return_value = "# Limited Report\n\nBased on limited sources."
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
+            result = await agent.research_async("test query")
+
+            assert "Report" in result
+            # Verify synthesize was called with limited_sources=True
+            synth_call = mock_synthesize.call_args
+            assert synth_call[1].get("limited_sources") is True
+            assert synth_call[1].get("dropped_count") == 3
+            assert synth_call[1].get("total_count") == 5
+
+    @pytest.mark.asyncio
+    async def test_relevance_gate_quick_mode_all_fail_triggers_insufficient(self, base_mocks):
+        """Quick mode: all 3 sources failing should trigger insufficient data."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock) as mock_insufficient, \
+             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.time.sleep"), \
+             patch("builtins.print"):
+
+            quick_summaries = base_mocks["summaries"][:3]
+            mock_search.return_value = base_mocks["search_results"][:3]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = base_mocks["fetched_pages"][:3]
+            mock_extract.return_value = base_mocks["extracted_content"][:3]
+            mock_summarize.return_value = quick_summaries
+
+            # All fail in quick mode
+            mock_evaluate.return_value = {
+                "decision": "insufficient_data",
+                "decision_rationale": "No sources passed in quick mode",
+                "surviving_sources": [],
+                "dropped_sources": [
+                    {"url": s.url, "title": s.title, "score": 1, "explanation": "Off-topic"}
+                    for s in quick_summaries
+                ],
+                "total_scored": 3,
+                "total_survived": 0,
+                "refined_query": "refined query",
+            }
+            mock_insufficient.return_value = "# Insufficient Data\n\nNo relevant sources found."
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
+            result = await agent.research_async("test query")
+
+            assert "Insufficient" in result
+            mock_synthesize.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_relevance_gate_deep_mode_completes_after_both_passes(self, base_mocks):
+        """Deep mode: relevance gate should run after both search passes complete."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.time.sleep"), \
+             patch("builtins.print"):
+
+            # Pass 1 and Pass 2 results
+            mock_search.side_effect = [
+                base_mocks["search_results"],  # Pass 1
+                [SearchResult(title="New", url="https://new.com", snippet="New")],  # Pass 2
+            ]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = base_mocks["fetched_pages"]
+            mock_extract.return_value = base_mocks["extracted_content"]
+            mock_summarize.return_value = base_mocks["summaries"]
+
+            # All pass
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All sources passed",
+                "surviving_sources": base_mocks["summaries"],
+                "dropped_sources": [],
+                "total_scored": 5,
+                "total_survived": 5,
+                "refined_query": "refined query",
+            }
+            mock_synthesize.return_value = "# Deep Report"
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
+            result = await agent.research_async("test query")
+
+            # Verify evaluate_sources was called (gate ran)
+            mock_evaluate.assert_called_once()
+            # Verify the summaries passed to evaluate_sources
+            eval_call = mock_evaluate.call_args
+            assert eval_call[1]["summaries"] == base_mocks["summaries"]
+
+    @pytest.mark.asyncio
+    async def test_relevance_gate_passes_refined_query(self, base_mocks):
+        """Relevance gate should receive the refined query."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.time.sleep"), \
+             patch("builtins.print"):
+
+            mock_search.return_value = base_mocks["search_results"]
+            mock_refine.return_value = "specifically refined query"
+            mock_fetch.return_value = base_mocks["fetched_pages"]
+            mock_extract.return_value = base_mocks["extracted_content"]
+            mock_summarize.return_value = base_mocks["summaries"]
+
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": base_mocks["summaries"],
+                "dropped_sources": [],
+                "total_scored": 5,
+                "total_survived": 5,
+                "refined_query": "specifically refined query",
+            }
+            mock_synthesize.return_value = "# Report"
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
+            await agent.research_async("test query")
+
+            # Verify refined_query was passed to evaluate_sources
+            eval_call = mock_evaluate.call_args
+            assert eval_call[1]["refined_query"] == "specifically refined query"

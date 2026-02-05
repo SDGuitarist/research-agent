@@ -12,6 +12,7 @@ from .fetch import fetch_urls
 from .extract import extract_all
 from .summarize import summarize_all
 from .synthesize import synthesize_report
+from .relevance import evaluate_sources, generate_insufficient_data_response
 from .errors import ResearchError, SearchError
 from .modes import ResearchMode
 
@@ -138,9 +139,9 @@ class ResearchAgent:
         """Async implementation of research."""
         is_deep = self.mode.name == "deep"
 
-        # Deep mode: 6 steps (fetch/summarize between passes)
-        # Quick/standard: 5 steps (refine before fetch, then fetch all at once)
-        step_count = 6 if is_deep else 5
+        # Deep mode: 7 steps (fetch/summarize between passes + relevance gate)
+        # Quick/standard: 6 steps (refine before fetch, then fetch all at once + relevance gate)
+        step_count = 7 if is_deep else 6
 
         print(f"\n[1/{step_count}] Searching for: {query}")
         print(f"      Mode: {self.mode.name} ({self.mode.max_sources} sources, {self.mode.search_passes} passes)")
@@ -151,6 +152,70 @@ class ResearchAgent:
         else:
             # === QUICK/STANDARD: Refine using snippets, then fetch all ===
             return await self._research_with_refinement(query, step_count)
+
+    async def _evaluate_and_synthesize(
+        self,
+        query: str,
+        summaries: list,
+        refined_query: str,
+        relevance_step: int,
+        synthesis_step: int,
+        step_count: int,
+    ) -> str:
+        """
+        Evaluate source relevance and synthesize report.
+
+        This helper extracts common logic between quick/standard and deep modes.
+
+        Args:
+            query: Original research query
+            summaries: List of Summary objects
+            refined_query: The refined query used for pass 2
+            relevance_step: Step number for relevance evaluation
+            synthesis_step: Step number for synthesis
+            step_count: Total step count for progress display
+
+        Returns:
+            Final report string (full, short, or insufficient data response)
+        """
+        print(f"\n[{relevance_step}/{step_count}] Evaluating source relevance...")
+        evaluation = await evaluate_sources(
+            query=query,
+            summaries=summaries,
+            mode=self.mode,
+            client=self.async_client,
+            refined_query=refined_query,
+        )
+
+        # Branch based on relevance gate decision
+        if evaluation["decision"] == "insufficient_data":
+            print(f"\n[{synthesis_step}/{step_count}] Generating insufficient data response...")
+            return await generate_insufficient_data_response(
+                query=query,
+                refined_query=evaluation.get("refined_query"),
+                dropped_sources=evaluation["dropped_sources"],
+                client=self.async_client,
+            )
+
+        # Synthesize report (full or short)
+        logger.info(f"Synthesizing report with {self.synthesize_model}...")
+        limited_sources = evaluation["decision"] == "short_report"
+        if limited_sources:
+            print(f"\n[{synthesis_step}/{step_count}] Synthesizing short report with {self.synthesize_model}...\n")
+        else:
+            print(f"\n[{synthesis_step}/{step_count}] Synthesizing report with {self.synthesize_model}...\n")
+
+        return synthesize_report(
+            self.client,
+            query,
+            evaluation["surviving_sources"],
+            model=self.synthesize_model,
+            max_tokens=self.mode.max_tokens,
+            mode_instructions=self.mode.synthesis_instructions,
+            limited_sources=limited_sources,
+            dropped_count=len(evaluation["dropped_sources"]),
+            total_count=evaluation["total_scored"],
+        )
 
     async def _research_with_refinement(self, query: str, step_count: int) -> str:
         """Quick/standard mode: refine query using snippets before fetching."""
@@ -222,19 +287,15 @@ class ResearchAgent:
         if not summaries:
             raise ResearchError("Could not generate any summaries")
 
-        # Step 5: Synthesize report
-        logger.info(f"Synthesizing report with {self.synthesize_model}...")
-        print(f"\n[5/{step_count}] Synthesizing report with {self.synthesize_model}...\n")
-        report = synthesize_report(
-            self.client,
-            query,
-            summaries,
-            model=self.synthesize_model,
-            max_tokens=self.mode.max_tokens,
-            mode_instructions=self.mode.synthesis_instructions,
+        # Steps 5-6: Relevance gate and synthesis
+        return await self._evaluate_and_synthesize(
+            query=query,
+            summaries=summaries,
+            refined_query=refined_query,
+            relevance_step=5,
+            synthesis_step=6,
+            step_count=step_count,
         )
-
-        return report
 
     async def _research_deep(self, query: str, step_count: int) -> str:
         """Deep mode: two-pass search with full fetch/summarize between passes."""
@@ -330,16 +391,12 @@ class ResearchAgent:
             logger.warning(f"Pass 2 search failed: {e}, continuing with pass 1 results")
             print(f"      Pass 2 search failed, continuing with {len(summaries)} summaries")
 
-        # Step 6: Synthesize report
-        logger.info(f"Synthesizing report with {self.synthesize_model}...")
-        print(f"\n[6/{step_count}] Synthesizing report with {self.synthesize_model}...\n")
-        report = synthesize_report(
-            self.client,
-            query,
-            summaries,
-            model=self.synthesize_model,
-            max_tokens=self.mode.max_tokens,
-            mode_instructions=self.mode.synthesis_instructions,
+        # Steps 6-7: Relevance gate and synthesis
+        return await self._evaluate_and_synthesize(
+            query=query,
+            summaries=summaries,
+            refined_query=refined_query,
+            relevance_step=6,
+            synthesis_step=7,
+            step_count=step_count,
         )
-
-        return report

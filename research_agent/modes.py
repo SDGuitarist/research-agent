@@ -15,6 +15,10 @@ class ResearchMode:
     synthesis_instructions: str
     pass1_sources: int  # Sources for first search pass
     pass2_sources: int  # Sources for refined query search
+    # Relevance gate thresholds
+    min_sources_full_report: int  # Minimum survivors for full report
+    min_sources_short_report: int  # Minimum survivors for short report (below = insufficient)
+    relevance_cutoff: int = 3  # Minimum score (1-5) for a source to be kept
 
     def __post_init__(self) -> None:
         """Validate mode configuration."""
@@ -32,6 +36,21 @@ class ResearchMode:
             errors.append(f"word_target must be >= 50, got {self.word_target}")
         if not self.name:
             errors.append("name cannot be empty")
+        # Relevance gate validation
+        if not (1 <= self.relevance_cutoff <= 5):
+            errors.append(f"relevance_cutoff must be between 1 and 5, got {self.relevance_cutoff}")
+        if self.min_sources_short_report < 1:
+            errors.append(f"min_sources_short_report must be >= 1, got {self.min_sources_short_report}")
+        if self.min_sources_short_report > self.min_sources_full_report:
+            errors.append(
+                f"min_sources_short_report ({self.min_sources_short_report}) must be <= "
+                f"min_sources_full_report ({self.min_sources_full_report})"
+            )
+        if self.min_sources_full_report > self.max_sources:
+            errors.append(
+                f"min_sources_full_report ({self.min_sources_full_report}) must be <= "
+                f"max_sources ({self.max_sources})"
+            )
 
         if errors:
             raise ValueError(f"Invalid ResearchMode: {'; '.join(errors)}")
@@ -53,6 +72,9 @@ class ResearchMode:
             ),
             pass1_sources=2,
             pass2_sources=1,
+            min_sources_full_report=3,
+            min_sources_short_report=1,
+            relevance_cutoff=3,
         )
 
     @classmethod
@@ -72,6 +94,9 @@ class ResearchMode:
             ),
             pass1_sources=4,
             pass2_sources=3,
+            min_sources_full_report=4,
+            min_sources_short_report=2,
+            relevance_cutoff=3,
         )
 
     @classmethod
@@ -93,6 +118,9 @@ class ResearchMode:
             ),
             pass1_sources=10,
             pass2_sources=10,
+            min_sources_full_report=5,
+            min_sources_short_report=2,
+            relevance_cutoff=3,
         )
 
     @classmethod

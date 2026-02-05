@@ -25,6 +25,9 @@ def synthesize_report(
     model: str = "claude-sonnet-4-20250514",
     max_tokens: int = 4096,
     mode_instructions: str | None = None,
+    limited_sources: bool = False,
+    dropped_count: int = 0,
+    total_count: int = 0,
 ) -> str:
     """
     Synthesize a research report from summaries.
@@ -36,6 +39,9 @@ def synthesize_report(
         model: Model to use for synthesis
         max_tokens: Maximum tokens for the response
         mode_instructions: Mode-specific instructions for report style/length
+        limited_sources: If True, generate a shorter report with disclaimer
+        dropped_count: Number of sources dropped by relevance gate
+        total_count: Total number of sources evaluated
 
     Returns:
         Markdown report string
@@ -57,6 +63,25 @@ def synthesize_report(
             "Cite sources where relevant. "
             "Target approximately 1000 words."
         )
+
+    # Modify instructions for limited sources
+    if limited_sources:
+        # Validate counts to avoid negative values
+        survived_count = max(0, total_count - dropped_count)
+        limited_disclaimer = (
+            f"**Note:** Only {survived_count} of {total_count} sources found were "
+            f"relevant to your question. This report is based on limited information "
+            f"and should be considered a starting point, not a comprehensive answer."
+        )
+        # Append short report guidance to mode instructions
+        mode_instructions = (
+            f"{mode_instructions} "
+            "Given the limited relevant sources, write a proportionally shorter report. "
+            "Focus only on what the available sources can directly answer. "
+            "Do not pad or speculate beyond what the sources support."
+        )
+    else:
+        limited_disclaimer = ""
 
     # Sanitize the query (comes from user but be consistent)
     safe_query = _sanitize_content(query)
@@ -96,6 +121,11 @@ Write the report now:"""
     )
 
     try:
+        # Print disclaimer before streaming so user sees it immediately
+        if limited_sources and limited_disclaimer:
+            print(limited_disclaimer)
+            print()  # Blank line before report content
+
         # Use streaming for longer responses
         full_response = ""
 
@@ -114,6 +144,11 @@ Write the report now:"""
         result = full_response.strip()
         if not result:
             raise SynthesisError("Model returned empty response")
+
+        # Prepend disclaimer for limited sources (for saved output)
+        if limited_sources and limited_disclaimer:
+            result = limited_disclaimer + "\n\n" + result
+
         return result
 
     except RateLimitError as e:
