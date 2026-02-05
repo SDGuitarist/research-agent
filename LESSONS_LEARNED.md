@@ -717,6 +717,27 @@ INSUFFICIENT_RESPONSE_TIMEOUT = 30.0
 
 **Pattern:** If a number isn't obvious, name it. Future-you (or the next developer) will thank you.
 
+### Cycle 7 Assessment
+
+The relevance gate solved the core honesty problem: the agent no longer pads reports with irrelevant sources. Before Cycle 6, a query like "flamenco vs classical guitarist pricing" would have generated a report full of guitar construction details and playing technique comparisons—technically "content" but not what the user asked for. Now it correctly returns "insufficient data" with actionable suggestions.
+
+**Query decomposition may still help for ambiguous queries.** The guitarist pricing query spans multiple sub-topics (flamenco rates, classical rates, event types, geographic variation) that a single search can't cover well. Decomposing into focused sub-queries might improve source quality for these cases.
+
+**However, the gate's value is proven.** Manual validation showed:
+- Thresholds worked without adjustment
+- Score 3 "keep when uncertain" default was correct
+- Standard mode's source budget absorbs failures gracefully
+- Quick mode's 3-source budget is fragile but intentionally so (speed/cost tradeoff)
+
+**Recommended next steps (in priority order):**
+
+1. **Query decomposition** — Evaluate whether breaking complex queries into sub-queries improves source quality, or if current two-pass refinement is sufficient
+2. **User-configurable thresholds** — Allow power users to adjust `relevance_cutoff` and `min_sources_*` via CLI flags
+3. **Output format options** — Add `--json` or `--markdown-only` flags for programmatic use
+4. **API integration** — Expose the agent as a callable module/service for integration into other tools
+
+The relevance gate is the foundation for all of these—without source quality control, none of the above features would be trustworthy.
+
 ---
 
 ## Summary
