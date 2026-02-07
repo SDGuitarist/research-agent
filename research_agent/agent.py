@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import random
-import time
 
 from anthropic import Anthropic, AsyncAnthropic
 
@@ -223,7 +222,9 @@ class ResearchAgent:
         # Step 1a: Search pass 1
         print(f"      Original query: {query}")
         try:
-            pass1_results = search(query, max_results=self.mode.pass1_sources)
+            pass1_results = await asyncio.to_thread(
+                search, query, self.mode.pass1_sources
+            )
             print(f"      Pass 1 found {len(pass1_results)} results")
         except SearchError as e:
             raise ResearchError(f"Search failed: {e}")
@@ -239,9 +240,11 @@ class ResearchAgent:
         # Step 1c: Search pass 2
         # Brief delay with jitter to avoid rate limits
         delay = SEARCH_PASS_DELAY_BASE + random.uniform(0, SEARCH_PASS_DELAY_JITTER)
-        time.sleep(delay)
+        await asyncio.sleep(delay)
         try:
-            pass2_results = search(refined_query, max_results=self.mode.pass2_sources)
+            pass2_results = await asyncio.to_thread(
+                search, refined_query, self.mode.pass2_sources
+            )
             # Deduplicate by URL
             seen_urls = {r.url for r in pass1_results}
             new_results = [r for r in pass2_results if r.url not in seen_urls]
@@ -302,7 +305,9 @@ class ResearchAgent:
 
         # Step 1: Search (pass 1)
         try:
-            results = search(query, max_results=self.mode.pass1_sources)
+            results = await asyncio.to_thread(
+                search, query, self.mode.pass1_sources
+            )
             print(f"      Found {len(results)} results")
         except SearchError as e:
             raise ResearchError(f"Search failed: {e}")
@@ -351,11 +356,13 @@ class ResearchAgent:
 
         # Brief delay with jitter to avoid rate limits
         delay = SEARCH_PASS_DELAY_BASE + random.uniform(0, SEARCH_PASS_DELAY_JITTER)
-        time.sleep(delay)
+        await asyncio.sleep(delay)
 
         # Search pass 2
         try:
-            pass2_results = search(refined_query, max_results=self.mode.pass2_sources)
+            pass2_results = await asyncio.to_thread(
+                search, refined_query, self.mode.pass2_sources
+            )
             # Deduplicate by URL
             new_results = [r for r in pass2_results if r.url not in seen_urls]
             print(f"      Pass 2 found {len(pass2_results)} results ({len(new_results)} new)")

@@ -8,6 +8,14 @@ from .errors import SynthesisError
 # Timeout for synthesis API calls (longer due to streaming)
 SYNTHESIS_TIMEOUT = 120.0
 
+# Instruction for balanced coverage of comparison queries
+BALANCE_INSTRUCTION = (
+    "If this query compares multiple options (e.g., 'X vs Y', 'which is better'), "
+    "ensure balanced coverage of all options mentioned. Include advantages AND "
+    "disadvantages for each. If sources heavily favor one option, acknowledge "
+    "this limitation rather than presenting biased conclusions."
+)
+
 
 def _sanitize_content(text: str) -> str:
     """
@@ -63,6 +71,9 @@ def synthesize_report(
             "Cite sources where relevant. "
             "Target approximately 1000 words."
         )
+
+    # Append balance instruction for comparison queries
+    mode_instructions = f"{mode_instructions}\n\n{BALANCE_INSTRUCTION}"
 
     # Modify instructions for limited sources
     if limited_sources:

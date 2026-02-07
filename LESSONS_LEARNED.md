@@ -740,6 +740,231 @@ The relevance gate is the foundation for all of these—without source quality c
 
 ---
 
+## 9. Search Quality Improvements (Cycle 7)
+
+### What We Built
+
+Three focused improvements based on user interview feedback:
+
+| Change | Files Modified | Lines Changed |
+|--------|----------------|---------------|
+| Tavily search with fallback | search.py, requirements.txt | ~50 |
+| Increased source budgets | modes.py | ~6 |
+| Comparison balance prompt | synthesize.py | ~8 |
+
+### Aggressive Simplification Beats Over-Engineering
+
+The original Cycle 7 plan included:
+- `SearchProvider` Protocol with abstract methods
+- `search/` package with 5 new files
+- `MultiProvider` class for failover
+- `--search-provider` CLI flag
+- `comparison.py` module with LLM-based query decomposition
+- Per-target result tracking
+
+Three reviewers (DHH, Kieran, Simplicity) all said the same thing: **YAGNI**.
+
+**The simplified version:**
+- One function (`_search_tavily`) added to existing `search.py`
+- `if/except` for fallback instead of a Provider class
+- Environment variable instead of CLI flag
+- Prompt instruction instead of query decomposition module
+
+**Result:** ~50 lines of code instead of ~300. Same functionality. Zero new files.
+
+**Lesson:** When three reviewers independently say "too complex," believe them. The simplest solution that works is usually correct.
+
+### Environment Variables Beat CLI Flags for Optional Features
+
+```bash
+# Bad - clutters CLI interface
+python main.py --search-provider tavily --tavily-api-key xxx "query"
+
+# Good - just works if configured
+TAVILY_API_KEY=xxx python main.py "query"
+```
+
+**Why environment variables are better here:**
+- API keys shouldn't be in command history
+- No code changes needed—just check `os.environ.get()`
+- Fallback is automatic—no key means use DuckDuckGo
+- One less thing to document in `--help`
+
+**When CLI flags ARE appropriate:**
+- User-facing behavior changes (mode selection)
+- Values that change frequently per-run
+- Values that aren't secrets
+
+### Prompt Engineering Often Beats Code
+
+The comparison query bias problem ("React vs Svelte" returns mostly React content) had two solutions:
+
+**Complex solution (rejected):**
+```python
+# Detect comparison, decompose query, search separately, merge results
+if is_comparison_query(query):
+    targets = extract_comparison_targets(query)  # LLM call
+    for target in targets:
+        results += search(f"{target} {remaining_query}")
+```
+
+**Simple solution (implemented):**
+```python
+BALANCE_INSTRUCTION = """
+If this query compares multiple options (e.g., "X vs Y", "which is better"),
+ensure balanced coverage of all options mentioned.
+"""
+```
+
+**Why prompt engineering won:**
+- Zero additional API calls
+- No detection logic to maintain
+- Claude is smart enough to balance when asked
+- Easier to iterate (just change the prompt text)
+
+**Pattern:** Before adding code, ask: "Can I solve this with instructions to the LLM?" Often the answer is yes.
+
+### Source Budgets Must Account for Filtering
+
+The relevance gate (Cycle 6) filters 30-50% of sources. Original budgets didn't compensate:
+
+| Mode | Old Attempts | After Gate | User Experience |
+|------|--------------|------------|-----------------|
+| Quick | 3 | 1-2 | "Too fragile" |
+| Deep | 20 | 5-6 | "Not comprehensive" |
+
+**The fix:** Increase attempts to achieve target survivors:
+
+| Mode | New Attempts | Expected Survivors |
+|------|--------------|-------------------|
+| Quick | 6 (4+2) | 3-4 |
+| Standard | 10 (6+4) | 5-6 |
+| Deep | 24 (12+12) | 10-12 |
+
+**Lesson:** When you add filtering, budget must increase proportionally. "Sources attempted" ≠ "sources used."
+
+### Async Wrapping for Sync Libraries
+
+The Tavily client is synchronous, but our pipeline is async. The naive approach blocks:
+
+```python
+# Bad - blocks the event loop
+results = tavily_client.search(query)  # Sync call in async context
+```
+
+**The fix:** Use `asyncio.to_thread()`:
+
+```python
+# Good - runs sync code in thread pool
+results = await asyncio.to_thread(search, query, max_results)
+```
+
+**When to use `asyncio.to_thread()`:**
+- Third-party sync libraries in async code
+- CPU-bound operations that would block
+- Any sync function you can't easily convert
+
+**When NOT to use it:**
+- Already-async code (just `await` it)
+- I/O operations with async alternatives (use the async version)
+
+### Test Assertions Must Match Implementation
+
+After changing source budgets, tests failed because assertions hardcoded old values:
+
+```python
+# Test said:
+assert mode.pass1_sources == 2  # Old value
+
+# Implementation changed to:
+pass1_sources = 4  # New value
+```
+
+**The fix pattern:**
+1. Update implementation
+2. Run tests
+3. Update test assertions to match new expected behavior
+4. Update test docstrings to explain why values changed
+
+**Lesson:** When you change configuration values, grep for those values in tests. They're probably asserted somewhere.
+
+### Mocking Path Must Match Import Location
+
+Tavily is imported inside the function to avoid requiring the package when not used:
+
+```python
+def _search_tavily(...):
+    from tavily import TavilyClient  # Import inside function
+    client = TavilyClient(...)
+```
+
+Tests initially failed because they mocked the wrong path:
+
+```python
+# Bad - module doesn't have TavilyClient at top level
+with patch("research_agent.search.TavilyClient"):
+
+# Good - mock where it's actually imported from
+with patch("tavily.TavilyClient"):
+```
+
+**Rule:** Mock where the name is imported FROM, not where it's used.
+
+### User Interviews Before Planning
+
+Before creating the Cycle 7 plan, we conducted a structured interview:
+
+| Question | Insight |
+|----------|---------|
+| "What queries fail most often?" | Comparisons, niche topics |
+| "What's your quality bar?" | Comprehensive > fast |
+| "What would increase usage?" | Better reliability, smarter queries |
+
+**What the interview revealed that assumptions missed:**
+- DuckDuckGo's limitation wasn't obvious from code analysis alone
+- "Deep mode not comprehensive" meant post-filtering count, not pre-filtering
+- User wanted quality > cost, but we'd been optimizing for cost
+
+**Lesson:** Interview users before assuming you know the problem. Even self-service tools have users (yourself!).
+
+### Minimal Plans Execute Faster
+
+| Version | Planning Time | Implementation Time | Total |
+|---------|---------------|---------------------|-------|
+| Original (complex) | 2 hours | (not started) | - |
+| Simplified | 30 min | 2 hours | 2.5 hours |
+
+The complex plan required designing protocols, package structures, and integration points. The simplified plan was "add a function, change some numbers."
+
+**Why simpler plans execute faster:**
+- Fewer decisions during implementation
+- Less code to write and test
+- Fewer edge cases to handle
+- Easier to review
+
+### Cycle 7 Assessment
+
+The three changes address the core pain points identified in the user interview:
+
+| Problem | Solution | Status |
+|---------|----------|--------|
+| Search reliability | Tavily + DuckDuckGo fallback | Implemented |
+| Source attrition | Increased budgets | Implemented |
+| Comparison bias | Balance instruction | Implemented |
+
+**What's NOT in Cycle 7 (by design):**
+- Query decomposition for comparisons (prompt was sufficient)
+- Provider abstraction (only 2 providers don't need it)
+- User-configurable thresholds (not requested)
+
+**Recommended next steps (if needed):**
+1. Monitor Tavily usage and fallback frequency
+2. Evaluate if comparison balance prompt is sufficient
+3. Consider Exa for semantic search (same pattern: function + fallback)
+4. Add provider abstraction only if we need 3+ providers
+
+---
+
 ## Summary
 
 | Category | Key Takeaway |
@@ -771,3 +996,11 @@ The relevance gate is the foundation for all of these—without source quality c
 | **UX** | Show users what's happening (both queries) to build trust in automated processes |
 | **UX** | For streaming output with metadata, print metadata first so users have context |
 | **Code Quality** | Name magic numbers—future-you needs context on why "2x" or "30.0" |
+| **Simplification** | When three reviewers say "too complex," believe them—simplest solution is usually correct |
+| **Simplification** | Prompt engineering often beats code—ask "can I solve this with LLM instructions?" first |
+| **Configuration** | Environment variables beat CLI flags for optional features and secrets |
+| **Filtering** | When you add filtering, budget must increase proportionally—attempts ≠ survivors |
+| **Async** | Use `asyncio.to_thread()` for sync libraries in async code |
+| **Testing** | Mock where the name is imported FROM, not where it's used |
+| **Planning** | Interview users before planning—assumptions miss real pain points |
+| **Planning** | Minimal plans execute faster—fewer decisions, less code, easier review |

@@ -59,7 +59,7 @@ class ResearchMode:
     def quick(cls) -> "ResearchMode":
         return cls(
             name="quick",
-            max_sources=3,
+            max_sources=4,  # Increased to account for relevance filtering
             search_passes=2,
             word_target=300,
             max_tokens=600,
@@ -70,8 +70,8 @@ class ResearchMode:
                 "Use 2-3 short paragraphs max. No subsections needed unless essential. "
                 "Target approximately 300 words."
             ),
-            pass1_sources=2,
-            pass2_sources=1,
+            pass1_sources=4,  # was 2
+            pass2_sources=2,  # was 1
             min_sources_full_report=3,
             min_sources_short_report=1,
             relevance_cutoff=3,
@@ -81,7 +81,7 @@ class ResearchMode:
     def standard(cls) -> "ResearchMode":
         return cls(
             name="standard",
-            max_sources=7,
+            max_sources=10,  # Increased to account for relevance filtering
             search_passes=2,
             word_target=1000,
             max_tokens=1800,
@@ -92,8 +92,8 @@ class ResearchMode:
                 "Cite sources where relevant. "
                 "Target approximately 1000 words."
             ),
-            pass1_sources=4,
-            pass2_sources=3,
+            pass1_sources=6,  # was 4
+            pass2_sources=4,  # was 3
             min_sources_full_report=4,
             min_sources_short_report=2,
             relevance_cutoff=3,
@@ -103,7 +103,7 @@ class ResearchMode:
     def deep(cls) -> "ResearchMode":
         return cls(
             name="deep",
-            max_sources=10,
+            max_sources=12,  # Increased to account for relevance filtering
             search_passes=2,
             word_target=2000,
             max_tokens=3500,
@@ -116,10 +116,10 @@ class ResearchMode:
                 "Explore edge cases and caveats mentioned in sources. "
                 "Target approximately 2000 words."
             ),
-            pass1_sources=10,
-            pass2_sources=10,
-            min_sources_full_report=5,
-            min_sources_short_report=2,
+            pass1_sources=12,  # was 10
+            pass2_sources=12,  # was 10
+            min_sources_full_report=8,  # Increased for deep mode
+            min_sources_short_report=5,  # Increased for deep mode
             relevance_cutoff=3,
         )
 
