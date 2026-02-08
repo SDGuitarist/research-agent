@@ -27,6 +27,7 @@ class SearchResult:
     title: str
     url: str
     snippet: str
+    raw_content: str = ""  # Full page content from Tavily (empty if unavailable)
 
 
 def search(query: str, max_results: int = 5) -> list[SearchResult]:
@@ -89,6 +90,7 @@ def _search_tavily(query: str, max_results: int, api_key: str) -> list[SearchRes
         query=query,
         max_results=max_results,
         search_depth="basic",
+        include_raw_content="markdown",
     )
 
     results = []
@@ -100,6 +102,7 @@ def _search_tavily(query: str, max_results: int, api_key: str) -> list[SearchRes
             title=item.get("title", ""),
             url=url,
             snippet=item.get("content", "")[:500],
+            raw_content=item.get("raw_content") or "",
         ))
 
     logger.info(f"Tavily returned {len(results)} results")

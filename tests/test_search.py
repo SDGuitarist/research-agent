@@ -288,6 +288,7 @@ class TestTavilySearch:
                     query="test query",
                     max_results=5,
                     search_depth="basic",
+                    include_raw_content="markdown",
                 )
 
     def test_search_falls_back_to_ddg_when_tavily_fails(self, mock_ddgs_results):

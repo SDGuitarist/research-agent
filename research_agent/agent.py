@@ -6,9 +6,9 @@ import random
 
 from anthropic import Anthropic, AsyncAnthropic
 
-from .search import search, refine_query
+from .search import search, refine_query, SearchResult
 from .fetch import fetch_urls
-from .extract import extract_all
+from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all
 from .synthesize import synthesize_report
 from .relevance import evaluate_sources, generate_insufficient_data_response
@@ -176,6 +176,24 @@ class ResearchAgent:
         else:
             return await self._research_with_refinement(query, step_count, decomposition)
 
+    @staticmethod
+    def _split_prefetched(
+        results: list[SearchResult],
+    ) -> tuple[list[ExtractedContent], list[str]]:
+        """Separate results with raw_content from those needing HTTP fetch."""
+        prefetched = []
+        urls_to_fetch = []
+        for r in results:
+            if r.raw_content:
+                prefetched.append(ExtractedContent(
+                    url=r.url,
+                    title=r.title,
+                    text=r.raw_content,
+                ))
+            else:
+                urls_to_fetch.append(r.url)
+        return prefetched, urls_to_fetch
+
     async def _evaluate_and_synthesize(
         self,
         query: str,
@@ -304,20 +322,21 @@ class ResearchAgent:
         all_results = pass1_results + new_results
         print(f"      Total: {len(all_results)} unique sources")
 
-        # Fetch pages
+        # Fetch pages — skip URLs that already have raw_content from Tavily
+        prefetched, urls_to_fetch = self._split_prefetched(all_results)
         fetch_step = 2 + offset
         print(f"\n[{fetch_step}/{step_count}] Fetching {len(all_results)} pages...")
-        urls = [r.url for r in all_results]
-        pages = await fetch_urls(urls)
-        print(f"      Successfully fetched {len(pages)} pages")
+        pages = await fetch_urls(urls_to_fetch) if urls_to_fetch else []
+        print(f"      Successfully fetched {len(pages)} pages ({len(prefetched)} from search cache)")
 
-        if not pages:
+        if not pages and not prefetched:
             raise ResearchError("Could not fetch any pages")
 
         # Extract content
         extract_step = 3 + offset
         print(f"\n[{extract_step}/{step_count}] Extracting content...")
-        contents = extract_all(pages)
+        extracted = extract_all(pages)
+        contents = prefetched + extracted
         print(f"      Extracted content from {len(contents)} pages")
 
         if not contents:
@@ -382,20 +401,21 @@ class ResearchAgent:
                     logger.warning(f"Sub-query search failed: {e}, continuing")
                     print(f"      → \"{sq}\": failed, continuing")
 
-        # Fetch pages (pass 1)
+        # Fetch pages (pass 1) — skip URLs with raw_content from Tavily
+        prefetched, urls_to_fetch = self._split_prefetched(results)
         fetch_step = 2 + offset
         print(f"\n[{fetch_step}/{step_count}] Fetching {len(results)} pages...")
-        urls = [r.url for r in results]
-        pages = await fetch_urls(urls)
-        print(f"      Successfully fetched {len(pages)} pages")
+        pages = await fetch_urls(urls_to_fetch) if urls_to_fetch else []
+        print(f"      Successfully fetched {len(pages)} pages ({len(prefetched)} from search cache)")
 
-        if not pages:
+        if not pages and not prefetched:
             raise ResearchError("Could not fetch any pages")
 
         # Extract content (pass 1)
         extract_step = 3 + offset
         print(f"\n[{extract_step}/{step_count}] Extracting content...")
-        contents = extract_all(pages)
+        extracted = extract_all(pages)
+        contents = prefetched + extracted
         print(f"      Extracted content from {len(contents)} pages")
 
         if not contents:
@@ -438,12 +458,13 @@ class ResearchAgent:
             print(f"      Pass 2 found {len(pass2_results)} results ({len(new_results)} new)")
 
             if new_results:
-                new_urls = [r.url for r in new_results]
-                new_pages = await fetch_urls(new_urls)
-                print(f"      Fetched {len(new_pages)} new pages")
+                new_prefetched, new_urls_to_fetch = self._split_prefetched(new_results)
+                new_pages = await fetch_urls(new_urls_to_fetch) if new_urls_to_fetch else []
+                print(f"      Fetched {len(new_pages)} new pages ({len(new_prefetched)} from search cache)")
 
-                if new_pages:
-                    new_contents = extract_all(new_pages)
+                new_extracted = extract_all(new_pages)
+                new_contents = new_prefetched + new_extracted
+                if new_contents:
                     print(f"      Extracted {len(new_contents)} new contents")
 
                     if new_contents:
