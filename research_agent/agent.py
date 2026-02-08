@@ -12,7 +12,7 @@ from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all
 from .synthesize import synthesize_report
 from .relevance import evaluate_sources, generate_insufficient_data_response
-from .decompose import decompose_query
+from .decompose import decompose_query, _load_context
 from .cascade import cascade_recover
 from .errors import ResearchError, SearchError
 from .modes import ResearchMode
@@ -274,6 +274,9 @@ class ResearchAgent:
         else:
             print(f"\n[{synthesis_step}/{step_count}] Synthesizing report with {self.synthesize_model}...\n")
 
+        # Load business context for synthesis
+        business_context = _load_context()
+
         return synthesize_report(
             self.client,
             query,
@@ -284,6 +287,7 @@ class ResearchAgent:
             limited_sources=limited_sources,
             dropped_count=len(evaluation["dropped_sources"]),
             total_count=evaluation["total_scored"],
+            business_context=business_context,
         )
 
     async def _research_with_refinement(
@@ -460,6 +464,7 @@ class ResearchAgent:
             raise ResearchError("Could not extract content from any pages")
 
         # Summarize (pass 1)
+        is_deep = self.mode.name == "deep"
         summarize_step = 4 + offset
         logger.info(f"Summarizing content with {self.summarize_model}...")
         print(f"\n[{summarize_step}/{step_count}] Summarizing content with {self.summarize_model}...")
@@ -467,6 +472,8 @@ class ResearchAgent:
             self.async_client,
             contents,
             model=self.summarize_model,
+            structured=is_deep,
+            max_chunks=5 if is_deep else 3,
         )
         print(f"      Generated {len(summaries)} summaries")
 
@@ -516,6 +523,8 @@ class ResearchAgent:
                                 self.async_client,
                                 new_contents,
                                 model=self.summarize_model,
+                                structured=is_deep,
+                                max_chunks=5 if is_deep else 3,
                             )
                             summaries.extend(new_summaries)
                             print(f"      Total summaries: {len(summaries)}")

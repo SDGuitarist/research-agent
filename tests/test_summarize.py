@@ -12,6 +12,8 @@ from research_agent.summarize import (
     Summary,
     CHUNK_SIZE,
     MAX_CHUNKS_PER_SOURCE,
+    BATCH_SIZE,
+    BATCH_DELAY,
 )
 from research_agent.extract import ExtractedContent
 
@@ -140,8 +142,8 @@ class TestSummarizeChunk:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_summarize_chunk_propagates_rate_limit_error(self):
-        """RateLimitError should be propagated (not swallowed)."""
+    async def test_summarize_chunk_retries_on_rate_limit_then_returns_none(self):
+        """RateLimitError should retry once then return None."""
         from anthropic import RateLimitError
 
         mock_client = AsyncMock()
@@ -154,13 +156,46 @@ class TestSummarizeChunk:
             body=None
         )
 
-        with pytest.raises(RateLimitError):
-            await summarize_chunk(
+        with patch("research_agent.summarize.asyncio.sleep", new_callable=AsyncMock):
+            result = await summarize_chunk(
                 client=mock_client,
                 chunk="Content",
                 url="https://example.com",
                 title="Test",
             )
+
+        assert result is None
+        assert mock_client.messages.create.call_count == 2  # Original + 1 retry
+
+    @pytest.mark.asyncio
+    async def test_summarize_chunk_retry_succeeds_on_second_attempt(self):
+        """RateLimitError on first attempt, success on second should return Summary."""
+        from anthropic import RateLimitError
+
+        mock_client = AsyncMock()
+        mock_rate_response = MagicMock()
+        mock_rate_response.status_code = 429
+        mock_rate_response.headers = {}
+
+        mock_success_response = MagicMock()
+        mock_success_response.content = [MagicMock(text="Summary after retry")]
+
+        mock_client.messages.create.side_effect = [
+            RateLimitError(message="Rate limited", response=mock_rate_response, body=None),
+            mock_success_response,
+        ]
+
+        with patch("research_agent.summarize.asyncio.sleep", new_callable=AsyncMock):
+            result = await summarize_chunk(
+                client=mock_client,
+                chunk="Content",
+                url="https://example.com",
+                title="Test",
+            )
+
+        assert isinstance(result, Summary)
+        assert result.summary == "Summary after retry"
+        assert mock_client.messages.create.call_count == 2
 
     @pytest.mark.asyncio
     async def test_summarize_chunk_sanitizes_content(self):
@@ -294,3 +329,202 @@ class TestSummarizeAll:
 
         assert result == []
         mock_client.messages.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_summarize_all_sleeps_between_batches(self):
+        """Should call asyncio.sleep between batches when more than BATCH_SIZE items."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary")]
+        mock_client.messages.create.return_value = mock_response
+
+        # Create more contents than BATCH_SIZE to trigger multiple batches
+        contents = [
+            ExtractedContent(url=f"https://ex{i}.com", title=f"T{i}", text="Short content")
+            for i in range(BATCH_SIZE + 2)
+        ]
+
+        with patch("research_agent.summarize.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await summarize_all(mock_client, contents)
+
+        # Should have slept once (between batch 1 and batch 2)
+        mock_sleep.assert_called_once_with(BATCH_DELAY)
+        assert len(result) == BATCH_SIZE + 2
+
+    @pytest.mark.asyncio
+    async def test_summarize_all_no_sleep_for_single_batch(self):
+        """Should NOT call asyncio.sleep when all items fit in one batch."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary")]
+        mock_client.messages.create.return_value = mock_response
+
+        # Fewer items than BATCH_SIZE
+        contents = [
+            ExtractedContent(url=f"https://ex{i}.com", title=f"T{i}", text="Short content")
+            for i in range(3)
+        ]
+
+        with patch("research_agent.summarize.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await summarize_all(mock_client, contents)
+
+        mock_sleep.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_summarize_all_partial_results_from_batches(self):
+        """Should return partial results when one batch has errors."""
+        from anthropic import APIError
+
+        mock_client = AsyncMock()
+        mock_request = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary")]
+
+        # Alternate success/failure across many calls
+        side_effects = []
+        for i in range(BATCH_SIZE + 2):
+            if i % 3 == 2:
+                side_effects.append(APIError(message="fail", request=mock_request, body=None))
+            else:
+                side_effects.append(mock_response)
+        mock_client.messages.create.side_effect = side_effects
+
+        contents = [
+            ExtractedContent(url=f"https://ex{i}.com", title=f"T{i}", text="Short content")
+            for i in range(BATCH_SIZE + 2)
+        ]
+
+        with patch("research_agent.summarize.asyncio.sleep", new_callable=AsyncMock):
+            result = await summarize_all(mock_client, contents)
+
+        # Should have some results (not all failed)
+        assert len(result) > 0
+        # Should be fewer than total (some failed)
+        assert len(result) < BATCH_SIZE + 2
+
+    def test_batch_constants_are_reasonable(self):
+        """BATCH_SIZE and BATCH_DELAY should be within sensible ranges."""
+        assert 5 <= BATCH_SIZE <= 20
+        assert BATCH_DELAY >= 1.0
+
+
+class TestStructuredSummaries:
+    """Tests for structured summary format (Cycle 10 Step 4)."""
+
+    @pytest.mark.asyncio
+    async def test_structured_true_uses_facts_quotes_tone_prompt(self):
+        """structured=True should use FACTS/KEY QUOTES/TONE prompt format."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="FACTS: Key facts here.\nKEY QUOTES: None found\nTONE: N/A")]
+        mock_client.messages.create.return_value = mock_response
+
+        await summarize_chunk(
+            client=mock_client,
+            chunk="Content to summarize",
+            url="https://example.com",
+            title="Test",
+            structured=True,
+        )
+
+        call_args = mock_client.messages.create.call_args
+        user_content = call_args.kwargs["messages"][0]["content"]
+
+        assert "FACTS:" in user_content
+        assert "KEY QUOTES:" in user_content
+        assert "TONE:" in user_content
+
+    @pytest.mark.asyncio
+    async def test_structured_false_uses_original_prompt(self):
+        """structured=False should use original 2-4 sentences prompt."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary text")]
+        mock_client.messages.create.return_value = mock_response
+
+        await summarize_chunk(
+            client=mock_client,
+            chunk="Content to summarize",
+            url="https://example.com",
+            title="Test",
+            structured=False,
+        )
+
+        call_args = mock_client.messages.create.call_args
+        user_content = call_args.kwargs["messages"][0]["content"]
+
+        assert "2-4 sentences" in user_content
+        assert "FACTS:" not in user_content
+
+    @pytest.mark.asyncio
+    async def test_structured_true_uses_800_max_tokens(self):
+        """structured=True should use max_tokens=800."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary")]
+        mock_client.messages.create.return_value = mock_response
+
+        await summarize_chunk(
+            client=mock_client,
+            chunk="Content",
+            url="https://example.com",
+            title="Test",
+            structured=True,
+        )
+
+        call_args = mock_client.messages.create.call_args
+        assert call_args.kwargs["max_tokens"] == 800
+
+    @pytest.mark.asyncio
+    async def test_structured_false_uses_500_max_tokens(self):
+        """structured=False should use max_tokens=500."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary")]
+        mock_client.messages.create.return_value = mock_response
+
+        await summarize_chunk(
+            client=mock_client,
+            chunk="Content",
+            url="https://example.com",
+            title="Test",
+            structured=False,
+        )
+
+        call_args = mock_client.messages.create.call_args
+        assert call_args.kwargs["max_tokens"] == 500
+
+    @pytest.mark.asyncio
+    async def test_structured_threads_through_summarize_all(self):
+        """structured flag should propagate from summarize_all to summarize_chunk."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="FACTS: data\nKEY QUOTES: None\nTONE: N/A")]
+        mock_client.messages.create.return_value = mock_response
+
+        contents = [
+            ExtractedContent(url="https://ex.com", title="T", text="Short content")
+        ]
+
+        await summarize_all(mock_client, contents, structured=True)
+
+        call_args = mock_client.messages.create.call_args
+        user_content = call_args.kwargs["messages"][0]["content"]
+        assert "FACTS:" in user_content
+
+    def test_max_chunks_5_produces_up_to_5_chunks(self):
+        """max_chunks=5 should allow up to 5 chunks from long text."""
+        long_text = "This is a paragraph.\n\n" * 1500  # ~33000 chars, enough for 5+ chunks at 4000 chars each
+        chunks = _chunk_text(long_text, max_chunks=5)
+
+        assert len(chunks) == 5
+        # Verify default would have capped at 3
+        default_chunks = _chunk_text(long_text)
+        assert len(default_chunks) == MAX_CHUNKS_PER_SOURCE
+
+    def test_max_chunks_default_is_3(self):
+        """Default max_chunks should be MAX_CHUNKS_PER_SOURCE (3)."""
+        long_text = "This is a paragraph.\n\n" * 500
+        chunks = _chunk_text(long_text)
+
+        assert len(chunks) <= MAX_CHUNKS_PER_SOURCE

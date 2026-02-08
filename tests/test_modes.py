@@ -21,27 +21,27 @@ class TestResearchModeFactoryMethods:
         assert mode.pass2_sources == 2  # Increased from 1
 
     def test_research_mode_standard_has_correct_parameters(self):
-        """Standard mode should have 10 max sources (increased for relevance filtering), 2 passes, 1000 word target."""
+        """Standard mode should have 10 max sources (increased for relevance filtering), 2 passes, 2000 word target."""
         mode = ResearchMode.standard()
 
         assert mode.name == "standard"
         assert mode.max_sources == 10  # Increased from 7 to account for relevance filtering
         assert mode.search_passes == 2
-        assert mode.word_target == 1000
-        assert mode.max_tokens == 1800
+        assert mode.word_target == 2000
+        assert mode.max_tokens == 3000
         assert mode.auto_save is True
         assert mode.pass1_sources == 6  # Increased from 4
         assert mode.pass2_sources == 4  # Increased from 3
 
     def test_research_mode_deep_has_correct_parameters(self):
-        """Deep mode should have 12 max sources (increased for relevance filtering), 2 passes, 2000 word target."""
+        """Deep mode should have 12 max sources (increased for relevance filtering), 2 passes, 3500 word target."""
         mode = ResearchMode.deep()
 
         assert mode.name == "deep"
         assert mode.max_sources == 12  # Increased from 10 to account for relevance filtering
         assert mode.search_passes == 2
-        assert mode.word_target == 2000
-        assert mode.max_tokens == 3500
+        assert mode.word_target == 3500
+        assert mode.max_tokens == 6000
         assert mode.auto_save is True
         assert mode.pass1_sources == 12  # Increased from 10
         assert mode.pass2_sources == 12  # Increased from 10
@@ -348,3 +348,61 @@ class TestResearchModeRelevanceThresholds:
         assert mode.min_sources_full_report == 8  # Increased from 5 for more comprehensive deep reports
         assert mode.min_sources_short_report == 5  # Increased from 2
         assert mode.relevance_cutoff == 3
+
+
+class TestResearchModeSynthesisTemplates:
+    """Tests for synthesis instruction templates (Cycle 10)."""
+
+    def test_deep_synthesis_contains_all_12_section_headers(self):
+        """Deep mode synthesis_instructions should contain all 12 section headers."""
+        mode = ResearchMode.deep()
+        instructions = mode.synthesis_instructions
+
+        expected_sections = [
+            "Executive Summary",
+            "Company Overview",
+            "Service Portfolio",
+            "Marketing Positioning",
+            "Messaging Theme Analysis",
+            "Buyer Psychology",
+            "Content & Marketing Tactics",
+            "Business Model Analysis",
+            "Competitive Implications",
+            "Positioning Advice",
+            "Limitations & Gaps",
+            "Sources",
+        ]
+        for section in expected_sections:
+            assert section in instructions, f"Missing section: {section}"
+
+    def test_deep_analytical_sections_have_insufficient_guardrail(self):
+        """Each analytical section (5-10) should have 'insufficient' guardrail text."""
+        mode = ResearchMode.deep()
+        instructions = mode.synthesis_instructions
+
+        assert "insufficient" in instructions.lower()
+        assert "rather than speculating" in instructions
+
+    def test_standard_mode_does_not_contain_section_template(self):
+        """Standard mode should NOT have the 12-section template."""
+        mode = ResearchMode.standard()
+        instructions = mode.synthesis_instructions
+
+        assert "Messaging Theme Analysis" not in instructions
+        assert "Buyer Psychology" not in instructions
+        assert "Business Model Analysis" not in instructions
+
+    def test_standard_mode_mentions_competitive_implications(self):
+        """Standard mode should mention competitive implications."""
+        mode = ResearchMode.standard()
+        instructions = mode.synthesis_instructions
+
+        assert "competitive implications" in instructions.lower()
+        assert "Limitations & Gaps" in instructions
+
+    def test_quick_mode_parameters_unchanged(self):
+        """Quick mode should be unchanged by Cycle 10."""
+        mode = ResearchMode.quick()
+
+        assert mode.word_target == 300
+        assert mode.max_tokens == 600

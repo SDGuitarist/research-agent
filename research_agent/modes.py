@@ -85,14 +85,16 @@ class ResearchMode:
             name="standard",
             max_sources=10,  # Increased to account for relevance filtering
             search_passes=2,
-            word_target=1000,
-            max_tokens=1800,
+            word_target=2000,
+            max_tokens=3000,
             auto_save=True,
             synthesis_instructions=(
                 "Provide a balanced report with clear sections. "
                 "Include key details and supporting context. "
                 "Cite sources where relevant. "
-                "Target approximately 1000 words."
+                "Note competitive implications and positioning insights where applicable. "
+                "Include a 'Limitations & Gaps' section discussing what the sources don't cover. "
+                "Target approximately 2000 words."
             ),
             pass1_sources=6,  # was 4
             pass2_sources=4,  # was 3
@@ -107,16 +109,36 @@ class ResearchMode:
             name="deep",
             max_sources=12,  # Increased to account for relevance filtering
             search_passes=2,
-            word_target=2000,
-            max_tokens=3500,
+            word_target=3500,
+            max_tokens=6000,
             auto_save=True,
             synthesis_instructions=(
-                "Provide a thorough, comprehensive analysis. "
-                "Include nuanced discussion of conflicting viewpoints. "
-                "Add a 'Limitations & Gaps' section discussing what the sources don't cover. "
-                "Discuss confidence levels where appropriate. "
-                "Explore edge cases and caveats mentioned in sources. "
-                "Target approximately 2000 words."
+                "Provide a thorough, comprehensive analysis organized into the following sections. "
+                "Use each section as a markdown ## heading. Omit a section only if no source data supports it.\n\n"
+                "1. **Executive Summary** — 2-3 paragraph overview of key findings.\n"
+                "2. **Company Overview** — Factual: founding, location, team size, years in business, certifications.\n"
+                "3. **Service Portfolio** — Factual: services offered, pricing if found, packages, service area.\n"
+                "4. **Marketing Positioning** — Factual + analytical: how the company positions itself, brand voice, "
+                "taglines, unique selling propositions, stated differentiators.\n"
+                "5. **Messaging Theme Analysis** — Identify 3-5 persuasion patterns used across their website, "
+                "ads, and social profiles. Quote exact phrases where possible. Categorize themes "
+                "(e.g., authority, social proof, scarcity, emotional appeal, expertise).\n"
+                "6. **Buyer Psychology** — What fears, desires, and emotional triggers does their marketing "
+                "target? What objections do they preemptively address? Draw from reviews and testimonials.\n"
+                "7. **Content & Marketing Tactics** — SEO patterns, social media presence, review platform "
+                "strategy, referral networks, paid advertising signals, content marketing approach.\n"
+                "8. **Business Model Analysis** — Revenue structure, pricing strategy, competitive moats, "
+                "scalability, vulnerabilities, partnership dependencies.\n"
+                "9. **Competitive Implications** — What do these findings mean for the reader? "
+                "Reference <business_context> if provided for specific positioning insights. "
+                "Identify threats, opportunities, and gaps in the competitor's approach.\n"
+                "10. **Positioning Advice** — 3-5 actionable angles the reader could pursue based on findings. "
+                "Reference <business_context> if provided to tailor recommendations.\n"
+                "11. **Limitations & Gaps** — What the sources don't cover, confidence levels, areas needing further research.\n"
+                "12. **Sources** — All referenced URLs with [Source N] notation.\n\n"
+                "For sections 5-10: If source data is insufficient for this analysis, state that explicitly "
+                "rather than speculating. Ground all claims in source evidence.\n\n"
+                "Target approximately 3500 words."
             ),
             pass1_sources=12,  # was 10
             pass2_sources=12,  # was 10

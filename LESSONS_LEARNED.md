@@ -1500,6 +1500,143 @@ The fetch cascade addresses the primary bottleneck identified in Cycles 8/8+: fe
 
 ---
 
+## 13. Analytical Depth (Cycle 10)
+
+### What We Built
+
+Four changes to increase report analytical depth and manage rate limits:
+
+| Change | Files Modified | Lines Changed |
+|--------|----------------|---------------|
+| Business context passthrough to synthesis | synthesize.py, agent.py | ~30 |
+| 12-section synthesis template (deep) + expanded standard | modes.py | ~35 |
+| Rate limit batching + retry in summarization | summarize.py | ~25 |
+| Structured summaries (deep mode) | summarize.py, agent.py | ~40 |
+| **New tests** | test_synthesize.py, test_agent.py, test_modes.py, test_summarize.py | **+26 tests (285 total)** |
+
+### Generic Templates Beat Hardcoded Specifics
+
+The 12-section synthesis template was designed to be **completely generic** — no Pacific Flow differentiators, pricing, or brand details baked in. Instead, the template references `<business_context>` conditionally:
+
+```python
+"9. **Competitive Implications** — ... Reference <business_context> if provided ..."
+"10. **Positioning Advice** — ... Reference <business_context> if provided ..."
+```
+
+**Why this matters:** A template with hardcoded "Pacific Flow offers flamenco at $X" would break for any other research query. The generic template works for ANY business context — the `research_context.md` file provides the specifics at runtime.
+
+**The pattern:** Separate the *structure* (template) from the *data* (context file). The template defines what sections to produce; the context file provides the business-specific knowledge. This is the same principle as separating HTML templates from database content.
+
+**Lesson:** When designing LLM prompts for a specific user, resist the temptation to hardcode their details into the prompt template. Use a context file that the user controls, referenced by a generic template.
+
+### Business Context Flows Through, Not Into, the Pipeline
+
+The `research_context.md` file was already being used by `decompose.py` for query analysis. For synthesis, we pass it through as a separate `<business_context>` block:
+
+```python
+business_context = _load_context()  # Returns None if file missing
+report = synthesize_report(
+    client=client,
+    query=query,
+    summaries=kept_summaries,
+    business_context=business_context,  # NEW
+)
+```
+
+**Key design decisions:**
+- Context is loaded once in `_evaluate_and_synthesize()`, not in every module
+- If `research_context.md` is missing, `business_context=None` and the context block is omitted entirely
+- Only sections 9 (Competitive Implications) and 10 (Positioning Advice) reference the context — factual sections (1-8) remain objective
+- Context content is sanitized with `_sanitize_content()` before inclusion
+
+**Lesson:** Business context should be a parameter that flows through the pipeline, not something embedded in prompts. This makes the pipeline reusable for different users/businesses.
+
+### Structured Summaries Give Synthesis Better Raw Material
+
+Deep mode now uses a structured extraction format instead of free-form summaries:
+
+```
+FACTS: [2-3 sentences of key facts]
+KEY QUOTES: [2-3 exact phrases from reviews/marketing, or "None found"]
+TONE: [one sentence on persuasion approach, or "N/A"]
+```
+
+**Why this helps analytical sections:** The 12-section template includes "Messaging Theme Analysis," "Buyer Psychology," and "Content & Marketing Tactics" — sections that need exact quotes and tone analysis. Free-form summaries would bury these details; the structured format guarantees they're extracted if present.
+
+**Implementation:** `summarize_chunk()` gets a `structured: bool` parameter. Deep mode passes `structured=True`, which selects a different prompt and increases `max_tokens` from 500 to 800. Standard/quick modes continue using free-form summaries.
+
+**Lesson:** Match the summarization format to what synthesis needs. If your report template asks for "exact phrases" and "persuasion patterns," your summarization step should explicitly extract those.
+
+### Batching Reduces But Doesn't Eliminate Rate Limits
+
+Deep mode with structured summaries generates significantly more API calls than before:
+- **Before:** 3 chunks max per source × ~20 sources = ~60 summarize calls
+- **After:** 5 chunks max per source × ~20 sources = ~100 summarize calls
+
+The batching fix (12 per batch, 3s delay between batches) plus retry (1 retry on 429, 2s sleep) reduces but doesn't eliminate rate limiting at the 30K tokens/min tier:
+
+**Benchmark results:**
+- 30 "Rate limited" warnings from our code
+- 23 retries (2s sleep each)
+- ~217 raw 429 HTTP responses (including Anthropic SDK's internal retries)
+- Pipeline completed successfully despite rate limiting
+
+**What would fix it:** A higher API tier (50K+ tokens/min) or a smaller batch size (6-8 instead of 12). But the current setup works — retry + SDK retries absorb the 429s without losing summaries.
+
+**Lesson:** Batching is necessary but not sufficient for rate limit management. The batch size and delay should be tuned to your API tier. At 30K tokens/min with 12-request batches, expect ~30% of requests to hit 429s on the first attempt.
+
+### 12-Section Template Verification
+
+The benchmark produced a report with all 12 sections populated:
+
+| Section | Present | Populated |
+|---------|---------|-----------|
+| 1. Executive Summary | Yes | 2 paragraphs |
+| 2. Company Overview | Yes | Detailed team roster |
+| 3. Service Portfolio | Yes | Full pricing table |
+| 4. Marketing Positioning | Yes | Brand voice analysis |
+| 5. Messaging Theme Analysis | Yes | 5 themes with quotes |
+| 6. Buyer Psychology | Yes | Fears, desires, triggers |
+| 7. Content & Marketing Tactics | Yes | Digital presence analysis |
+| 8. Business Model Analysis | Yes | Revenue structure, moats |
+| 9. Competitive Implications | Yes | References business context |
+| 10. Positioning Advice | Yes | 5 actionable angles |
+| 11. Limitations & Gaps | Yes | Confidence levels noted |
+| 12. Sources | Yes | 8 source URLs |
+
+**Word count:** 2,101 words (target was ~3,500). The model generated a complete, well-structured report but produced fewer words than targeted. This may be due to the source material limiting depth — the template's "omit if no data" instruction worked correctly.
+
+### Token Budget Updates
+
+| Mode | Old word_target | New word_target | Old max_tokens | New max_tokens |
+|------|----------------|----------------|----------------|----------------|
+| Standard | 1,000 | 2,000 | 1,800 | 3,000 |
+| Deep | 2,000 | 3,500 | 3,500 | 6,000 |
+| Quick | 300 | 300 (unchanged) | 800 | 800 (unchanged) |
+
+### Cycle 10 Assessment
+
+Analytical depth is significantly improved — the 12-section template produces consistent structure with actionable competitive analysis. Business context flows through cleanly without hardcoding. Rate limit batching works but needs a higher API tier to eliminate 429s entirely.
+
+**What worked:**
+- Generic template + context file separation — reusable for any business
+- Structured summaries — better raw material for analytical sections
+- Batch + retry — pipeline completes despite rate limiting
+- 12-section template — consistent analytical structure
+
+**What to watch:**
+- Word count undershooting target (2,101 vs 3,500) — may need prompt tuning
+- 429 rate limiting still present — consider batch size 8 or higher tier
+- Standard mode expanded (2,000 words, 3,000 tokens) but not template-driven — may want a lighter template
+
+**Recommended next steps:**
+1. Tune batch size (try 8 instead of 12) to reduce 429 rate
+2. Investigate why word count is under target — may need stronger word count instruction
+3. Consider a lighter template for standard mode (fewer sections, more flexibility)
+4. Monitor API usage at current tier before upgrading
+
+---
+
 ## Summary
 
 | Category | Key Takeaway |
@@ -1560,3 +1697,10 @@ The fetch cascade addresses the primary bottleneck identified in Cycles 8/8+: fe
 | **Cost** | Domain-filter expensive API calls—only fire Tavily Extract on high-value domains worth the credit |
 | **Debugging** | Not all fetch failures are bot blocks—check HTTP status codes (404 vs 403) before escalating |
 | **Testing** | Always live-test integrations before committing—Jina Search required an API key contrary to initial assumptions |
+| **Architecture** | Generic prompt templates + context file > hardcoded business specifics—templates work for ANY business |
+| **Architecture** | Business context passes through the pipeline, not baked into prompts—separation of concerns |
+| **Rate Limiting** | Batching (12/batch, 3s delay) + retry (1 retry, 2s sleep) reduces 429s but doesn't eliminate them at 30K tokens/min tier |
+| **Rate Limiting** | Structured summaries (5 chunks x N sources) multiply API calls—budget for this when choosing batch sizes |
+| **Prompting** | 12-section templates produce consistent analytical structure—omit-if-empty is better than always-include |
+| **Prompting** | Structured extraction (FACTS/KEY QUOTES/TONE) gives synthesis richer input for analytical sections |
+| **Testing** | Test data must be large enough to exercise the code path—500 repetitions wasn't enough for 5-chunk tests |

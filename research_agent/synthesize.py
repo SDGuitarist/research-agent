@@ -2,6 +2,7 @@
 
 from anthropic import Anthropic, RateLimitError, APIError, APITimeoutError
 
+from .decompose import _load_context
 from .summarize import Summary
 from .errors import SynthesisError
 
@@ -36,6 +37,7 @@ def synthesize_report(
     limited_sources: bool = False,
     dropped_count: int = 0,
     total_count: int = 0,
+    business_context: str | None = None,
 ) -> str:
     """
     Synthesize a research report from summaries.
@@ -97,11 +99,23 @@ def synthesize_report(
     # Sanitize the query (comes from user but be consistent)
     safe_query = _sanitize_content(query)
 
+    # Build optional business context block
+    context_block = ""
+    context_instruction = ""
+    if business_context:
+        safe_context = _sanitize_content(business_context)
+        context_block = f"\n<business_context>\n{safe_context}\n</business_context>\n"
+        context_instruction = (
+            "\n\nBusiness context is provided in <business_context>. Use it only for "
+            "Competitive Implications and Positioning Advice sections. Keep factual "
+            "analysis objective and context-free."
+        )
+
     # Build the prompt with clear data boundaries
     prompt = f"""Based on the source summaries below, write a research report answering this query:
 
 <query>{safe_query}</query>
-
+{context_block}
 <sources>
 {sources_text}
 </sources>
@@ -114,7 +128,7 @@ Write a well-structured markdown report that:
 4. Notes any conflicting information or gaps in the research
 5. Ends with a "Sources" section listing all referenced URLs
 
-{mode_instructions}
+{mode_instructions}{context_instruction}
 
 Use bullet points for lists of items.
 </instructions>

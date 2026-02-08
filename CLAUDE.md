@@ -15,9 +15,9 @@ research_agent/
 ├── fetch.py       — Async HTTP fetching with SSRF protection, UA rotation
 ├── cascade.py     — Three-layer fallback: Jina Reader → Tavily Extract → snippet
 ├── extract.py     — Content extraction: trafilatura + readability-lxml fallback
-├── summarize.py   — Parallel chunk summarization with Claude
+├── summarize.py   — Batched chunk summarization with Claude (structured FACTS/QUOTES/TONE in deep mode)
 ├── relevance.py   — Source quality scoring (1-5), gate: full_report/short_report/insufficient_data
-├── synthesize.py  — Report generation with mode-specific instructions
+├── synthesize.py  — Report generation with mode-specific instructions + business context
 ├── modes.py       — Frozen dataclass configs: quick/standard/deep
 └── errors.py      — Custom exception hierarchy
 ```
@@ -63,7 +63,7 @@ python3 main.py --standard "query" -v # Verbose: shows all DEBUG/INFO logs
 ## Testing
 
 ```bash
-python3 -m pytest tests/ -v    # 259 tests, all must pass
+python3 -m pytest tests/ -v    # 285 tests, all must pass
 ```
 
 Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search results. Mock where the name is imported FROM, not where it's used.
@@ -71,7 +71,7 @@ Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search
 ## Known Limitations
 
 - **The Knot** (Akamai WAF), **Instagram/Facebook** (CAPTCHA/login walls) block everything — cascade can only provide snippet fallback for these.
-- **429 rate limit warnings** during deep mode summarization (30K tokens/min tier) — recurring, becoming the next bottleneck.
+- **429 rate limit warnings** during deep mode summarization (30K tokens/min tier) — batched (12/batch, 3s delay) with 1 retry per chunk, but not eliminated at current tier.
 - **DuckDuckGo fallback** gets zero `raw_content` — all URLs go through direct HTTP fetch + cascade.
 - **Quick mode** has only 6 sources — fragile when sites block bots. Intentional speed/cost tradeoff.
 - **Anthropic API tier** limits: no Haiku access, Sonnet only. All models use `claude-sonnet-4-20250514`.
@@ -88,5 +88,6 @@ Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search
 | 8 | Query decomposition | Additive pattern, discovery interview |
 | 8+ | Tavily raw_content, --verbose | Verify integrations are active; instrument before diagnosing |
 | 9 | Fetch cascade (Jina → Tavily Extract → snippet) | Live-test services before designing; one file per stage |
+| 10 | Analytical depth: business context, 12-section template, batching, structured summaries | Generic templates + context file > hardcoded specifics |
 
 See `LESSONS_LEARNED.md` for detailed findings from each cycle.

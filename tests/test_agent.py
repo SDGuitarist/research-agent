@@ -835,3 +835,196 @@ class TestResearchAgentRelevanceGate:
             # Verify refined_query was passed to evaluate_sources
             eval_call = mock_evaluate.call_args
             assert eval_call[1]["refined_query"] == "specifically refined query"
+
+
+class TestResearchAgentBusinessContext:
+    """Tests for business context passthrough to synthesis."""
+
+    @pytest.mark.asyncio
+    async def test_agent_loads_context_and_passes_to_synthesize(self):
+        """Agent should load business context and pass it to synthesize_report."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent._load_context") as mock_load_context, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
+             patch("builtins.print"):
+
+            mock_search.return_value = [
+                SearchResult(title="R", url="https://ex1.com", snippet="S")
+            ]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<html><body><p>" + "x" * 200 + "</p></body></html>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
+            mock_synthesize.return_value = "Report"
+            mock_load_context.return_value = "We are a guitar company."
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
+            await agent.research_async("test query")
+
+            # Verify _load_context was called
+            mock_load_context.assert_called_once()
+            # Verify business_context was passed to synthesize_report
+            synth_call = mock_synthesize.call_args
+            assert synth_call[1]["business_context"] == "We are a guitar company."
+
+    @pytest.mark.asyncio
+    async def test_agent_works_when_context_missing(self):
+        """Agent should work normally when no business context file exists."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent._load_context") as mock_load_context, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
+             patch("builtins.print"):
+
+            mock_search.return_value = [
+                SearchResult(title="R", url="https://ex1.com", snippet="S")
+            ]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<html><body><p>" + "x" * 200 + "</p></body></html>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
+            mock_synthesize.return_value = "Report"
+            mock_load_context.return_value = None  # No context file
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
+            result = await agent.research_async("test query")
+
+            assert "Report" in result
+            # business_context should be None
+            synth_call = mock_synthesize.call_args
+            assert synth_call[1]["business_context"] is None
+
+
+class TestResearchAgentStructuredSummaries:
+    """Tests for structured summary passthrough in deep vs standard mode."""
+
+    @pytest.mark.asyncio
+    async def test_deep_mode_passes_structured_true(self):
+        """Deep mode should pass structured=True and max_chunks=5 to summarize_all."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent._load_context", return_value=None), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
+             patch("builtins.print"):
+
+            mock_search.return_value = [
+                SearchResult(title="R", url=f"https://ex{i}.com", snippet="S")
+                for i in range(10)
+            ]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<html><body><p>" + "x" * 200 + "</p></body></html>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
+            mock_synthesize.return_value = "Deep Report"
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
+            await agent.research_async("test query")
+
+            # First summarize_all call (pass 1) should have structured=True
+            first_call = mock_summarize.call_args_list[0]
+            assert first_call.kwargs.get("structured") is True
+            assert first_call.kwargs.get("max_chunks") == 5
+
+    @pytest.mark.asyncio
+    async def test_standard_mode_passes_structured_false(self):
+        """Standard mode should not pass structured=True to summarize_all."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent._load_context", return_value=None), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
+             patch("builtins.print"):
+
+            mock_search.return_value = [
+                SearchResult(title="R", url=f"https://ex{i}.com", snippet="S")
+                for i in range(4)
+            ]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<html><body><p>" + "x" * 200 + "</p></body></html>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = {
+                "decision": "full_report",
+                "decision_rationale": "All passed",
+                "surviving_sources": summaries,
+                "dropped_sources": [],
+                "total_scored": 1,
+                "total_survived": 1,
+                "refined_query": "refined query",
+            }
+            mock_synthesize.return_value = "Standard Report"
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
+            await agent.research_async("test query")
+
+            # Standard mode uses _research_with_refinement, which doesn't pass structured
+            summarize_call = mock_summarize.call_args
+            # structured should either not be present or be False
+            assert summarize_call.kwargs.get("structured", False) is False

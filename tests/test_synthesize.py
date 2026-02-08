@@ -277,3 +277,111 @@ class TestSynthesizeReport:
 
         assert "&lt;malicious&gt;" in user_content
         assert "<malicious>" not in user_content
+
+    def test_synthesize_report_includes_business_context_in_prompt(
+        self, sample_summaries, mock_anthropic_stream
+    ):
+        """Business context should appear in the prompt when provided."""
+        mock_client = MagicMock()
+        mock_stream = mock_anthropic_stream(["Report content"])
+        mock_client.messages.stream.return_value = mock_stream
+
+        with patch("builtins.print"):
+            synthesize_report(
+                client=mock_client,
+                query="test query",
+                summaries=sample_summaries,
+                business_context="We are a guitar entertainment company.",
+            )
+
+        call_args = mock_client.messages.stream.call_args
+        user_content = call_args.kwargs["messages"][0]["content"]
+
+        assert "<business_context>" in user_content
+        assert "guitar entertainment company" in user_content
+
+    def test_synthesize_report_omits_context_block_when_none(
+        self, sample_summaries, mock_anthropic_stream
+    ):
+        """No business_context should produce no <business_context> block."""
+        mock_client = MagicMock()
+        mock_stream = mock_anthropic_stream(["Report content"])
+        mock_client.messages.stream.return_value = mock_stream
+
+        with patch("builtins.print"):
+            synthesize_report(
+                client=mock_client,
+                query="test query",
+                summaries=sample_summaries,
+                business_context=None,
+            )
+
+        call_args = mock_client.messages.stream.call_args
+        user_content = call_args.kwargs["messages"][0]["content"]
+
+        assert "<business_context>" not in user_content
+        assert "Competitive Implications" not in user_content
+
+    def test_synthesize_report_sanitizes_business_context(
+        self, sample_summaries, mock_anthropic_stream
+    ):
+        """Business context with angle brackets should be escaped."""
+        mock_client = MagicMock()
+        mock_stream = mock_anthropic_stream(["Report content"])
+        mock_client.messages.stream.return_value = mock_stream
+
+        with patch("builtins.print"):
+            synthesize_report(
+                client=mock_client,
+                query="test query",
+                summaries=sample_summaries,
+                business_context="<script>alert('xss')</script>",
+            )
+
+        call_args = mock_client.messages.stream.call_args
+        user_content = call_args.kwargs["messages"][0]["content"]
+
+        assert "&lt;script&gt;" in user_content
+        assert "<script>" not in user_content
+
+    def test_synthesize_report_context_usage_instruction_present(
+        self, sample_summaries, mock_anthropic_stream
+    ):
+        """When context is provided, usage instruction should be in prompt."""
+        mock_client = MagicMock()
+        mock_stream = mock_anthropic_stream(["Report content"])
+        mock_client.messages.stream.return_value = mock_stream
+
+        with patch("builtins.print"):
+            synthesize_report(
+                client=mock_client,
+                query="test query",
+                summaries=sample_summaries,
+                business_context="Our company does X.",
+            )
+
+        call_args = mock_client.messages.stream.call_args
+        user_content = call_args.kwargs["messages"][0]["content"]
+
+        assert "Competitive Implications" in user_content
+        assert "Positioning Advice" in user_content
+        assert "objective and context-free" in user_content
+
+    def test_synthesize_report_passes_max_tokens_to_api(
+        self, sample_summaries, mock_anthropic_stream
+    ):
+        """max_tokens parameter should be passed through to the API call."""
+        mock_client = MagicMock()
+        mock_stream = mock_anthropic_stream(["Report content"])
+        mock_client.messages.stream.return_value = mock_stream
+
+        with patch("builtins.print"):
+            synthesize_report(
+                client=mock_client,
+                query="test query",
+                summaries=sample_summaries,
+                max_tokens=6000,
+            )
+
+        call_args = mock_client.messages.stream.call_args
+        assert call_args.kwargs["max_tokens"] == 6000
