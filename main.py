@@ -75,12 +75,6 @@ def main():
     # Load environment variables from .env file
     load_dotenv()
 
-    # Configure logging
-    logging.basicConfig(
-        level=logging.WARNING,
-        format="%(levelname)s: %(message)s",
-    )
-
     parser = argparse.ArgumentParser(
         description="Research agent that searches the web and generates markdown reports.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -133,8 +127,19 @@ Examples:
         type=Path,
         help="Output file path (default: stdout, or auto for --standard/--deep)",
     )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable debug logging",
+    )
 
     args = parser.parse_args()
+
+    # Configure logging (after parsing so --verbose is available)
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+        format="%(levelname)s: %(name)s: %(message)s",
+    )
 
     # Determine mode
     mode_flag_used = args.quick or args.deep or args.standard
