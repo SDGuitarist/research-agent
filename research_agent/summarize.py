@@ -24,7 +24,7 @@ CHUNK_SIZE = 4000
 MAX_CHUNKS_PER_SOURCE = 3
 
 # Batching constants for rate limit management
-BATCH_SIZE = 8
+BATCH_SIZE = 5
 BATCH_DELAY = 3.0
 
 

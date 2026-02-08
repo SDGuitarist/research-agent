@@ -11,6 +11,8 @@ from research_agent.relevance import (
     evaluate_sources,
     generate_insufficient_data_response,
     _fallback_insufficient_response,
+    BATCH_SIZE,
+    BATCH_DELAY,
 )
 from research_agent.summarize import Summary
 from research_agent.modes import ResearchMode
@@ -629,3 +631,117 @@ class TestModeThresholds:
             result = await evaluate_sources("test", summaries, mode, mock_client)
             assert result["decision"] == "short_report"
             assert result["total_survived"] == 3
+
+
+class TestEvaluateSourcesBatching:
+    """Tests for batched execution in evaluate_sources()."""
+
+    async def test_batched_execution_sleeps_between_batches(self):
+        """Should call asyncio.sleep(BATCH_DELAY) between batches."""
+        # Create more summaries than one batch
+        summaries = [
+            Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Summary {i}")
+            for i in range(BATCH_SIZE + 2)
+        ]
+        mode = ResearchMode.standard()
+        mock_client = AsyncMock()
+
+        async def mock_score(query, summary, client):
+            return {"url": summary.url, "title": summary.title, "score": 4, "explanation": "Good"}
+
+        with patch("research_agent.relevance.score_source", mock_score), \
+             patch("research_agent.relevance.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await evaluate_sources("test", summaries, mode, mock_client)
+
+        # Should sleep once between batch 1 and batch 2
+        mock_sleep.assert_called_once_with(BATCH_DELAY)
+
+    async def test_single_batch_does_not_sleep(self):
+        """Fewer items than BATCH_SIZE should not trigger sleep."""
+        summaries = [
+            Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Summary {i}")
+            for i in range(BATCH_SIZE - 1)
+        ]
+        mode = ResearchMode.standard()
+        mock_client = AsyncMock()
+
+        async def mock_score(query, summary, client):
+            return {"url": summary.url, "title": summary.title, "score": 4, "explanation": "Good"}
+
+        with patch("research_agent.relevance.score_source", mock_score), \
+             patch("research_agent.relevance.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await evaluate_sources("test", summaries, mode, mock_client)
+
+        mock_sleep.assert_not_called()
+
+    async def test_all_sources_scored_regardless_of_batching(self):
+        """Every source must receive a score, across all batches."""
+        # Use 3 batches worth of sources
+        count = BATCH_SIZE * 3 + 1
+        summaries = [
+            Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Summary {i}")
+            for i in range(count)
+        ]
+        mode = ResearchMode.deep()
+        mock_client = AsyncMock()
+
+        async def mock_score(query, summary, client):
+            return {"url": summary.url, "title": summary.title, "score": 4, "explanation": "Good"}
+
+        with patch("research_agent.relevance.score_source", mock_score):
+            result = await evaluate_sources("test", summaries, mode, mock_client)
+
+        assert result["total_scored"] == count
+        assert result["total_survived"] == count
+
+
+class TestScoreSourceRetry:
+    """Tests for retry logic in score_source()."""
+
+    async def test_retry_on_rate_limit_succeeds_on_second_attempt(self):
+        """Should retry once on RateLimitError and succeed."""
+        from anthropic import RateLimitError
+
+        mock_client = AsyncMock()
+        mock_response_429 = MagicMock()
+        mock_response_429.status_code = 429
+        mock_response_429.headers = {}
+
+        success_response = MagicMock()
+        success_response.content = [MagicMock(text="SCORE: 5\nEXPLANATION: Excellent")]
+
+        mock_client.messages.create.side_effect = [
+            RateLimitError(message="Rate limited", response=mock_response_429, body=None),
+            success_response,
+        ]
+
+        summary = Summary(url="https://example.com", title="Title", summary="Summary text")
+
+        with patch("research_agent.relevance.asyncio.sleep", new_callable=AsyncMock):
+            result = await score_source("test query", summary, mock_client)
+
+        assert result["score"] == 5
+        assert mock_client.messages.create.call_count == 2
+
+    async def test_retry_exhaustion_returns_default_score(self):
+        """Should return score 3 after exhausting retries."""
+        from anthropic import RateLimitError
+
+        mock_client = AsyncMock()
+        mock_response_429 = MagicMock()
+        mock_response_429.status_code = 429
+        mock_response_429.headers = {}
+
+        mock_client.messages.create.side_effect = RateLimitError(
+            message="Rate limited", response=mock_response_429, body=None
+        )
+
+        summary = Summary(url="https://example.com", title="Title", summary="Summary text")
+
+        with patch("research_agent.relevance.asyncio.sleep", new_callable=AsyncMock):
+            result = await score_source("test query", summary, mock_client)
+
+        assert result["score"] == 3
+        assert "rate limited" in result["explanation"].lower()
+        # 1 initial + 1 retry = 2 calls
+        assert mock_client.messages.create.call_count == 2

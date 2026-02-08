@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 # Timeout for scoring API calls (short completions)
 SCORING_TIMEOUT = 15.0
 
+# Batching constants for rate limit management
+BATCH_SIZE = 5
+BATCH_DELAY = 3.0
+
 # Timeout for insufficient data response (longer due to more detailed output)
 INSUFFICIENT_RESPONSE_TIMEOUT = 30.0
 
@@ -127,28 +131,42 @@ Respond in exactly this format:
 SCORE: [number]
 EXPLANATION: [one sentence explaining why]"""
 
-    try:
-        response = await client.messages.create(
-            model=SCORING_MODEL,
-            max_tokens=100,
-            timeout=SCORING_TIMEOUT,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
+    max_retries = 1
 
-        if not response.content:
-            logger.warning(f"Empty response when scoring {summary.url}")
-            score, explanation = 3, "Empty response from scoring, defaulting to include"
-        else:
-            response_text = response.content[0].text
-            score, explanation = _parse_score_response(response_text)
+    for attempt in range(max_retries + 1):
+        try:
+            response = await client.messages.create(
+                model=SCORING_MODEL,
+                max_tokens=100,
+                timeout=SCORING_TIMEOUT,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
 
-    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
-        logger.warning(f"API error scoring {summary.url}: {e}")
-        score, explanation = 3, "API error during scoring, defaulting to include"
-    except Exception as e:
-        logger.warning(f"Unexpected error scoring {summary.url}: {e}")
-        score, explanation = 3, "Unexpected error during scoring, defaulting to include"
+            if not response.content:
+                logger.warning(f"Empty response when scoring {summary.url}")
+                score, explanation = 3, "Empty response from scoring, defaulting to include"
+            else:
+                response_text = response.content[0].text
+                score, explanation = _parse_score_response(response_text)
+
+            break  # Success — exit retry loop
+
+        except RateLimitError:
+            if attempt < max_retries:
+                logger.warning(f"Rate limited scoring {summary.url}, retrying in 2s...")
+                await asyncio.sleep(2.0)
+                continue
+            logger.warning(f"Rate limited scoring {summary.url}, exhausted retries")
+            score, explanation = 3, "Rate limited during scoring, defaulting to include"
+        except (APIError, APIConnectionError, APITimeoutError) as e:
+            logger.warning(f"API error scoring {summary.url}: {e}")
+            score, explanation = 3, "API error during scoring, defaulting to include"
+            break
+        except Exception as e:
+            logger.warning(f"Unexpected error scoring {summary.url}: {e}")
+            score, explanation = 3, "Unexpected error during scoring, defaulting to include"
+            break
 
     return {
         "url": summary.url,
@@ -197,9 +215,15 @@ async def evaluate_sources(
 
     print(f"\n      Evaluating {len(summaries)} sources for relevance...")
 
-    # Score all sources in parallel
-    tasks = [score_source(query, summary, client) for summary in summaries]
-    scored_results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Score sources in batches to manage rate limits
+    scored_results = []
+    for batch_start in range(0, len(summaries), BATCH_SIZE):
+        batch = summaries[batch_start:batch_start + BATCH_SIZE]
+        if batch_start > 0:
+            await asyncio.sleep(BATCH_DELAY)
+        tasks = [score_source(query, summary, client) for summary in batch]
+        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+        scored_results.extend(batch_results)
 
     surviving_sources = []
     dropped_sources = []
