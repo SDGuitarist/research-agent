@@ -12,6 +12,7 @@ from .extract import extract_all
 from .summarize import summarize_all
 from .synthesize import synthesize_report
 from .relevance import evaluate_sources, generate_insufficient_data_response
+from .decompose import decompose_query
 from .errors import ResearchError, SearchError
 from .modes import ResearchMode
 
@@ -20,6 +21,10 @@ logger = logging.getLogger(__name__)
 # Base delay between search passes to avoid rate limits (with jitter added)
 SEARCH_PASS_DELAY_BASE = 1.0
 SEARCH_PASS_DELAY_JITTER = 0.5
+
+# Stagger delay between sub-query searches to avoid rate limits
+SUB_QUERY_STAGGER_BASE = 2.0
+SUB_QUERY_STAGGER_JITTER = 0.5
 
 
 class ResearchAgent:
@@ -138,19 +143,38 @@ class ResearchAgent:
         """Async implementation of research."""
         is_deep = self.mode.name == "deep"
 
-        # Deep mode: 7 steps (fetch/summarize between passes + relevance gate)
-        # Quick/standard: 6 steps (refine before fetch, then fetch all at once + relevance gate)
-        step_count = 7 if is_deep else 6
+        # Try query decomposition if mode supports it
+        decomposition = None
+        if self.mode.decompose:
+            print(f"\n[1/?] Analyzing query...")
+            decomposition = await asyncio.to_thread(
+                decompose_query, self.client, query
+            )
+            if decomposition["is_complex"]:
+                sub_queries = decomposition["sub_queries"]
+                reasoning = decomposition.get("reasoning", "")
+                if reasoning:
+                    print(f"      {reasoning}")
+                print(f"      Decomposed into {len(sub_queries)} sub-queries:")
+                for sq in sub_queries:
+                    print(f"      → {sq}")
+            else:
+                print(f"      Simple query — skipping decomposition")
 
-        print(f"\n[1/{step_count}] Searching for: {query}")
+        # Calculate step count:
+        # Base: deep=7, quick/standard=6
+        # +1 if decomposition step is shown (mode.decompose is True)
+        base_steps = 7 if is_deep else 6
+        step_count = base_steps + (1 if self.mode.decompose else 0)
+
+        search_step = 2 if self.mode.decompose else 1
+        print(f"\n[{search_step}/{step_count}] Searching for: {query}")
         print(f"      Mode: {self.mode.name} ({self.mode.max_sources} sources, {self.mode.search_passes} passes)")
 
         if is_deep:
-            # === DEEP MODE: Original two-pass with fetch between passes ===
-            return await self._research_deep(query, step_count)
+            return await self._research_deep(query, step_count, decomposition)
         else:
-            # === QUICK/STANDARD: Refine using snippets, then fetch all ===
-            return await self._research_with_refinement(query, step_count)
+            return await self._research_with_refinement(query, step_count, decomposition)
 
     async def _evaluate_and_synthesize(
         self,
@@ -216,10 +240,14 @@ class ResearchAgent:
             total_count=evaluation["total_scored"],
         )
 
-    async def _research_with_refinement(self, query: str, step_count: int) -> str:
+    async def _research_with_refinement(
+        self, query: str, step_count: int, decomposition: dict | None = None
+    ) -> str:
         """Quick/standard mode: refine query using snippets before fetching."""
+        # Step offset: if decomposition step is shown, shift all steps by 1
+        offset = 1 if self.mode.decompose else 0
 
-        # Step 1a: Search pass 1
+        # Search pass 1: always search the original query
         print(f"      Original query: {query}")
         try:
             pass1_results = await asyncio.to_thread(
@@ -229,7 +257,28 @@ class ResearchAgent:
         except SearchError as e:
             raise ResearchError(f"Search failed: {e}")
 
-        # Step 1b: Refine query using snippets
+        seen_urls = {r.url for r in pass1_results}
+
+        # Sub-query searches (additive — original query already ran above)
+        if decomposition and decomposition["is_complex"]:
+            sub_queries = decomposition["sub_queries"]
+            # Divide pass2 budget across sub-queries for additive coverage
+            per_sq_sources = max(2, self.mode.pass2_sources // len(sub_queries))
+            for i, sq in enumerate(sub_queries):
+                delay = SUB_QUERY_STAGGER_BASE + random.uniform(0, SUB_QUERY_STAGGER_JITTER)
+                await asyncio.sleep(delay)
+                try:
+                    sq_results = await asyncio.to_thread(search, sq, per_sq_sources)
+                    new = [r for r in sq_results if r.url not in seen_urls]
+                    for r in new:
+                        seen_urls.add(r.url)
+                        pass1_results.append(r)
+                    print(f"      → \"{sq}\": {len(sq_results)} results ({len(new)} new)")
+                except SearchError as e:
+                    logger.warning(f"Sub-query search failed: {e}, continuing")
+                    print(f"      → \"{sq}\": failed, continuing")
+
+        # Refine query using snippets
         snippets = [r.snippet for r in pass1_results if r.snippet]
         refined_query = refine_query(self.client, query, snippets)
         if refined_query == query:
@@ -237,31 +286,27 @@ class ResearchAgent:
         else:
             print(f"      Refined query: {refined_query}")
 
-        # Step 1c: Search pass 2
-        # Brief delay with jitter to avoid rate limits
+        # Search pass 2 with refined query
         delay = SEARCH_PASS_DELAY_BASE + random.uniform(0, SEARCH_PASS_DELAY_JITTER)
         await asyncio.sleep(delay)
         try:
             pass2_results = await asyncio.to_thread(
                 search, refined_query, self.mode.pass2_sources
             )
-            # Deduplicate by URL
-            seen_urls = {r.url for r in pass1_results}
             new_results = [r for r in pass2_results if r.url not in seen_urls]
-            print(f"      Pass 2 found {len(pass2_results)} results ({len(new_results)} new)")
+            print(f"      Refined pass found {len(pass2_results)} results ({len(new_results)} new)")
         except SearchError as e:
-            # Pass 2 failure is non-fatal: we can still produce a report from Pass 1 results.
-            # This is intentionally different from Pass 1, which must succeed.
-            logger.warning(f"Pass 2 search failed: {e}, continuing with pass 1 results")
-            print(f"      Pass 2 failed, continuing with pass 1 results")
+            logger.warning(f"Pass 2 search failed: {e}, continuing with existing results")
+            print(f"      Refined pass failed, continuing with existing results")
             new_results = []
 
         # Combine all results
         all_results = pass1_results + new_results
         print(f"      Total: {len(all_results)} unique sources")
 
-        # Step 2: Fetch pages
-        print(f"\n[2/{step_count}] Fetching {len(all_results)} pages...")
+        # Fetch pages
+        fetch_step = 2 + offset
+        print(f"\n[{fetch_step}/{step_count}] Fetching {len(all_results)} pages...")
         urls = [r.url for r in all_results]
         pages = await fetch_urls(urls)
         print(f"      Successfully fetched {len(pages)} pages")
@@ -269,17 +314,19 @@ class ResearchAgent:
         if not pages:
             raise ResearchError("Could not fetch any pages")
 
-        # Step 3: Extract content
-        print(f"\n[3/{step_count}] Extracting content...")
+        # Extract content
+        extract_step = 3 + offset
+        print(f"\n[{extract_step}/{step_count}] Extracting content...")
         contents = extract_all(pages)
         print(f"      Extracted content from {len(contents)} pages")
 
         if not contents:
             raise ResearchError("Could not extract content from any pages")
 
-        # Step 4: Summarize
+        # Summarize
+        summarize_step = 4 + offset
         logger.info(f"Summarizing content with {self.summarize_model}...")
-        print(f"\n[4/{step_count}] Summarizing content with {self.summarize_model}...")
+        print(f"\n[{summarize_step}/{step_count}] Summarizing content with {self.summarize_model}...")
         summaries = await summarize_all(
             self.async_client,
             contents,
@@ -290,20 +337,23 @@ class ResearchAgent:
         if not summaries:
             raise ResearchError("Could not generate any summaries")
 
-        # Steps 5-6: Relevance gate and synthesis
+        # Relevance gate and synthesis
         return await self._evaluate_and_synthesize(
             query=query,
             summaries=summaries,
             refined_query=refined_query,
-            relevance_step=5,
-            synthesis_step=6,
+            relevance_step=5 + offset,
+            synthesis_step=6 + offset,
             step_count=step_count,
         )
 
-    async def _research_deep(self, query: str, step_count: int) -> str:
+    async def _research_deep(
+        self, query: str, step_count: int, decomposition: dict | None = None
+    ) -> str:
         """Deep mode: two-pass search with full fetch/summarize between passes."""
+        offset = 1 if self.mode.decompose else 0
 
-        # Step 1: Search (pass 1)
+        # Search pass 1: always search the original query
         try:
             results = await asyncio.to_thread(
                 search, query, self.mode.pass1_sources
@@ -312,27 +362,49 @@ class ResearchAgent:
         except SearchError as e:
             raise ResearchError(f"Search failed: {e}")
 
-        # Step 2: Fetch pages (pass 1)
-        print(f"\n[2/{step_count}] Fetching {len(results)} pages...")
+        seen_urls = {r.url for r in results}
+
+        # Sub-query searches (additive)
+        if decomposition and decomposition["is_complex"]:
+            sub_queries = decomposition["sub_queries"]
+            per_sq_sources = max(2, self.mode.pass1_sources // (len(sub_queries) + 1))
+            for sq in sub_queries:
+                delay = SUB_QUERY_STAGGER_BASE + random.uniform(0, SUB_QUERY_STAGGER_JITTER)
+                await asyncio.sleep(delay)
+                try:
+                    sq_results = await asyncio.to_thread(search, sq, per_sq_sources)
+                    new = [r for r in sq_results if r.url not in seen_urls]
+                    for r in new:
+                        seen_urls.add(r.url)
+                        results.append(r)
+                    print(f"      → \"{sq}\": {len(sq_results)} results ({len(new)} new)")
+                except SearchError as e:
+                    logger.warning(f"Sub-query search failed: {e}, continuing")
+                    print(f"      → \"{sq}\": failed, continuing")
+
+        # Fetch pages (pass 1)
+        fetch_step = 2 + offset
+        print(f"\n[{fetch_step}/{step_count}] Fetching {len(results)} pages...")
         urls = [r.url for r in results]
-        seen_urls = set(urls)
         pages = await fetch_urls(urls)
         print(f"      Successfully fetched {len(pages)} pages")
 
         if not pages:
             raise ResearchError("Could not fetch any pages")
 
-        # Step 3: Extract content (pass 1)
-        print(f"\n[3/{step_count}] Extracting content...")
+        # Extract content (pass 1)
+        extract_step = 3 + offset
+        print(f"\n[{extract_step}/{step_count}] Extracting content...")
         contents = extract_all(pages)
         print(f"      Extracted content from {len(contents)} pages")
 
         if not contents:
             raise ResearchError("Could not extract content from any pages")
 
-        # Step 4: Summarize (pass 1)
+        # Summarize (pass 1)
+        summarize_step = 4 + offset
         logger.info(f"Summarizing content with {self.summarize_model}...")
-        print(f"\n[4/{step_count}] Summarizing content with {self.summarize_model}...")
+        print(f"\n[{summarize_step}/{step_count}] Summarizing content with {self.summarize_model}...")
         summaries = await summarize_all(
             self.async_client,
             contents,
@@ -343,10 +415,10 @@ class ResearchAgent:
         if not summaries:
             raise ResearchError("Could not generate any summaries")
 
-        # Step 5: Deep mode refinement and pass 2
-        print(f"\n[5/{step_count}] Deep mode: refining search...")
+        # Deep mode refinement and pass 2
+        refine_step = 5 + offset
+        print(f"\n[{refine_step}/{step_count}] Deep mode: refining search...")
 
-        # Generate refined query from summaries
         summary_texts = [s.summary for s in summaries]
         refined_query = refine_query(self.client, query, summary_texts)
         if refined_query == query:
@@ -354,7 +426,6 @@ class ResearchAgent:
         else:
             print(f"      Refined query: {refined_query}")
 
-        # Brief delay with jitter to avoid rate limits
         delay = SEARCH_PASS_DELAY_BASE + random.uniform(0, SEARCH_PASS_DELAY_JITTER)
         await asyncio.sleep(delay)
 
@@ -363,12 +434,10 @@ class ResearchAgent:
             pass2_results = await asyncio.to_thread(
                 search, refined_query, self.mode.pass2_sources
             )
-            # Deduplicate by URL
             new_results = [r for r in pass2_results if r.url not in seen_urls]
             print(f"      Pass 2 found {len(pass2_results)} results ({len(new_results)} new)")
 
             if new_results:
-                # Fetch, extract, summarize new URLs
                 new_urls = [r.url for r in new_results]
                 new_pages = await fetch_urls(new_urls)
                 print(f"      Fetched {len(new_pages)} new pages")
@@ -393,17 +462,15 @@ class ResearchAgent:
                 print("      No new unique URLs from pass 2")
 
         except SearchError as e:
-            # Pass 2 failure is non-fatal: we can still produce a report from Pass 1 results.
-            # This is intentionally different from Pass 1, which must succeed.
             logger.warning(f"Pass 2 search failed: {e}, continuing with pass 1 results")
             print(f"      Pass 2 search failed, continuing with {len(summaries)} summaries")
 
-        # Steps 6-7: Relevance gate and synthesis
+        # Relevance gate and synthesis
         return await self._evaluate_and_synthesize(
             query=query,
             summaries=summaries,
             refined_query=refined_query,
-            relevance_step=6,
-            synthesis_step=7,
+            relevance_step=6 + offset,
+            synthesis_step=7 + offset,
             step_count=step_count,
         )

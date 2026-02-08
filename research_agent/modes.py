@@ -19,6 +19,7 @@ class ResearchMode:
     min_sources_full_report: int  # Minimum survivors for full report
     min_sources_short_report: int  # Minimum survivors for short report (below = insufficient)
     relevance_cutoff: int = 3  # Minimum score (1-5) for a source to be kept
+    decompose: bool = True  # Whether to attempt query decomposition
 
     def __post_init__(self) -> None:
         """Validate mode configuration."""
@@ -75,6 +76,7 @@ class ResearchMode:
             min_sources_full_report=3,
             min_sources_short_report=1,
             relevance_cutoff=3,
+            decompose=False,  # Skip decomposition for speed
         )
 
     @classmethod
