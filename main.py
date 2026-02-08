@@ -14,6 +14,8 @@ from research_agent import ResearchAgent
 from research_agent.errors import ResearchError
 from research_agent.modes import ResearchMode
 
+RESEARCH_LOG_PATH = Path("research_log.md")
+
 
 def sanitize_filename(query: str, max_length: int = 50) -> str:
     """
@@ -36,6 +38,28 @@ def sanitize_filename(query: str, max_length: int = 50) -> str:
     if len(sanitized) > max_length:
         sanitized = sanitized[:max_length].rsplit("_", 1)[0]
     return sanitized or "research"
+
+
+def append_research_log(query: str, mode: ResearchMode, report: str) -> None:
+    """Append a brief entry to the research log."""
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        # Extract first non-empty, non-heading line as summary
+        summary_lines = []
+        for line in report.split("\n"):
+            line = line.strip()
+            if line and not line.startswith("#") and not line.startswith("**Note:**"):
+                summary_lines.append(line)
+                if len(summary_lines) >= 2:
+                    break
+        summary = " ".join(summary_lines)[:200] + "..." if summary_lines else "No summary available"
+
+        entry = f"\n## {timestamp} — \"{query}\"\n- Mode: {mode.name}\n- {summary}\n"
+
+        with open(RESEARCH_LOG_PATH, "a") as f:
+            f.write(entry)
+    except OSError:
+        pass  # Non-fatal — don't fail the pipeline for logging
 
 
 def get_auto_save_path(query: str) -> Path:
@@ -133,6 +157,9 @@ Examples:
         )
 
         report = agent.research(args.query)
+
+        # Append to research log
+        append_research_log(args.query, mode, report)
 
         # Determine output path
         output_path = args.output

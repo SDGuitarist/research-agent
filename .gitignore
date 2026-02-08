@@ -17,6 +17,7 @@ build/
 
 # Output
 reports/
+research_log.md
 !RESEARCH_PLAN.md
 !README.md
 !LESSONS_LEARNED.md
