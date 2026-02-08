@@ -1182,6 +1182,163 @@ Query decomposition addresses the primary user pain point: complex, multi-angle 
 
 ---
 
+## 11. Tavily Raw Content & Pipeline Instrumentation (Cycle 8 Continued)
+
+### What We Built
+
+Three changes that together transformed fetch reliability:
+
+| Change | Files | Lines Changed |
+|--------|-------|---------------|
+| `--verbose` / `-v` flag | main.py | ~11 |
+| Tavily `include_raw_content` integration | search.py, agent.py, test_search.py | ~44 |
+| Tavily API key configuration | .env | 1 |
+
+### The Integration That Was Built But Never Activated
+
+The agent had Tavily search support since Cycle 7 — the code was written, tested, and merged. But `TAVILY_API_KEY` was never added to `.env`. Every single run in Cycles 7 and 8 silently fell back to DuckDuckGo.
+
+**How we missed it:** The fallback was working as designed. DuckDuckGo returned results, reports were generated, and nothing threw an error. The symptom was subtle — lower-quality search results and more fetch failures — but we attributed that to site-level bot blocking, not to using the wrong search provider entirely.
+
+**How we found it:** While researching the `include_raw_content` parameter, we tested it locally:
+
+```python
+from dotenv import load_dotenv
+load_dotenv()
+key = os.environ.get('TAVILY_API_KEY')
+print(f'Key found: {bool(key)}')  # False
+```
+
+**Lesson: Verify integrations are actually active, not just built.** A graceful fallback that silently degrades is great for reliability but terrible for visibility. If a feature has a fallback path, log when the fallback activates — even at INFO level — so you know when you're running in degraded mode.
+
+### Instrument Before Diagnosing
+
+We initially assumed the "Republic of Music" query failure (7/8 fetch failures) was caused by:
+- Review platforms blocking bots (correct but incomplete)
+- The relevance gate being too strict (wrong)
+- DuckDuckGo returning low-quality URLs (partially correct)
+
+Adding `--verbose` made the real bottleneck visible in one run:
+
+```
+DEBUG: research_agent.fetch: Skipping non-HTML content type...
+INFO: research_agent.search: Refined query: Republic of Music San Diego negative reviews
+```
+
+The verbose output showed that:
+1. Direct HTTP fetches were returning 403/blocked for 7 of 8 URLs
+2. The relevance gate was scoring correctly — it just had only 1 page of content to score
+3. The real bottleneck was **fetch**, not search quality or relevance scoring
+
+**Lesson: When the agent produces wrong conclusions, instrument the pipeline before guessing at the cause.** A `--verbose` flag costs 11 lines of code and saves hours of misdiagnosis. The fix was ~5 lines (move `logging.basicConfig` after argparse, add one flag).
+
+### include_raw_content: Zero Cost, Maximum Impact
+
+Tavily's `include_raw_content="markdown"` parameter returns the full cleaned page content alongside search results — using the same API call, at the same credit cost:
+
+```python
+# Before: 1 credit, search results only
+response = client.search(query=query, max_results=5, search_depth="basic")
+
+# After: still 1 credit, but each result includes raw_content
+response = client.search(query=query, max_results=5, search_depth="basic",
+                         include_raw_content="markdown")
+```
+
+Content comes from Tavily's crawl infrastructure (headless browsers, proxy networks), not our IP — so sites that block direct HTTP requests still return content.
+
+**Before and after on the same query:**
+
+| Metric | Before (DuckDuckGo + direct fetch) | After (Tavily + raw_content) |
+|--------|-----------------------------------|-----------------------------|
+| Pages with content | 1/8 | 4/8 (0 direct + 4 cached) |
+| Sources passed relevance | 5/11 | 8/12 |
+| Report decision | short_report | full_report |
+| GigSalad content | Blocked (403) | 26,940 chars |
+| Pricing data found | No | Yes ($300–$15,000 range) |
+
+**Lesson: Before building complex fallback chains, check if your existing provider has a parameter you're not using.** `include_raw_content` was available since we added Tavily in Cycle 7 — we just never passed it.
+
+### The _split_prefetched Pattern
+
+The integration required routing search results into two paths based on whether they already had content:
+
+```python
+@staticmethod
+def _split_prefetched(results):
+    prefetched = []      # Have raw_content → skip fetch+extract
+    urls_to_fetch = []   # No raw_content → go through existing pipeline
+    for r in results:
+        if r.raw_content:
+            prefetched.append(ExtractedContent(url=r.url, title=r.title, text=r.raw_content))
+        else:
+            urls_to_fetch.append(r.url)
+    return prefetched, urls_to_fetch
+```
+
+This touches three fetch sites in agent.py (standard mode, deep pass 1, deep pass 2) but doesn't change any downstream module — `fetch.py`, `extract.py`, `summarize.py`, `relevance.py`, and `synthesize.py` are all untouched.
+
+**Lesson: When adding a new data source to a pipeline, convert it to the existing intermediate type as early as possible.** By converting `raw_content` to `ExtractedContent` at the split point, everything downstream works without modification. This is the same "additive pattern" from query decomposition — enhance a stage without changing what comes after.
+
+### Fetch Failures Were the Primary Bottleneck
+
+Across all Cycle 8 runs, the pipeline's weakest link was consistently the fetch step, not search quality or relevance scoring:
+
+| Pipeline Stage | Failure Rate | Impact |
+|---------------|-------------|--------|
+| Search | ~0% | DuckDuckGo/Tavily reliably return URLs |
+| **Fetch** | **50-88%** | **Bot blocks on review platforms, paywalls, Cloudflare challenges** |
+| Extract | ~5% | Occasional HTML parsing failures |
+| Relevance | Working as designed | Correct scoring, just starved of input |
+
+**The relevance gate was never the problem.** It was correctly identifying and filtering irrelevant sources. The issue was that fetch failures reduced input to the gate, making even good queries look like they had "insufficient data."
+
+**Lesson: When a downstream stage appears broken, check if an upstream stage is starving it of input.** The symptom (bad reports) looked like a relevance problem but was actually a fetch problem.
+
+### What WeddingWire and The Bash Teach Us
+
+Even with Tavily's `include_raw_content`, some platforms return empty content:
+
+| Platform | raw_content | Why |
+|----------|------------|-----|
+| romprod.com | 102,150 chars | No bot protection |
+| GigSalad | 26,940 chars | Moderate protection, Tavily bypasses |
+| WeddingWire | 0 chars | Heavy Cloudflare + anti-scraping |
+| The Knot | 0 chars | Heavy anti-scraping |
+| The Bash | 0 chars | Heavy anti-scraping |
+| Reddit | 0 chars | Aggressive bot detection |
+
+**The pattern:** Sites with aggressive anti-scraping (Cloudflare Enterprise, custom bot detection) block even Tavily's headless browsers. These are the ones that need the deeper cascade layers.
+
+**Planned cascade (priority order for future cycles):**
+1. ~~Tavily `include_raw_content`~~ — Done (this cycle)
+2. **Jina Reader** (`r.jina.ai/{url}`) — Free (10M tokens), uses proxy rotation
+3. **Tavily `extract()`** — 1 credit/5 URLs, higher success rate than search raw_content
+4. **Snippet fallback** — Use search snippet as thin source instead of discarding
+
+### Cycle 8 (Continued) Assessment
+
+The Tavily integration and verbose flag together address the two biggest operational gaps: invisible pipeline failures and fetch-stage bottlenecks.
+
+**What worked:**
+- `--verbose` flag — 11 lines that made the whole pipeline transparent
+- `include_raw_content` — zero cost, zero extra latency, 3x more content
+- `_split_prefetched` pattern — clean separation, no downstream changes
+- Testing the API live before planning the integration — confirmed what works and what doesn't
+
+**What to watch:**
+- Tavily free tier gives 1,000 credits/month — monitor usage as search volume grows
+- `raw_content` quality varies by site — some return markdown with image tags and navigation; may need filtering
+- DuckDuckGo fallback path now gets zero `raw_content` — those URLs always go through direct fetch
+
+**Recommended next steps:**
+1. Add Jina Reader as fallback for URLs where both `raw_content` and direct fetch fail
+2. Add snippet fallback as last resort — better than discarding the URL entirely
+3. Log when Tavily fallback activates (`INFO: Tavily unavailable, using DuckDuckGo`) so the silent degradation problem doesn't recur
+4. Consider `search_depth="advanced"` for deep mode (2 credits, potentially better raw_content coverage)
+
+---
+
 ## Summary
 
 | Category | Key Takeaway |
@@ -1228,3 +1385,9 @@ Query decomposition addresses the primary user pain point: complex, multi-angle 
 | **Rate Limiting** | Default to serial with jitter for external API fan-out—parallel bursts trigger rate limits |
 | **Configuration** | Static context files personalize LLM behavior without per-query prompting or auto-learning complexity |
 | **Error Handling** | Optional pipeline stages must have zero-cost fallbacks—fail back to pre-enhancement behavior |
+| **Operations** | Verify integrations are active, not just built—graceful fallbacks hide silent degradation |
+| **Debugging** | Instrument the pipeline before diagnosing—a --verbose flag costs 11 lines and saves hours |
+| **Architecture** | When a downstream stage appears broken, check if upstream is starving it of input |
+| **Architecture** | Convert new data sources to existing intermediate types as early as possible—no downstream changes needed |
+| **Cost** | Before building complex fallback chains, check if your existing provider has a parameter you're not using |
+| **Fetch** | Site-level bot protection has tiers—some block direct HTTP, some block headless browsers, some block everything |
