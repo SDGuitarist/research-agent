@@ -520,6 +520,7 @@ class TestResearchAgentErrorHandling:
              patch("research_agent.agent.refine_query") as mock_refine, \
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.cascade_recover", new_callable=AsyncMock, return_value=[]) as mock_cascade, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 

@@ -13,6 +13,7 @@ from .summarize import summarize_all
 from .synthesize import synthesize_report
 from .relevance import evaluate_sources, generate_insufficient_data_response
 from .decompose import decompose_query
+from .cascade import cascade_recover
 from .errors import ResearchError, SearchError
 from .modes import ResearchMode
 
@@ -194,6 +195,33 @@ class ResearchAgent:
                 urls_to_fetch.append(r.url)
         return prefetched, urls_to_fetch
 
+    @staticmethod
+    async def _recover_failed_urls(
+        urls_to_fetch: list[str],
+        extracted: list[ExtractedContent],
+        all_results: list[SearchResult],
+    ) -> list[ExtractedContent]:
+        """Run cascade fallback on URLs that failed fetch+extract."""
+        extracted_urls = {e.url for e in extracted}
+        failed = [u for u in urls_to_fetch if u not in extracted_urls]
+        if not failed:
+            return []
+        recovered = await cascade_recover(failed, all_results)
+        if recovered:
+            cascade_count = sum(
+                1 for r in recovered if not r.text.startswith("[Source:")
+            )
+            snippet_count = sum(
+                1 for r in recovered if r.text.startswith("[Source:")
+            )
+            parts = []
+            if cascade_count:
+                parts.append(f"{cascade_count} via cascade")
+            if snippet_count:
+                parts.append(f"{snippet_count} snippet fallbacks")
+            print(f"      Cascade recovered: {', '.join(parts)}")
+        return recovered
+
     async def _evaluate_and_synthesize(
         self,
         query: str,
@@ -336,7 +364,12 @@ class ResearchAgent:
         extract_step = 3 + offset
         print(f"\n[{extract_step}/{step_count}] Extracting content...")
         extracted = extract_all(pages)
-        contents = prefetched + extracted
+
+        # Cascade fallback for URLs that failed fetch+extract
+        cascade_contents = await self._recover_failed_urls(
+            urls_to_fetch, extracted, all_results
+        )
+        contents = prefetched + extracted + cascade_contents
         print(f"      Extracted content from {len(contents)} pages")
 
         if not contents:
@@ -415,7 +448,12 @@ class ResearchAgent:
         extract_step = 3 + offset
         print(f"\n[{extract_step}/{step_count}] Extracting content...")
         extracted = extract_all(pages)
-        contents = prefetched + extracted
+
+        # Cascade fallback for URLs that failed fetch+extract (pass 1)
+        cascade_contents = await self._recover_failed_urls(
+            urls_to_fetch, extracted, results
+        )
+        contents = prefetched + extracted + cascade_contents
         print(f"      Extracted content from {len(contents)} pages")
 
         if not contents:
@@ -463,7 +501,12 @@ class ResearchAgent:
                 print(f"      Fetched {len(new_pages)} new pages ({len(new_prefetched)} from search cache)")
 
                 new_extracted = extract_all(new_pages)
-                new_contents = new_prefetched + new_extracted
+
+                # Cascade fallback for URLs that failed fetch+extract (pass 2)
+                new_cascade = await self._recover_failed_urls(
+                    new_urls_to_fetch, new_extracted, new_results
+                )
+                new_contents = new_prefetched + new_extracted + new_cascade
                 if new_contents:
                     print(f"      Extracted {len(new_contents)} new contents")
 
