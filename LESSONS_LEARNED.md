@@ -1339,6 +1339,167 @@ The Tavily integration and verbose flag together address the two biggest operati
 
 ---
 
+## 12. Fetch Cascade Fallback (Cycle 9)
+
+### What We Built
+
+A three-layer fallback system for recovering URLs that fail direct HTTP fetch and Tavily `raw_content`:
+
+| Layer | Service | Cost | Coverage |
+|-------|---------|------|----------|
+| 1 | Jina Reader (`r.jina.ai/{url}`) | Free (10M tokens) | Standard sites + WeddingWire |
+| 2 | Tavily Extract (`extract()`) | 1 credit / 5 URLs | High-value domains only |
+| 3 | Snippet fallback | Free | Everything (thin source) |
+
+| Change | Files | Lines Changed |
+|--------|-------|---------------|
+| Cascade module | cascade.py (new) | ~120 |
+| Recovery helper integration | agent.py | ~60 |
+| Cascade tests | test_cascade.py (new) | ~400 |
+| **Total tests** | | **259 passing** |
+
+### Live-Test Services Before Designing the Cascade
+
+The entire cascade architecture was driven by a compatibility matrix built from **live testing** against actual blocked URLs — not from documentation or assumptions:
+
+| Service | saffronband.com | WeddingWire | The Knot | Instagram/Facebook | GigSalad |
+|---------|----------------|-------------|----------|-------------------|----------|
+| Direct HTTP | Partial | Blocked | Blocked | Blocked | Blocked |
+| Tavily raw_content | Partial | Empty | Empty | Empty | Works |
+| **Jina Reader** | **Works** | **Works** | Blocked | Blocked | Works |
+| Tavily Extract | Works | Untested | Blocked | Blocked | Works |
+| Snippet | Available | Available | Available | Available | Available |
+
+**Key discovery:** Jina Reader is the highest-value free tool — it works on standard sites AND WeddingWire, where even Tavily fails. This made it the obvious first layer.
+
+**Lesson:** Don't design fallback chains from documentation. Build a compatibility matrix from live tests on your actual blocked URLs. The results will surprise you (Jina beating Tavily on WeddingWire was unexpected).
+
+### One File Per Pipeline Stage
+
+The cascade lives in its own module (`cascade.py`), following the established pattern:
+
+```
+search.py → fetch.py → extract.py → cascade.py → summarize.py → relevance.py → synthesize.py
+```
+
+**Why a separate file, not part of fetch.py:**
+- `fetch.py` handles direct HTTP fetching with SSRF protection, UA rotation, and connection pooling
+- `cascade.py` orchestrates external services (Jina, Tavily Extract) as fallback layers
+- Different failure modes, different dependencies, different testing needs
+- Consistent with "one file per pipeline stage" pattern established in Cycle 1
+
+### Return Existing Types — Zero Downstream Changes
+
+The cascade returns `ExtractedContent`, the same dataclass used by `extract.py`. This means:
+
+```python
+# cascade.py returns:
+ExtractedContent(url=url, title=title, text=recovered_text)
+
+# Identical to what extract.py returns — summarize, relevance, synthesize
+# all work without modification
+```
+
+**No new types, no adapters, no downstream changes.** The `_recover_failed_urls()` helper slots into `agent.py` at the three fetch sites (standard, deep pass 1, deep pass 2) and its output merges directly into the existing pipeline.
+
+**Lesson:** When adding a new data source to a pipeline, convert to the existing intermediate type at the boundary. This is the same principle from `_split_prefetched()` in Cycle 8 — consistency eliminates integration work.
+
+### [Source: search snippet] — YAGNI Over Metadata
+
+For snippet fallback (layer 3), we prefix the thin content with `[Source: search snippet]` instead of adding a metadata field to `ExtractedContent`:
+
+```python
+text = f"[Source: search snippet] {result.snippet}"
+```
+
+**Why not a metadata field:**
+- No downstream code reads source metadata today
+- The prefix is visible to the LLM during synthesis — it naturally weights thin sources lower
+- Adding a field would require updating the dataclass, all tests that construct it, and serialization code
+- YAGNI — if we need structured metadata later, we'll add it then
+
+**Lesson:** When the consumer of data is an LLM, inline markers often beat structured metadata. The LLM reads the text; it doesn't query fields.
+
+### Domain Filter for Tavily Extract — Conserve Credits
+
+Tavily Extract costs 1 credit per 5 URLs. Rather than fire it on every failed URL, we restrict it to high-value domains where the data is worth the cost:
+
+```python
+EXTRACT_DOMAINS = frozenset({
+    "weddingwire.com", "theknot.com", "thebash.com",
+    "gigsalad.com", "yelp.com", "instagram.com",
+    "facebook.com", "youtube.com",
+})
+```
+
+**Why these domains:** They contain structured business data (pricing, reviews, roster details) that's critical for competitive analysis reports. A random blog isn't worth the credit.
+
+**Why frozenset:** Immutable, O(1) lookup, documents intent that this list shouldn't change at runtime.
+
+### Jina Search Dropped — Live Testing Saved Wasted Work
+
+The original plan included Jina Search as an alternative search provider. Live testing revealed it requires an API key (not free as initially assumed). Rather than add key management for a marginal improvement over Tavily search, we dropped it entirely.
+
+**Lesson:** Always live-test before committing to an integration. Reading docs is necessary but insufficient — actual API calls reveal requirements (auth, rate limits, response format) that docs understate or omit.
+
+### Not All Fetch Failures Are Bot Blocks
+
+During Saffron Band testing, the `/faq` page consistently returned 404 through every method — direct fetch, Jina Reader, Tavily Extract. Initial assumption: aggressive bot blocking.
+
+**Actual cause:** The page was genuinely removed from the site. The URL existed in search results (cached) but the page was gone.
+
+**Lesson:** When a URL fails across ALL fetch methods, consider that the content might actually be gone — not just blocked. Check the HTTP status code (404 vs 403 vs timeout) before escalating to more aggressive fetching.
+
+### Results: Saffron Band Benchmark
+
+**Before cascade (Cycle 8):**
+```
+Query: "Saffron Band San Diego wedding entertainment"
+saffronband.com pages recovered: 2 (homepage, about)
+Missing: /services/ (pricing), roster details, production specs
+```
+
+**After cascade (Cycle 9):**
+```
+Same query
+Jina Reader recovered: /services/ page (22K chars)
+Unlocked: Full pricing table ($600–$6,480), complete roster,
+          production specs, venue history
+```
+
+The /services/ page was the highest-value page on the entire site — it contained the pricing table, service tiers, and competitive positioning data. Without the cascade, the report would have described Saffron Band as "a wedding band" rather than providing actionable competitive intelligence.
+
+**LIV Entertainment validation:** 8 pages recovered by cascade that would have been lost to direct fetch failures.
+
+### Known Limitations
+
+| Limitation | Impact | Status |
+|------------|--------|--------|
+| 429 rate limit warnings in deep mode | 30K tokens/min tier causes throttling during summarization | Recurring — becoming the next bottleneck |
+| The Knot blocks everything | Akamai WAF — no automated method works | Permanent — snippet only |
+| Instagram/Facebook block everything | CAPTCHA/login walls | Permanent — snippet only |
+| Jina Reader has no API key management | Using free tier, may need key if volume grows | Watch |
+
+### Cycle 9 Assessment
+
+The fetch cascade addresses the primary bottleneck identified in Cycles 8/8+: fetch failures starving the relevance gate. By recovering URLs through Jina Reader and Tavily Extract before falling back to snippets, the pipeline now degrades gracefully from "full content" through "thin content" rather than "content vs nothing."
+
+**What worked:**
+- Live-test compatibility matrix — drove the entire architecture
+- Separate module — clean boundaries, easy to test
+- Existing types — zero downstream changes
+- Domain filter — conserves Tavily Extract credits
+- Snippet prefix — YAGNI over structured metadata
+
+**What to watch:**
+- 429 rate limits during deep mode summarization — next bottleneck
+- Jina Reader free tier limits (10M tokens) — monitor usage
+- The Knot/Instagram/Facebook remain inaccessible — snippet is the ceiling
+
+**Recommended Cycle 10 scope:** Improve synthesis prompt for consistent analytical depth — "So what?" analysis, cross-source patterns, competitive implications. The pipeline now reliably delivers content; the next bottleneck is making the synthesis smarter about what to do with it.
+
+---
+
 ## Summary
 
 | Category | Key Takeaway |
@@ -1391,3 +1552,11 @@ The Tavily integration and verbose flag together address the two biggest operati
 | **Architecture** | Convert new data sources to existing intermediate types as early as possible—no downstream changes needed |
 | **Cost** | Before building complex fallback chains, check if your existing provider has a parameter you're not using |
 | **Fetch** | Site-level bot protection has tiers—some block direct HTTP, some block headless browsers, some block everything |
+| **Fetch** | Live-test fallback services on actual blocked URLs before designing fallback chains—compatibility matrices beat documentation |
+| **Fetch** | Jina Reader is the highest-value free fetch tool—works on standard sites AND WeddingWire where even Tavily fails |
+| **Architecture** | One file per pipeline stage—cascade.py follows the same pattern as fetch.py, extract.py, etc. |
+| **Architecture** | Return existing intermediate types from new pipeline stages—zero downstream changes |
+| **YAGNI** | Inline markers (`[Source: search snippet]`) beat structured metadata when the consumer is an LLM |
+| **Cost** | Domain-filter expensive API calls—only fire Tavily Extract on high-value domains worth the credit |
+| **Debugging** | Not all fetch failures are bot blocks—check HTTP status codes (404 vs 403) before escalating |
+| **Testing** | Always live-test integrations before committing—Jina Search required an API key contrary to initial assumptions |
