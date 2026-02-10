@@ -1,5 +1,7 @@
 """Tests for research_agent.summarize module."""
 
+import asyncio
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
@@ -14,6 +16,7 @@ from research_agent.summarize import (
     MAX_CHUNKS_PER_SOURCE,
     BATCH_SIZE,
     BATCH_DELAY,
+    MAX_CONCURRENT_CHUNKS,
 )
 from research_agent.extract import ExtractedContent
 
@@ -406,6 +409,43 @@ class TestSummarizeAll:
         """BATCH_SIZE and BATCH_DELAY should be within sensible ranges."""
         assert 5 <= BATCH_SIZE <= 20
         assert BATCH_DELAY >= 1.0
+        assert 1 <= MAX_CONCURRENT_CHUNKS <= 10
+
+
+    @pytest.mark.asyncio
+    async def test_summarize_all_limits_concurrent_chunks(self):
+        """Verify that chunk summarization respects the concurrency semaphore."""
+        max_concurrent_observed = 0
+        current_concurrent = 0
+        lock = asyncio.Lock()
+
+        async def tracked_create(**kwargs):
+            nonlocal max_concurrent_observed, current_concurrent
+            async with lock:
+                current_concurrent += 1
+                max_concurrent_observed = max(max_concurrent_observed, current_concurrent)
+            await asyncio.sleep(0.01)  # Simulate API latency
+            async with lock:
+                current_concurrent -= 1
+            mock_response = MagicMock()
+            mock_response.content = [MagicMock(text="Summary")]
+            return mock_response
+
+        mock_client = AsyncMock()
+        mock_client.messages.create.side_effect = tracked_create
+
+        # Create enough content to exceed MAX_CONCURRENT_CHUNKS
+        contents = [
+            ExtractedContent(
+                url=f"http://example.com/{i}", title=f"Title {i}",
+                text="Word " * 2000,  # Long enough to produce multiple chunks
+            )
+            for i in range(4)
+        ]
+
+        result = await summarize_all(mock_client, contents)
+        assert len(result) > 0
+        assert max_concurrent_observed <= MAX_CONCURRENT_CHUNKS
 
 
 class TestStructuredSummaries:

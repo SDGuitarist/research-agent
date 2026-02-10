@@ -71,7 +71,7 @@ Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search
 ## Known Limitations
 
 - **The Knot** (Akamai WAF), **Instagram/Facebook** (CAPTCHA/login walls) block everything — cascade can only provide snippet fallback for these.
-- **429 rate limit warnings** during deep mode summarization (30K tokens/min tier) — batched (12/batch, 3s delay) with 1 retry per chunk, but not eliminated at current tier.
+- **429 rate limit warnings** during deep mode summarization (30K tokens/min tier) — chunk concurrency capped at 3 (`MAX_CONCURRENT_CHUNKS`), batched 5 sources/batch with 3s inter-batch delay, 1 retry per chunk. Reduced but not fully eliminated at current tier.
 - **DuckDuckGo fallback** gets zero `raw_content` — all URLs go through direct HTTP fetch + cascade.
 - **Quick mode** has only 6 sources — fragile when sites block bots. Intentional speed/cost tradeoff.
 - **Anthropic API tier** limits: no Haiku access, Sonnet only. All models use `claude-sonnet-4-20250514`.

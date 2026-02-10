@@ -27,6 +27,9 @@ MAX_CHUNKS_PER_SOURCE = 3
 BATCH_SIZE = 5
 BATCH_DELAY = 3.0
 
+# Maximum concurrent API calls for chunk summarization
+MAX_CONCURRENT_CHUNKS = 3
+
 
 def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE, max_chunks: int = MAX_CHUNKS_PER_SOURCE) -> list[str]:
     """Split text into chunks, trying to break at paragraph boundaries."""
@@ -174,6 +177,7 @@ async def summarize_content(
     model: str = "claude-sonnet-4-20250514",
     structured: bool = False,
     max_chunks: int = MAX_CHUNKS_PER_SOURCE,
+    semaphore: asyncio.Semaphore | None = None,
 ) -> list[Summary]:
     """
     Summarize extracted content, chunking if necessary.
@@ -184,24 +188,26 @@ async def summarize_content(
         model: Model to use for summarization
         structured: If True, use FACTS/KEY QUOTES/TONE format
         max_chunks: Maximum chunks per source
+        semaphore: Optional semaphore for concurrency limiting across sources
 
     Returns:
         List of summaries (one per chunk)
     """
     chunks = _chunk_text(content.text, max_chunks=max_chunks)
 
-    # Summarize chunks in parallel
-    tasks = [
-        summarize_chunk(
-            client=client,
-            chunk=chunk,
-            url=content.url,
-            title=content.title,
-            model=model,
-            structured=structured,
+    async def _guarded_summarize(chunk: str) -> Summary | None:
+        if semaphore is not None:
+            async with semaphore:
+                return await summarize_chunk(
+                    client=client, chunk=chunk, url=content.url,
+                    title=content.title, model=model, structured=structured,
+                )
+        return await summarize_chunk(
+            client=client, chunk=chunk, url=content.url,
+            title=content.title, model=model, structured=structured,
         )
-        for chunk in chunks
-    ]
+
+    tasks = [_guarded_summarize(chunk) for chunk in chunks]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     summaries = []
@@ -235,13 +241,15 @@ async def summarize_all(
         List of all summaries
     """
     all_summaries = []
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_CHUNKS)
 
     for batch_start in range(0, len(contents), BATCH_SIZE):
         batch = contents[batch_start:batch_start + BATCH_SIZE]
         if batch_start > 0:
             await asyncio.sleep(BATCH_DELAY)
         tasks = [
-            summarize_content(client, content, model, structured=structured, max_chunks=max_chunks)
+            summarize_content(client, content, model, structured=structured,
+                              max_chunks=max_chunks, semaphore=semaphore)
             for content in batch
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
