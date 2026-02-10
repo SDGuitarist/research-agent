@@ -127,6 +127,42 @@ class TestValidateSubQueries:
         assert result == ["luxury wedding music market"]
 
 
+class TestSubQueryDivergence:
+    """Tests for max overlap rejection between sub-queries and original."""
+
+    def test_rejects_restatement_of_original(self):
+        """Sub-query that rearranges original words is rejected."""
+        result = _validate_sub_queries(
+            ["McKinsey luxury wedding market analysis"],  # 4/5 = 80% overlap
+            "McKinsey wedding entertainment trends luxury market",
+        )
+        assert result == ["McKinsey wedding entertainment trends luxury market"]
+
+    def test_accepts_divergent_sub_queries(self):
+        """Sub-queries with <80% overlap pass validation."""
+        result = _validate_sub_queries(
+            [
+                "wedding entertainment spending consumer trends",  # 3/5 = 60%
+                "luxury event vendor market landscape",            # 2/5 = 40%
+            ],
+            "McKinsey wedding entertainment trends luxury market",
+        )
+        assert len(result) == 2
+
+    def test_mixed_overlap_keeps_only_divergent(self):
+        """Restatements rejected, divergent queries kept."""
+        result = _validate_sub_queries(
+            [
+                "McKinsey luxury wedding market trends",       # 5/5 = 100% → REJECT
+                "luxury event vendor competitive pricing",     # 1/5 = 20%  → KEEP
+                "wedding consumer behavior spending data",     # 1/5 = 20%  → KEEP
+            ],
+            "McKinsey wedding entertainment trends luxury market",
+        )
+        assert len(result) == 2
+        assert "McKinsey luxury wedding market trends" not in result
+
+
 class TestParseDecompositionResponse:
     """Tests for _parse_decomposition_response() function."""
 

@@ -66,7 +66,7 @@ python3 main.py --standard "query" -v # Verbose: shows all DEBUG/INFO logs
 ## Testing
 
 ```bash
-python3 -m pytest tests/ -v    # 310 tests, all must pass
+python3 -m pytest tests/ -v    # 313 tests, all must pass
 ```
 
 Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search results. Mock where the name is imported FROM, not where it's used.
@@ -94,5 +94,6 @@ Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search
 | 10 | Analytical depth: business context, 12-section template, batching, structured summaries | Generic templates + context file > hardcoded specifics |
 | 11 | Rate limit root cause fix | Concurrency control belongs at the API call layer, not task organization |
 | 12 | Quick wins: shared sanitize, parallel sub-queries, context validation | replace_all on substrings corrupts method names; always run tests immediately |
+| 13 | Sub-query divergence: prompt + max-overlap validation | Concrete examples (BAD/GOOD) outperform vague instructions; diagnose with real queries before/after |
 
 See `LESSONS_LEARNED.md` for detailed findings from each cycle.

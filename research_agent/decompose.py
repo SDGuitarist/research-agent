@@ -22,6 +22,10 @@ MAX_SUB_QUERIES = 3
 MIN_SUB_QUERY_WORDS = 2
 MAX_SUB_QUERY_WORDS = 10
 
+# Maximum meaningful-word overlap between a sub-query and the original query.
+# Sub-queries at or above this threshold are restatements and waste API calls.
+MAX_OVERLAP_WITH_ORIGINAL = 0.8
+
 
 def _sanitize_for_prompt(text: str) -> str:
     """Sanitize untrusted content before including in prompts."""
@@ -85,6 +89,15 @@ def _validate_sub_queries(sub_queries: list[str], original_query: str) -> list[s
         meaningful_sq = sq_words - stop_words
         if not meaningful_original.intersection(meaningful_sq):
             logger.warning(f"Sub-query rejected (no overlap with original): {sq}")
+            continue
+
+        # Check it's not too similar to original (restatements waste API calls)
+        overlap_count = len(meaningful_sq.intersection(meaningful_original))
+        if overlap_count >= len(meaningful_sq) * MAX_OVERLAP_WITH_ORIGINAL:
+            logger.warning(
+                f"Sub-query rejected (too similar to original, "
+                f"{overlap_count}/{len(meaningful_sq)} words overlap): {sq}"
+            )
             continue
 
         # Check for near-duplicates within the valid list
@@ -160,7 +173,11 @@ def decompose_query(
                 "- SIMPLE queries: return the original query unchanged\n"
                 "- COMPLEX queries: return 2-3 focused sub-queries (3-8 words each)\n"
                 "- Each sub-query must be a good search engine query\n"
-                "- Sub-queries should cover DIFFERENT angles, not rephrase the same thing\n"
+                "- Each sub-query must introduce at least 2 NEW words not in the original query\n"
+                "- Do NOT rearrange or restate the original query's words\n"
+                "- BAD: 'luxury wedding market trends' → 'luxury market wedding analysis' (just rearranges words)\n"
+                "- GOOD: 'luxury wedding market trends' → 'wedding vendor pricing comparison data' (new angle)\n"
+                "- Decompose by research facet: data/statistics, consumer behavior, vendor landscape, industry trends\n"
                 "- Keep the original query's key terms in at least one sub-query"
             ),
             messages=[{
