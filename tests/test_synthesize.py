@@ -7,6 +7,10 @@ from research_agent.sanitize import sanitize_content
 from research_agent.synthesize import (
     _deduplicate_summaries,
     _build_sources_context,
+    _find_section,
+    _splice_sections,
+    validate_context_sections,
+    regenerate_context_sections,
     synthesize_report,
 )
 from research_agent.summarize import Summary
@@ -385,3 +389,209 @@ class TestSynthesizeReport:
 
         call_args = mock_client.messages.stream.call_args
         assert call_args.kwargs["max_tokens"] == 6000
+
+
+# --- Business context validation tests ---
+
+SAMPLE_REPORT = """# Research Report
+
+## Executive Summary
+This report covers competitor analysis.
+
+## Company Overview
+Acme Corp was founded in 2020.
+
+## Service Portfolio
+They offer DJ services and bands.
+
+## Marketing Positioning
+They position as premium entertainment.
+
+## Messaging Theme Analysis
+Authority and social proof patterns.
+
+## Buyer Psychology
+Fear of bad entertainment choices.
+
+## Content & Marketing Tactics
+Active on Instagram and Google Ads.
+
+## Business Model Analysis
+Revenue from booking commissions.
+
+## Competitive Implications
+Acme Corp threatens the local market. Pacific Flow Entertainment should
+note their aggressive pricing strategy. Alex Guillen can differentiate
+through cultural authenticity.
+
+## Positioning Advice
+Pacific Flow should emphasize consultation-first approach. Alex Guillen
+Music can leverage the ceremony niche that Acme ignores.
+
+## Limitations & Gaps
+Limited financial data available.
+
+## Sources
+[Source 1] https://example.com
+"""
+
+SAMPLE_REPORT_NO_CONTEXT = """# Research Report
+
+## Executive Summary
+Overview of findings.
+
+## Competitive Implications
+Generic competition analysis without any business-specific references.
+The market is growing and opportunities exist.
+
+## Positioning Advice
+Consider differentiating on quality and service. Invest in marketing
+to reach more customers.
+
+## Limitations & Gaps
+Limited data.
+
+## Sources
+[Source 1] https://example.com
+"""
+
+
+class TestFindSection:
+    """Tests for _find_section()."""
+
+    def test_finds_section_by_title(self):
+        section = _find_section(SAMPLE_REPORT, "Competitive Implications")
+        assert "Pacific Flow Entertainment" in section
+        assert "aggressive pricing" in section
+
+    def test_finds_section_with_numbered_heading(self):
+        report = "## 9. Competitive Implications\nContent here.\n\n## 10. Positioning Advice\n"
+        section = _find_section(report, "Competitive Implications")
+        assert "Content here" in section
+
+    def test_returns_empty_for_missing_section(self):
+        section = _find_section(SAMPLE_REPORT, "Nonexistent Section")
+        assert section == ""
+
+    def test_section_stops_at_next_heading(self):
+        section = _find_section(SAMPLE_REPORT, "Competitive Implications")
+        assert "Limitations" not in section
+        assert "Positioning Advice" not in section
+
+    def test_finds_positioning_advice_section(self):
+        section = _find_section(SAMPLE_REPORT, "Positioning Advice")
+        assert "consultation-first" in section
+        assert "ceremony niche" in section
+
+
+class TestValidateContextSections:
+    """Tests for validate_context_sections()."""
+
+    def test_returns_true_when_context_keywords_present(self):
+        assert validate_context_sections(SAMPLE_REPORT, "some context") is True
+
+    def test_returns_false_when_context_keywords_missing(self):
+        assert validate_context_sections(SAMPLE_REPORT_NO_CONTEXT, "some context") is False
+
+    def test_returns_true_when_no_business_context(self):
+        assert validate_context_sections(SAMPLE_REPORT_NO_CONTEXT, None) is True
+
+    def test_returns_true_when_sections_missing(self):
+        report = "## Executive Summary\nJust a summary.\n"
+        assert validate_context_sections(report, "some context") is True
+
+    def test_detects_pacific_flow_keyword(self):
+        report = "## Competitive Implications\nPacific Flow is well-positioned.\n## Sources\n"
+        assert validate_context_sections(report, "ctx") is True
+
+    def test_detects_alex_guillen_keyword(self):
+        report = "## Positioning Advice\nAlex Guillen should focus on niche.\n## Sources\n"
+        assert validate_context_sections(report, "ctx") is True
+
+    def test_case_insensitive_keyword_match(self):
+        report = "## Competitive Implications\npacific flow has advantages.\n## Sources\n"
+        assert validate_context_sections(report, "ctx") is True
+
+
+class TestSpliceSections:
+    """Tests for _splice_sections()."""
+
+    def test_splices_new_sections_into_report(self):
+        new = "## Competitive Implications\nNew content.\n\n## Positioning Advice\nNew advice.\n"
+        result = _splice_sections(SAMPLE_REPORT, new)
+        assert "New content." in result
+        assert "New advice." in result
+        # Surrounding sections should be preserved
+        assert "Executive Summary" in result
+        assert "Limitations & Gaps" in result
+
+    def test_returns_original_when_section_not_found(self):
+        report = "## Executive Summary\nJust a summary.\n"
+        result = _splice_sections(report, "## New Section\n")
+        assert result == report
+
+    def test_preserves_content_before_and_after(self):
+        new = "## Competitive Implications\nUpdated.\n\n## Positioning Advice\nUpdated advice.\n"
+        result = _splice_sections(SAMPLE_REPORT, new)
+        assert "Business Model Analysis" in result
+        assert "Limitations & Gaps" in result
+
+
+class TestRegenerateContextSections:
+    """Tests for regenerate_context_sections()."""
+
+    def test_calls_api_and_splices_result(self):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=(
+            "## Competitive Implications\nPacific Flow faces competition.\n\n"
+            "## Positioning Advice\nAlex Guillen should leverage cultural niche.\n"
+        ))]
+        mock_client.messages.create.return_value = mock_response
+
+        result = regenerate_context_sections(
+            mock_client, SAMPLE_REPORT_NO_CONTEXT, "Pacific Flow context"
+        )
+
+        assert "Pacific Flow faces competition" in result
+        mock_client.messages.create.assert_called_once()
+
+    def test_returns_original_on_api_error(self):
+        from anthropic import APIError
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = APIError(
+            message="fail", request=MagicMock(), body=None
+        )
+
+        result = regenerate_context_sections(
+            mock_client, SAMPLE_REPORT_NO_CONTEXT, "context"
+        )
+
+        assert result == SAMPLE_REPORT_NO_CONTEXT
+
+    def test_returns_original_on_empty_response(self):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="")]
+        mock_client.messages.create.return_value = mock_response
+
+        result = regenerate_context_sections(
+            mock_client, SAMPLE_REPORT_NO_CONTEXT, "context"
+        )
+
+        assert result == SAMPLE_REPORT_NO_CONTEXT
+
+    def test_sanitizes_business_context(self):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="## Competitive Implications\nNew.\n\n## Positioning Advice\nNew.\n")]
+        mock_client.messages.create.return_value = mock_response
+
+        regenerate_context_sections(
+            mock_client, SAMPLE_REPORT_NO_CONTEXT, "<script>xss</script>"
+        )
+
+        call_args = mock_client.messages.create.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "&lt;script&gt;" in prompt
+        assert "<script>" not in prompt

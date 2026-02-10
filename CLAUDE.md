@@ -63,7 +63,7 @@ python3 main.py --standard "query" -v # Verbose: shows all DEBUG/INFO logs
 ## Testing
 
 ```bash
-python3 -m pytest tests/ -v    # 291 tests, all must pass
+python3 -m pytest tests/ -v    # 310 tests, all must pass
 ```
 
 Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search results. Mock where the name is imported FROM, not where it's used.

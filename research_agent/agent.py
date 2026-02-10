@@ -10,7 +10,7 @@ from .search import search, refine_query, SearchResult
 from .fetch import fetch_urls
 from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all
-from .synthesize import synthesize_report
+from .synthesize import synthesize_report, validate_context_sections, regenerate_context_sections
 from .relevance import evaluate_sources, generate_insufficient_data_response
 from .decompose import decompose_query, _load_context
 from .cascade import cascade_recover
@@ -558,7 +558,7 @@ class ResearchAgent:
             print(f"      Pass 2 search failed, continuing with {len(summaries)} summaries")
 
         # Relevance gate and synthesis
-        return await self._evaluate_and_synthesize(
+        report = await self._evaluate_and_synthesize(
             query=query,
             summaries=summaries,
             refined_query=refined_query,
@@ -566,3 +566,14 @@ class ResearchAgent:
             synthesis_step=7 + offset,
             step_count=step_count,
         )
+
+        # Validate business context in analytical sections (deep mode only)
+        business_context = _load_context()
+        if business_context and not validate_context_sections(report, business_context):
+            print(f"\n      Business context missing from sections 9-10, regenerating...")
+            report = await asyncio.to_thread(
+                regenerate_context_sections,
+                self.client, report, business_context, model=self.synthesize_model,
+            )
+
+        return report
