@@ -67,7 +67,7 @@ def get_auto_save_path(query: str) -> Path:
     reports_dir = Path("reports")
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S%f")  # Microseconds prevent collisions
     safe_query = sanitize_filename(query)
-    filename = f"{timestamp}_{safe_query}.md"
+    filename = f"{safe_query}_{timestamp}.md"
     return reports_dir / filename
 
 
