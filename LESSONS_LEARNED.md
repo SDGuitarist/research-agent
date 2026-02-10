@@ -1869,7 +1869,7 @@ Added `MAX_CONCURRENT_CHUNKS=3` semaphore in `summarize_all`, passed to `summari
 
 ### Key Lesson
 
-Always place concurrency control at the API call layer, not the task organization layer. We built batching at the source level when the constraint was at the API call level. For any rate-limited API, start with a semaphore where the actual API calls happen, then add higher-level batching for workflow organization on top.
+Always place concurrency control at the API call layer, not the task organization layer. This led to two cycles of symptom-chasing (batch size 12→8→5) before a codebase review discovered the root cause. We built batching at the source level when the constraint was at the API call level. For any rate-limited API, start with a semaphore where the actual API calls happen, then add higher-level batching for workflow organization on top.
 
 ---
 
