@@ -64,11 +64,61 @@ def append_research_log(query: str, mode: ResearchMode, report: str) -> None:
 
 def get_auto_save_path(query: str) -> Path:
     """Generate auto-save path for standard and deep mode reports."""
-    reports_dir = Path("reports")
+    reports_dir = REPORTS_DIR
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S%f")  # Microseconds prevent collisions
     safe_query = sanitize_filename(query)
     filename = f"{safe_query}_{timestamp}.md"
     return reports_dir / filename
+
+
+REPORTS_DIR = Path("reports")
+
+# Regex patterns for extracting date from report filenames
+# Old format: 2026-02-03_183703056652_query_name.md (timestamp first)
+_OLD_FORMAT = re.compile(r"^(\d{4}-\d{2}-\d{2})_\d{6,}_(.+)\.md$")
+# New format: query_name_2026-02-03_183703056652.md (query first)
+_NEW_FORMAT = re.compile(r"^(.+)_(\d{4}-\d{2}-\d{2})_\d{6,}\.md$")
+
+
+def list_reports() -> None:
+    """Print a table of saved reports sorted newest-first."""
+    if not REPORTS_DIR.is_dir():
+        print("No reports directory found.")
+        return
+
+    md_files = sorted(REPORTS_DIR.glob("*.md"))
+    if not md_files:
+        print("No saved reports.")
+        return
+
+    # Parse each filename for date and query name
+    dated = []  # (date_str, query_name, filename)
+    undated = []  # filenames that don't match either pattern
+
+    for f in md_files:
+        name = f.name
+        old_match = _OLD_FORMAT.match(name)
+        new_match = _NEW_FORMAT.match(name)
+
+        if old_match:
+            dated.append((old_match.group(1), old_match.group(2), name))
+        elif new_match:
+            dated.append((new_match.group(2), new_match.group(1), name))
+        else:
+            undated.append(name)
+
+    # Sort dated reports newest-first
+    dated.sort(key=lambda x: x[0], reverse=True)
+
+    total = len(dated) + len(undated)
+    print(f"Saved reports ({total}):")
+    for date_str, query_name, _ in dated:
+        print(f"  {date_str}  {query_name}")
+
+    if undated:
+        print(f"  -- {len(undated)} reports with non-standard names --")
+        for name in sorted(undated):
+            print(f"  {name}")
 
 
 def show_costs() -> None:
@@ -109,7 +159,14 @@ Examples:
     )
     parser.add_argument(
         "query",
+        nargs="?",
+        default=None,
         help="The research query",
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List saved reports and exit",
     )
 
     # Mode flags (mutually exclusive)
@@ -154,10 +211,20 @@ Examples:
 
     args = parser.parse_args()
 
+    # --list: show saved reports and exit (highest priority)
+    if args.list:
+        list_reports()
+        sys.exit(0)
+
     # --cost: show costs and exit (no API keys needed)
     if args.cost:
         show_costs()
         sys.exit(0)
+
+    # Require query for research
+    if args.query is None:
+        parser.print_help()
+        sys.exit(2)
 
     # Configure logging (after parsing so --verbose is available)
     logging.basicConfig(
