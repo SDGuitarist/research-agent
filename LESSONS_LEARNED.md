@@ -1635,6 +1635,242 @@ Analytical depth is significantly improved — the 12-section template produces 
 3. Consider a lighter template for standard mode (fewer sections, more flexibility)
 4. Monitor API usage at current tier before upgrading
 
+### Competitive Intelligence Validation — All Five Competitors
+
+After the Cycle 10 pipeline was operational, we ran all five San Diego wedding entertainment competitors through it and compared old (pre-Cycle 10) vs. new reports. This validated the pipeline changes and produced actionable competitive intelligence.
+
+#### Report Quality Improvements
+
+| Competitor | Old Words | New Words | Delta | Sources (New) | Pacific Flow Context? |
+|---|---|---|---|---|---|
+| Bonnie Foster Productions | 1,652 | 2,884 | +75% | 16 | Yes — 5 counter-strategies |
+| Saffron Band | 1,716 | 2,144 | +25% | 7 | Yes — 5 counter-strategies |
+| Republic of Music | 875 | 1,706 | +95% | 6 | **No** — generic SWOT |
+| Mike Hogan Productions | 1,465 | 1,907 | +30% | 4 | Yes — 5 counter-strategies |
+| LIV Entertainment | 1,768 | 2,662 | +51% | 6 | Yes — 5 counter-strategies |
+
+**Key finding:** Four of five reports received the full Cycle 10 treatment (12/12 template sections, Pacific Flow business context in Competitive Implications and Positioning Advice). Republic of Music was the exception — its Competitive Implications and Positioning Advice sections were generic rather than Pacific Flow-contextualized, suggesting inconsistent business context injection.
+
+#### What the 12-Section Template Fixed
+
+**Old reports were feature inventories** — they listed what competitors offer and said they're good at it. **New reports are competitive intelligence briefs** — they deconstruct how competitors' marketing works, where they're vulnerable, and what Pacific Flow should do about it.
+
+The five Cycle 10-exclusive sections that drove the biggest analytical improvement:
+
+1. **Messaging Theme Analysis** — Named persuasion patterns with pulled marketing quotes (e.g., Bonnie Foster's "Sometimes money can buy happiness," Saffron's "Why haven't you heard of us yet?")
+2. **Buyer Psychology** — Mapped each competitor's marketing to fears addressed, desires targeted, and objections preemptively handled
+3. **Content & Marketing Tactics** — Identified social media handles, SEO strategies, review platform presence, and content marketing approaches
+4. **Business Model Analysis** — Revenue structures, scalability factors, competitive moats, and exploitable vulnerabilities
+5. **Positioning Advice** — 5 named, actionable counter-strategies per competitor, all referencing Pacific Flow's specific capabilities
+
+#### Source Quality Improvement
+
+The most telling Cycle 10 improvement was source quality. Old reports padded with generic industry advice (Lumen Learning textbooks, bodabliss.com marketing tips, Wikipedia pages). New reports are built on primary competitor sources:
+
+| Report | Old: Junk Sources | New: Junk Sources |
+|---|---|---|
+| Bonnie Foster | 0/10 | 0/16 |
+| Saffron Band | 4/7 (57%) | 0/7 (0%) |
+| Republic of Music | 1/4 | 1/6 |
+| Mike Hogan | 4/8 (50%) | 0/4 (0%) |
+| LIV Entertainment | 3/7 (43%) | 1/6 (17%) |
+
+The relevance gate (Cycle 6) was already filtering bad sources, but the Cycle 10 template gave synthesis better instructions about what to do with the good ones.
+
+#### Competitive Threat Assessment
+
+| Competitor | Threat Level | Primary Threat | Key Vulnerability |
+|---|---|---|---|
+| LIV Entertainment | **HIGH** | Only competitor with cultural entertainment depth | LA-based, limited SD venue relationships |
+| Bonnie Foster | MEDIUM-HIGH | Perfect 5.0 reviews, venue relationships | Founder-dependent (2-10 employees), celebrity claims skepticism |
+| Mike Hogan | MEDIUM | 35+ preferred vendor at target venues | Solo operator, weak digital presence |
+| Saffron Band | LOW-MEDIUM | $5K price overlap | New entrant (2024), general cover band |
+| Republic of Music | LOW-MEDIUM | Non-traditional couple capture | No cultural programming |
+
+#### Strategic Insights That Hold Across All Five Reports
+
+1. **Complement don't compete.** Every competitor except LIV is reception-focused. Pacific Flow's ceremony/cocktail specialization is a different budget line, vendor category, and timeline moment.
+
+2. **Cultural authenticity is uncontested territory.** None of five competitors offer inherited Spanish guitar, flamenco, or mariachi. LIV has surface-level cultural performers but no deep specialization. "Inherited tradition, not studied technique" counters all five simultaneously.
+
+3. **Mike Hogan is the venue gatekeeper, not the competitor.** 35+ preferred vendor relationships at exactly Pacific Flow's target venues. But as a reception DJ, he's the handoff partner — not the rival.
+
+4. **dB compliance is a technical moat.** Only Mike Hogan has battery/generator capability among the five, and he's a DJ. Pacific Flow's battery-powered Spanish guitar is the only path to live music at sound-restricted venues — uncontested across all competitors.
+
+5. **Watch LIV closely.** Only competitor partially invading Pacific Flow's positioning territory (cultural performers, ceremony-through-reception coverage, family business narrative). LA-based with limited SD venue intelligence, but has scale (11-50 employees, professional marketing partner) to deepen SD presence.
+
+#### Pricing Intelligence Captured
+
+| Competitor | Ceremony | Reception | Source |
+|---|---|---|---|
+| Bonnie Foster | Starting $3,000 | Starting $10,000 | Zola |
+| Saffron Band | N/A | Minimum $5,000 | saffronband.com/services |
+| Republic of Music | N/A | Starting $5,300 | Zola |
+| Mike Hogan | Unknown | Unknown | No pricing found |
+| LIV Entertainment | N/A | Average $5,000 + 10% gratuity | liventgroup.com |
+
+Four of five competitors have discoverable pricing — a direct result of the fetch cascade (Cycle 9) recovering pages that were previously blocked. The Zola pricing pages for Bonnie Foster and Republic of Music were the highest-value cascade recoveries.
+
+#### Lessons from the Validation
+
+1. **Business context injection is inconsistent.** Republic of Music's report lacked Pacific Flow context despite using the same pipeline. The synthesize prompt references context "if provided," but the context may not always influence sections 9-10 reliably. May need stronger template language.
+
+2. **Re-running with the current pipeline recovers lost intelligence.** Mike Hogan went from 50% junk sources to 0%. LIV went from zero pricing to concrete figures. The pipeline improvements from Cycles 6-10 compound — re-running old queries produces dramatically better results.
+
+3. **Some old insights get lost in re-runs.** LIV's old report identified ceremony-through-reception positioning (a direct competitive threat); the new report dropped it. Different search results surface different details. Consider merging old and new reports for maximum coverage.
+
+4. **Source scarcity limits report depth regardless of template quality.** Mike Hogan's report was flagged as "short_report" (6/57 sources passed relevance) because he has a thin online footprint. The 12-section template can't create analysis from data that doesn't exist.
+
+5. **The old Saffron report may have had wrong roster information.** Old report named Xandra, Mitchell, Alan; new report names Taron, Garet, Chris, Tia, Emma, Maggi, Dina. Either the roster changed between runs or the old pipeline pulled incorrect data. This highlights the importance of primary source verification.
+
+Full comparison files: `reports/cycle10_comparison_*.md` and `reports/cycle10_all_competitors_summary.md`.
+
+---
+
+## 14. Codebase Review (Post-Cycle 10)
+
+A four-agent parallel review was conducted across the full codebase (~2,685 lines, 290 tests) covering security, performance, code quality/patterns, and architecture. Full report: `reports/codebase_review.md`.
+
+### Review Methodology
+
+Four specialized review agents ran in parallel:
+1. **Security Sentinel** — SSRF, prompt injection, secret handling, path traversal
+2. **Performance Oracle** — async patterns, batching, rate limits, bottlenecks
+3. **Pattern Recognition Specialist** — bugs, code smells, error handling, test gaps
+4. **Codebase Explorer** — file inventory, architecture map, next-cycle plan cross-reference
+
+Findings were deduplicated across agents (e.g., DNS rebinding TOCTOU was flagged by all three analysis agents) and cross-referenced against already-planned Cycle 11 work to avoid redundant recommendations.
+
+### Finding Summary: 27 Total
+
+| Severity | Count | Key Examples |
+|----------|-------|-------------|
+| **Critical** | 1 | API keys in `.env` need rotation |
+| **High** | 4 | SSRF bypass via DNS rebinding, redirect following, Jina cascade; unrestricted `--output` path |
+| **Medium** | 11 | Rate limit root cause (chunk fan-out), serial sub-query searches, blocking event loop, duplicated sanitization, untyped dict returns, missing test coverage |
+| **Low** | 11 | Domain suffix matching, string concatenation O(n^2), stale User-Agents, dead imports, stdout mixing |
+
+### Root Cause Discovery: 429 Rate Limit Errors
+
+The single most impactful finding across all four reviews: **the 429 rate limit errors are NOT caused by batch size between sources — they're caused by chunk fan-out within sources.**
+
+`summarize_content` (`summarize.py:192-205`) fires all chunks for a single source in parallel via `asyncio.gather`. The batch-level rate limiting in `summarize_all` controls how many *sources* are processed concurrently, but each source internally dispatches up to 5 chunks simultaneously. A batch of 5 sources x 5 chunks = 25 concurrent API calls — far exceeding the 30K tokens/min limit.
+
+The batch size reductions across Cycles 10+ (12 > 8 > 5) were treating the symptom. Fixing chunk fan-out would let batch size increase back to 8-12 while eliminating 429s.
+
+**Fix:** Flatten all chunks across all sources into a single list and batch them directly with a global concurrency semaphore, or add chunk-level rate awareness inside `summarize_content`.
+
+### Security Findings
+
+| # | Severity | Finding | File |
+|---|----------|---------|------|
+| 1 | Critical | Live API keys in `.env` need rotation | `.env:1-2` |
+| 2 | High | SSRF bypass via DNS rebinding (TOCTOU between validation and httpx connection) | `fetch.py:104-180` |
+| 3 | High | SSRF bypass via `follow_redirects=True` (validated URL redirects to internal IP) | `fetch.py:232-237` |
+| 4 | High | Jina cascade sends URLs to third-party proxy without SSRF validation | `cascade.py:83-117` |
+| 5 | High | Unrestricted file write via `--output` flag (arbitrary path + `mkdir parents=True`) | `main.py:119-179` |
+| 6 | Medium | Prompt injection defense is best-effort; sanitization only escapes `<`/`>`, not `&` | 5 files |
+| 7 | Medium | Untrusted HTML parsed by lxml without sandboxing or timeout | `extract.py:27-110` |
+
+**What the codebase does well on security:** SSRF protection exists and is multi-layered (scheme whitelisting, hostname blocklist, DNS resolution with private IP checking). Prompt injection defense uses three layers (sanitize + XML boundaries + system prompt). `.gitignore` excludes `.env`. Auto-generated filenames are sanitized. API keys are not stored on the agent object or exposed via `__repr__`.
+
+### Performance Findings
+
+| # | Finding | Impact | File |
+|---|---------|--------|------|
+| 1 | Chunk fan-out bypasses batch-level rate limiting | Root cause of 429 errors | `summarize.py:192-205` |
+| 2 | Serial sub-query searches with 2-2.5s stagger each | 6-7.5s wasted per query | `agent.py:317-329` |
+| 3 | `extract_all` is synchronous/CPU-bound, blocks event loop | Several seconds blocked during deep mode | `agent.py:370, 454, 510` |
+| 4 | `refine_query` uses sync Anthropic client without `to_thread` | 1-3s event loop block | `agent.py:333, 488` |
+| 5 | Blocking `socket.getaddrinfo` in async context + double DNS resolution | Redundant blocking per URL | `fetch.py:104-128` |
+| 6 | TavilyClient instantiated per call (no connection pooling) | ~100-300ms wasted across searches | `search.py:85-87`, `cascade.py:136-138` |
+| 7 | String concatenation `+=` in streaming loop is O(n^2) | Minor for typical reports | `synthesize.py:155-166` |
+| 8 | `_load_context()` reads file twice per invocation | Negligible but indicates pattern issue | `decompose.py:136`, `agent.py:278` |
+
+**Wall time estimate for standard mode:** ~18 seconds in deliberate `sleep` calls alone, before network or API latency. Parallelizing sub-queries and fixing chunk fan-out could save 10-15 seconds per query.
+
+### Code Quality Findings
+
+| # | Finding | Severity | File |
+|---|---------|----------|------|
+| 1 | 5 identical copies of `_sanitize_content`/`_sanitize_for_prompt` | Medium | 5 files |
+| 2 | `agent.py` imports private `_load_context` from `decompose.py` | Medium | `agent.py:16` |
+| 3 | Dead import: `from .decompose import _load_context` in synthesize.py | Low | `synthesize.py:5` |
+| 4 | Untyped dict returns from `decompose_query`, `evaluate_sources`, `score_source` | Medium | 3 files |
+| 5 | `_research_deep` is 143 lines with nested try/except (3+ levels) | Medium | `agent.py:406-549` |
+| 6 | `_is_extract_domain` suffix matching allows false positives | Low | `cascade.py:162` |
+| 7 | `_chunk_text` loses one character at chunk boundaries | Low | `summarize.py:59` |
+| 8 | Redundant nested `if new_contents:` check | Low | `agent.py:517-520` |
+
+### Test Coverage Gaps
+
+| Gap | Severity | Notes |
+|-----|----------|-------|
+| No `test_main.py` for CLI entry point | Medium | `sanitize_filename`, `get_auto_save_path`, argument parsing untested |
+| Sync `research()` wrapper uses fragile string matching | Medium | `"no running event loop" in str(e)` — breaks if Python changes message |
+| `_resolve_and_validate_host` mocked out in tests | Medium | Security-critical DNS validation logic never directly tested |
+
+### CLAUDE.md Discrepancies
+
+Two items where documentation doesn't match code:
+1. **Batch size:** CLAUDE.md says "12/batch, 3s delay" — actual code is `BATCH_SIZE = 5` (both `summarize.py:27` and `relevance.py:21`)
+2. **Quick mode:** CLAUDE.md says both "6 sources" and "3-source budget is fragile" in different places
+
+### Prioritized Action Plan
+
+**Immediate (this week):**
+1. Rotate API keys (Critical)
+2. Add httpx event hook for redirect SSRF validation (High)
+3. Apply SSRF check to Jina cascade URLs (High)
+
+**Next cycle (alongside planned Cycle 11 work):**
+4. Fix chunk fan-out rate limiting — this is the 429 root cause (Medium, highest impact)
+5. Parallelize sub-query searches — saves 5+ seconds per query (Medium)
+6. Wrap `extract_all` and `refine_query` in `asyncio.to_thread` (Medium)
+7. Extract shared sanitization function to eliminate 5-file duplication (Medium)
+
+**Following cycle (quality + maintainability):**
+8. Replace untyped dict returns with TypedDict/dataclass
+9. Add test coverage for CLI, sync wrapper, DNS validation
+10. Refactor `_research_deep` into smaller methods
+11. Update CLAUDE.md to match actual batch sizes and source counts
+
+### Lessons from the Review
+
+| Category | Lesson |
+|----------|--------|
+| **Rate Limiting** | Batch-level rate limiting is meaningless if individual items fan out internally — rate limit at the *request* level, not the *item* level |
+| **Security** | SSRF protection with separate validation and connection steps creates TOCTOU gaps — pin DNS resolution or validate at the transport layer |
+| **Security** | `follow_redirects=True` is an SSRF bypass unless every redirect target is re-validated |
+| **Code Quality** | Duplicated utility functions across 5 files is the most common smell in additive-pattern codebases — extract shared utilities early |
+| **Architecture** | Private function imports across module boundaries (`_load_context` in `decompose.py` used by `agent.py`) signal that the function belongs in a shared module |
+| **Testing** | Security-critical code that gets mocked out in tests is effectively untested — test the real validation logic, not just the callers |
+| **Documentation** | When you tune parameters (batch size 12 > 8 > 5), update CLAUDE.md — stale docs mislead future reviewers |
+| **Performance** | In this codebase, deliberate `sleep` calls account for more wall time than actual computation — audit sleep budgets periodically |
+| **Review** | Multi-agent parallel review catches cross-cutting concerns that single-perspective reviews miss (DNS rebinding found by security, performance, AND code quality) |
+
+---
+
+## 15. Rate Limit Root Cause Fix (Cycle 11)
+
+### Root Cause
+
+429 errors were caused by chunk fan-out in `summarize_content` (`asyncio.gather` firing all chunks per source in parallel), not batch size. Batch size reductions from 12→5 in Cycle 10 treated the symptom.
+
+### Fix
+
+Added `MAX_CONCURRENT_CHUNKS=3` semaphore in `summarize_all`, passed to `summarize_content`, wrapping leaf-level `summarize_chunk` calls.
+
+### Results
+
+- Application-level 429s dropped from ~30 to 1 in deep mode
+- SDK-internal 429s dropped from ~217 to 18
+- Batch size recovered from 5→8 and `BATCH_DELAY` reduced from 3.0→1.5 in a separate commit
+
+### Key Lesson
+
+Always place concurrency control at the API call layer, not the task organization layer. We built batching at the source level when the constraint was at the API call level. For any rate-limited API, start with a semaphore where the actual API calls happen, then add higher-level batching for workflow organization on top.
+
 ---
 
 ## Summary
@@ -1704,3 +1940,12 @@ Analytical depth is significantly improved — the 12-section template produces 
 | **Prompting** | 12-section templates produce consistent analytical structure—omit-if-empty is better than always-include |
 | **Prompting** | Structured extraction (FACTS/KEY QUOTES/TONE) gives synthesis richer input for analytical sections |
 | **Testing** | Test data must be large enough to exercise the code path—500 repetitions wasn't enough for 5-chunk tests |
+| **Rate Limiting** | Batch-level rate limiting is meaningless if individual items fan out internally—rate limit at the request level, not the item level |
+| **Security** | SSRF protection with separate validation and connection steps creates TOCTOU gaps—pin DNS or validate at the transport layer |
+| **Security** | `follow_redirects=True` is an SSRF bypass unless every redirect target is re-validated |
+| **Code Quality** | Duplicated utility functions across 5+ files is the most common smell in additive-pattern codebases—extract shared utilities early |
+| **Architecture** | Private function imports across module boundaries signal the function belongs in a shared module |
+| **Testing** | Security-critical code that gets mocked out in tests is effectively untested—test the real validation logic |
+| **Documentation** | When you tune parameters, update CLAUDE.md—stale docs mislead future reviewers |
+| **Performance** | Deliberate sleep calls can account for more wall time than actual computation—audit sleep budgets periodically |
+| **Review** | Multi-agent parallel review catches cross-cutting concerns that single-perspective reviews miss |
