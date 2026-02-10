@@ -4,6 +4,7 @@
 import argparse
 import logging
 import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -208,6 +209,11 @@ Examples:
         action="store_true",
         help="Show estimated costs for all modes and exit",
     )
+    parser.add_argument(
+        "--open",
+        action="store_true",
+        help="Open saved report after generation (macOS)",
+    )
 
     args = parser.parse_args()
 
@@ -269,6 +275,11 @@ Examples:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(report)
             print(f"\n\nReport saved to: {output_path}")
+            if args.open:
+                subprocess.run(["open", str(output_path)])
+        elif args.open:
+            print("Warning: --open ignored — no file saved. Use -o to specify output path.",
+                  file=sys.stderr)
 
     except ResearchError as e:
         print(f"\nError: {e}", file=sys.stderr)
