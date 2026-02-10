@@ -70,7 +70,7 @@ Refined query:  "San Diego wedding cost breakdown by venue type"
 ```bash
 # Standard and deep modes auto-save to reports/
 python main.py "GraphQL vs REST"
-# -> reports/2026-02-03_183703056652_graphql_vs_rest.md
+# -> reports/graphql_vs_rest_2026-02-03_183703056652.md
 
 # Override auto-save location
 python main.py "GraphQL vs REST" -o custom_report.md

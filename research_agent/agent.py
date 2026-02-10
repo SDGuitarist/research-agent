@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import random
+import time
 
 from anthropic import Anthropic, AsyncAnthropic
 
@@ -44,6 +45,7 @@ class ResearchAgent:
     __slots__ = (
         "_client",
         "_async_client",
+        "_start_time",
         "mode",
         "max_sources",
         "summarize_model",
@@ -72,6 +74,7 @@ class ResearchAgent:
         # The API key is passed to clients but not stored separately
         self._client = Anthropic(api_key=api_key)
         self._async_client = AsyncAnthropic(api_key=api_key)
+        self._start_time = 0.0
         self.mode = mode or ResearchMode.standard()
         # Use explicit max_sources if provided, otherwise use mode's default
         self.max_sources = max_sources if max_sources is not None else self.mode.max_sources
@@ -86,6 +89,11 @@ class ResearchAgent:
             f"summarize_model={self.summarize_model!r}, "
             f"synthesize_model={self.synthesize_model!r})"
         )
+
+    def _step(self, step: int | str, total: int | str, message: str) -> None:
+        """Print a step header with cumulative elapsed time."""
+        elapsed = time.monotonic() - self._start_time
+        print(f"\n[{step}/{total}] {message} ({elapsed:.1f}s)")
 
     @property
     def client(self) -> Anthropic:
@@ -141,12 +149,13 @@ class ResearchAgent:
 
     async def _research_async(self, query: str) -> str:
         """Async implementation of research."""
+        self._start_time = time.monotonic()
         is_deep = self.mode.name == "deep"
 
         # Try query decomposition if mode supports it
         decomposition = None
         if self.mode.decompose:
-            print(f"\n[1/?] Analyzing query...")
+            self._step(1, "?", "Analyzing query...")
             decomposition = await asyncio.to_thread(
                 decompose_query, self.client, query
             )
@@ -168,7 +177,7 @@ class ResearchAgent:
         step_count = base_steps + (1 if self.mode.decompose else 0)
 
         search_step = 2 if self.mode.decompose else 1
-        print(f"\n[{search_step}/{step_count}] Searching for: {query}")
+        self._step(search_step, step_count, f"Searching for: {query}")
         print(f"      Mode: {self.mode.name} ({self.mode.max_sources} sources, {self.mode.search_passes} passes)")
 
         if is_deep:
@@ -285,7 +294,7 @@ class ResearchAgent:
         Returns:
             Final report string (full, short, or insufficient data response)
         """
-        print(f"\n[{relevance_step}/{step_count}] Evaluating source relevance...")
+        self._step(relevance_step, step_count, "Evaluating source relevance...")
         evaluation = await evaluate_sources(
             query=query,
             summaries=summaries,
@@ -296,7 +305,7 @@ class ResearchAgent:
 
         # Branch based on relevance gate decision
         if evaluation["decision"] == "insufficient_data":
-            print(f"\n[{synthesis_step}/{step_count}] Generating insufficient data response...")
+            self._step(synthesis_step, step_count, "Generating insufficient data response...")
             return await generate_insufficient_data_response(
                 query=query,
                 refined_query=evaluation.get("refined_query"),
@@ -308,9 +317,11 @@ class ResearchAgent:
         logger.info(f"Synthesizing report with {self.synthesize_model}...")
         limited_sources = evaluation["decision"] == "short_report"
         if limited_sources:
-            print(f"\n[{synthesis_step}/{step_count}] Synthesizing short report with {self.synthesize_model}...\n")
+            self._step(synthesis_step, step_count, f"Synthesizing short report with {self.synthesize_model}...")
+            print()  # blank line before streaming
         else:
-            print(f"\n[{synthesis_step}/{step_count}] Synthesizing report with {self.synthesize_model}...\n")
+            self._step(synthesis_step, step_count, f"Synthesizing report with {self.synthesize_model}...")
+            print()  # blank line before streaming
 
         # Load business context for synthesis
         business_context = _load_context()
@@ -385,7 +396,7 @@ class ResearchAgent:
         # Fetch pages — skip URLs that already have raw_content from Tavily
         prefetched, urls_to_fetch = self._split_prefetched(all_results)
         fetch_step = 2 + offset
-        print(f"\n[{fetch_step}/{step_count}] Fetching {len(all_results)} pages...")
+        self._step(fetch_step, step_count, f"Fetching {len(all_results)} pages...")
         pages = await fetch_urls(urls_to_fetch) if urls_to_fetch else []
         print(f"      Successfully fetched {len(pages)} pages ({len(prefetched)} from search cache)")
 
@@ -394,7 +405,7 @@ class ResearchAgent:
 
         # Extract content
         extract_step = 3 + offset
-        print(f"\n[{extract_step}/{step_count}] Extracting content...")
+        self._step(extract_step, step_count, "Extracting content...")
         extracted = extract_all(pages)
 
         # Cascade fallback for URLs that failed fetch+extract
@@ -410,7 +421,7 @@ class ResearchAgent:
         # Summarize
         summarize_step = 4 + offset
         logger.info(f"Summarizing content with {self.summarize_model}...")
-        print(f"\n[{summarize_step}/{step_count}] Summarizing content with {self.summarize_model}...")
+        self._step(summarize_step, step_count, f"Summarizing content with {self.summarize_model}...")
         summaries = await summarize_all(
             self.async_client,
             contents,
@@ -460,7 +471,7 @@ class ResearchAgent:
         # Fetch pages (pass 1) — skip URLs with raw_content from Tavily
         prefetched, urls_to_fetch = self._split_prefetched(results)
         fetch_step = 2 + offset
-        print(f"\n[{fetch_step}/{step_count}] Fetching {len(results)} pages...")
+        self._step(fetch_step, step_count, f"Fetching {len(results)} pages...")
         pages = await fetch_urls(urls_to_fetch) if urls_to_fetch else []
         print(f"      Successfully fetched {len(pages)} pages ({len(prefetched)} from search cache)")
 
@@ -469,7 +480,7 @@ class ResearchAgent:
 
         # Extract content (pass 1)
         extract_step = 3 + offset
-        print(f"\n[{extract_step}/{step_count}] Extracting content...")
+        self._step(extract_step, step_count, "Extracting content...")
         extracted = extract_all(pages)
 
         # Cascade fallback for URLs that failed fetch+extract (pass 1)
@@ -486,7 +497,7 @@ class ResearchAgent:
         is_deep = self.mode.name == "deep"
         summarize_step = 4 + offset
         logger.info(f"Summarizing content with {self.summarize_model}...")
-        print(f"\n[{summarize_step}/{step_count}] Summarizing content with {self.summarize_model}...")
+        self._step(summarize_step, step_count, f"Summarizing content with {self.summarize_model}...")
         summaries = await summarize_all(
             self.async_client,
             contents,
@@ -501,7 +512,7 @@ class ResearchAgent:
 
         # Deep mode refinement and pass 2
         refine_step = 5 + offset
-        print(f"\n[{refine_step}/{step_count}] Deep mode: refining search...")
+        self._step(refine_step, step_count, "Deep mode: refining search...")
 
         summary_texts = [s.summary for s in summaries]
         refined_query = refine_query(self.client, query, summary_texts)

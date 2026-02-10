@@ -4,6 +4,7 @@
 import argparse
 import logging
 import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -64,26 +65,90 @@ def append_research_log(query: str, mode: ResearchMode, report: str) -> None:
 
 def get_auto_save_path(query: str) -> Path:
     """Generate auto-save path for standard and deep mode reports."""
-    reports_dir = Path("reports")
+    reports_dir = REPORTS_DIR
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S%f")  # Microseconds prevent collisions
     safe_query = sanitize_filename(query)
-    filename = f"{timestamp}_{safe_query}.md"
+    filename = f"{safe_query}_{timestamp}.md"
     return reports_dir / filename
+
+
+REPORTS_DIR = Path("reports")
+
+# Regex patterns for extracting date from report filenames
+# Old format: 2026-02-03_183703056652_query_name.md (timestamp first)
+_OLD_FORMAT = re.compile(r"^(\d{4}-\d{2}-\d{2})_\d{6,}_(.+)\.md$")
+# New format: query_name_2026-02-03_183703056652.md (query first)
+_NEW_FORMAT = re.compile(r"^(.+)_(\d{4}-\d{2}-\d{2})_\d{6,}\.md$")
+
+
+def list_reports() -> None:
+    """Print a table of saved reports sorted newest-first."""
+    if not REPORTS_DIR.is_dir():
+        print("No reports directory found.")
+        return
+
+    md_files = sorted(REPORTS_DIR.glob("*.md"))
+    if not md_files:
+        print("No saved reports.")
+        return
+
+    # Parse each filename for date and query name
+    dated = []  # (date_str, query_name, filename)
+    undated = []  # filenames that don't match either pattern
+
+    for f in md_files:
+        name = f.name
+        old_match = _OLD_FORMAT.match(name)
+        new_match = _NEW_FORMAT.match(name)
+
+        if old_match:
+            dated.append((old_match.group(1), old_match.group(2), name))
+        elif new_match:
+            dated.append((new_match.group(2), new_match.group(1), name))
+        else:
+            undated.append(name)
+
+    # Sort dated reports newest-first
+    dated.sort(key=lambda x: x[0], reverse=True)
+
+    total = len(dated) + len(undated)
+    print(f"Saved reports ({total}):")
+    for date_str, query_name, _ in dated:
+        print(f"  {date_str}  {query_name}")
+
+    if undated:
+        print(f"  -- {len(undated)} reports with non-standard names --")
+        for name in sorted(undated):
+            print(f"  {name}")
+
+
+def show_costs() -> None:
+    """Print estimated costs for all research modes and exit."""
+    modes = [ResearchMode.quick(), ResearchMode.standard(), ResearchMode.deep()]
+    print("Estimated costs per query:")
+    for m in modes:
+        default = "  [default]" if m.name == "standard" else ""
+        print(f"  {m.name:<10} {m.cost_estimate}  "
+              f"({m.max_sources} sources, ~{m.word_target} words){default}")
 
 
 def main():
     # Load environment variables from .env file
     load_dotenv()
 
+    _quick = ResearchMode.quick()
+    _standard = ResearchMode.standard()
+    _deep = ResearchMode.deep()
+
     parser = argparse.ArgumentParser(
         description="Research agent that searches the web and generates markdown reports.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
 Research Modes:
-  --quick     Fast research: 3 sources, ~300 word report (~$0.12)
-  --standard  Balanced research: 7 sources, ~1000 word report (~$0.20) [default]
+  --quick     Fast research: {_quick.max_sources} sources, ~{_quick.word_target} word report ({_quick.cost_estimate})
+  --standard  Balanced research: {_standard.max_sources} sources, ~{_standard.word_target} word report ({_standard.cost_estimate}) [default]
               Auto-saves to reports/ folder
-  --deep      Thorough research: 10+ sources, 2 search passes, ~2000 word report (~$0.50)
+  --deep      Thorough research: {_deep.max_sources}+ sources, 2 search passes, ~{_deep.word_target} word report ({_deep.cost_estimate})
               Auto-saves to reports/ folder
 
 Examples:
@@ -95,7 +160,14 @@ Examples:
     )
     parser.add_argument(
         "query",
+        nargs="?",
+        default=None,
         help="The research query",
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List saved reports and exit",
     )
 
     # Mode flags (mutually exclusive)
@@ -132,8 +204,33 @@ Examples:
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--cost",
+        action="store_true",
+        help="Show estimated costs for all modes and exit",
+    )
+    parser.add_argument(
+        "--open",
+        action="store_true",
+        help="Open saved report after generation (macOS)",
+    )
 
     args = parser.parse_args()
+
+    # --list: show saved reports and exit (highest priority)
+    if args.list:
+        list_reports()
+        sys.exit(0)
+
+    # --cost: show costs and exit (no API keys needed)
+    if args.cost:
+        show_costs()
+        sys.exit(0)
+
+    # Require query for research
+    if args.query is None:
+        parser.print_help()
+        sys.exit(2)
 
     # Configure logging (after parsing so --verbose is available)
     logging.basicConfig(
@@ -178,6 +275,11 @@ Examples:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(report)
             print(f"\n\nReport saved to: {output_path}")
+            if args.open:
+                subprocess.run(["open", str(output_path)])
+        elif args.open:
+            print("Warning: --open ignored — no file saved. Use -o to specify output path.",
+                  file=sys.stderr)
 
     except ResearchError as e:
         print(f"\nError: {e}", file=sys.stderr)
