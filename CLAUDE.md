@@ -40,7 +40,7 @@ Key: Tavily search returns `raw_content` for some results. These skip the fetch+
 - **Three-layer fetch cascade**: Jina Reader (free, works on most sites) → Tavily Extract (domain-filtered, 1 credit/5 URLs) → snippet fallback (`[Source: search snippet]` prefix).
 - **Tavily `include_raw_content="markdown"`**: Zero extra cost, bypasses bot protection. Content comes from Tavily's crawl infra, not our IP.
 - **Parallel sub-query searches**: `asyncio.gather` with `Semaphore(2)` cap. Saves 5+ seconds per complex query vs the old serial 2s stagger.
-- **Frozen dataclasses for modes**: Immutable configuration objects. All mode parameters in one place.
+- **Frozen dataclasses for modes**: Immutable configuration objects. All mode parameters in one place, including `cost_estimate` (single source of truth for costs displayed in `--cost` and `--help`).
 - **Specific exception handling**: Never bare `except Exception`. Each module catches its own failure types.
 - **Three-layer prompt injection defense**: sanitize content + XML boundaries + system prompt instructions.
 - **Shared sanitization**: `sanitize_content()` in `sanitize.py` — single source of truth, imported by summarize/relevance/synthesize.
@@ -57,16 +57,25 @@ Key: Tavily search returns `raw_content` for some results. These skip the fetch+
 ## Running
 
 ```bash
-python3 main.py --quick "query"       # 6 sources, fast, no decomposition
+python3 main.py --quick "query"       # 4 sources, fast, no decomposition
 python3 main.py --standard "query"    # 10 sources, decomposition, auto-saves
-python3 main.py --deep "query"        # 24 sources, 2-pass with full summarize between passes
+python3 main.py --deep "query"        # 12 sources, 2-pass with full summarize between passes
 python3 main.py --standard "query" -v # Verbose: shows all DEBUG/INFO logs
+python3 main.py --standard "query" --open  # Auto-open report after generation (macOS)
+python3 main.py --cost                # Show estimated costs for all modes and exit
+python3 main.py --list                # List saved reports in a table (newest first)
 ```
+
+Flag precedence: `--list` > `--cost` > research. Running with no args prints help.
+
+Reports auto-save as `{query}_{timestamp}.md` (e.g., `graphql_vs_rest_2026-02-03_183703056652.md`).
+
+Step headers show cumulative elapsed time (e.g., `[3/7] Extracting content... (12.4s)`).
 
 ## Testing
 
 ```bash
-python3 -m pytest tests/ -v    # 313 tests, all must pass
+python3 -m pytest tests/ -v    # 341 tests, all must pass
 ```
 
 Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search results. Mock where the name is imported FROM, not where it's used.
@@ -95,5 +104,6 @@ Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search
 | 11 | Rate limit root cause fix | Concurrency control belongs at the API call layer, not task organization |
 | 12 | Quick wins: shared sanitize, parallel sub-queries, context validation | replace_all on substrings corrupts method names; always run tests immediately |
 | 13 | Sub-query divergence: prompt + max-overlap validation | Concrete examples (BAD/GOOD) outperform vague instructions; diagnose with real queries before/after |
+| 14 | CLI QoL: --cost, --list, --open, filename swap, progress timing | Cost values belong in dataclass (single source of truth); `nargs="?"` needs validation guard |
 
 See `LESSONS_LEARNED.md` for detailed findings from each cycle.
