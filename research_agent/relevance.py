@@ -11,6 +11,7 @@ from anthropic import AsyncAnthropic, APIError, RateLimitError, APIConnectionErr
 from .summarize import Summary
 from .modes import ResearchMode
 from .errors import RelevanceError
+from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +28,6 @@ INSUFFICIENT_RESPONSE_TIMEOUT = 30.0
 # Model for relevance scoring (using Sonnet for reliability)
 SCORING_MODEL = "claude-sonnet-4-20250514"
 
-
-def _sanitize_content(text: str) -> str:
-    """
-    Sanitize untrusted content before including in prompts.
-
-    Escapes XML-like delimiters to prevent prompt injection attacks.
-    """
-    return text.replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _extract_domain(url: str) -> str:
@@ -101,9 +94,9 @@ async def score_source(query: str, summary: Summary, client: AsyncAnthropic) -> 
         Dict with keys: url, title, score (1-5), explanation
     """
     # Sanitize content for prompt injection defense
-    safe_query = _sanitize_content(query)
-    safe_title = _sanitize_content(summary.title or "Untitled")
-    safe_summary = _sanitize_content(summary.summary)
+    safe_query = sanitize_content(query)
+    safe_title = sanitize_content(summary.title or "Untitled")
+    safe_summary = sanitize_content(summary.summary)
 
     system_prompt = (
         "You are evaluating whether a web source is relevant to a research query. "
@@ -311,16 +304,16 @@ async def generate_insufficient_data_response(
     # Format dropped sources for the prompt
     sources_text = []
     for src in dropped_sources:
-        safe_title = _sanitize_content(src.get("title", "Untitled"))
-        safe_explanation = _sanitize_content(src.get("explanation", "No explanation"))
+        safe_title = sanitize_content(src.get("title", "Untitled"))
+        safe_explanation = sanitize_content(src.get("explanation", "No explanation"))
         sources_text.append(
             f"- {safe_title} (score {src.get('score', '?')}/5): {safe_explanation}"
         )
 
     dropped_sources_formatted = "\n".join(sources_text) if sources_text else "No sources were found."
 
-    safe_query = _sanitize_content(query)
-    safe_refined = _sanitize_content(refined_query) if refined_query else "N/A"
+    safe_query = sanitize_content(query)
+    safe_refined = sanitize_content(refined_query) if refined_query else "N/A"
 
     system_prompt = (
         "You are a research assistant. You searched for information but did not find "
@@ -380,8 +373,8 @@ def _fallback_insufficient_response(
 ) -> str:
     """Generate a basic insufficient data response when LLM call fails."""
     # Sanitize user-provided content for safe display
-    safe_query = _sanitize_content(query)
-    safe_refined = _sanitize_content(refined_query) if refined_query else None
+    safe_query = sanitize_content(query)
+    safe_refined = sanitize_content(refined_query) if refined_query else None
 
     lines = [
         "# Insufficient Data Found",
@@ -400,9 +393,9 @@ def _fallback_insufficient_response(
     ])
 
     for src in dropped_sources[:5]:  # Limit to 5 sources
-        title = _sanitize_content(src.get("title", "Untitled"))
+        title = sanitize_content(src.get("title", "Untitled"))
         score = src.get("score", "?")
-        explanation = _sanitize_content(src.get("explanation", "No explanation"))
+        explanation = sanitize_content(src.get("explanation", "No explanation"))
         lines.append(f"- {title} (score {score}/5): {explanation}")
 
     lines.extend([

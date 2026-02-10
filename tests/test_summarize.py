@@ -5,8 +5,8 @@ import asyncio
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
+from research_agent.sanitize import sanitize_content
 from research_agent.summarize import (
-    _sanitize_content,
     _chunk_text,
     summarize_chunk,
     summarize_content,
@@ -22,26 +22,26 @@ from research_agent.extract import ExtractedContent
 
 
 class TestSanitizeContent:
-    """Tests for _sanitize_content() function."""
+    """Tests for sanitize_content() function."""
 
     def test_sanitize_content_escapes_angle_brackets(self):
         """Angle brackets should be escaped to prevent prompt injection."""
-        result = _sanitize_content("<script>alert('xss')</script>")
+        result = sanitize_content("<script>alert('xss')</script>")
         assert result == "&lt;script&gt;alert('xss')&lt;/script&gt;"
 
     def test_sanitize_content_handles_empty_string(self):
         """Empty string should return empty string."""
-        result = _sanitize_content("")
+        result = sanitize_content("")
         assert result == ""
 
     def test_sanitize_content_handles_multiple_tags(self):
         """Multiple tag pairs should all be escaped."""
-        result = _sanitize_content("<div><p>text</p></div>")
+        result = sanitize_content("<div><p>text</p></div>")
         assert result == "&lt;div&gt;&lt;p&gt;text&lt;/p&gt;&lt;/div&gt;"
 
     def test_sanitize_content_preserves_ampersands_in_text(self):
         """Regular ampersands in text should be preserved."""
-        result = _sanitize_content("Tom & Jerry")
+        result = sanitize_content("Tom & Jerry")
         assert result == "Tom & Jerry"
 
 

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from anthropic import AsyncAnthropic, RateLimitError, APIError, APIConnectionError, APITimeoutError
 
 from .extract import ExtractedContent
+from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
 
@@ -64,20 +65,6 @@ def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE, max_chunks: int = MAX_C
     return chunks[:max_chunks]
 
 
-def _sanitize_content(text: str) -> str:
-    """
-    Sanitize untrusted content before including in prompts.
-
-    Escapes XML-like delimiters to prevent prompt injection attacks
-    where malicious web content tries to break out of data sections.
-    """
-    # Escape our delimiter characters so content can't break out
-    return (
-        text
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
-
 
 async def summarize_chunk(
     client: AsyncAnthropic,
@@ -89,8 +76,8 @@ async def summarize_chunk(
 ) -> Summary | None:
     """Summarize a single chunk of content."""
     # Sanitize untrusted web content to prevent prompt injection
-    safe_chunk = _sanitize_content(chunk)
-    safe_title = _sanitize_content(title)
+    safe_chunk = sanitize_content(chunk)
+    safe_title = sanitize_content(title)
 
     max_retries = 1
 

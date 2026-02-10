@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
+from research_agent.sanitize import sanitize_content
 from research_agent.relevance import (
-    _sanitize_content,
     _extract_domain,
     _parse_score_response,
     score_source,
@@ -19,27 +19,27 @@ from research_agent.modes import ResearchMode
 
 
 class TestSanitizeContent:
-    """Tests for _sanitize_content()."""
+    """Tests for sanitize_content()."""
 
     def test_sanitize_content_escapes_angle_brackets(self):
         """Angle brackets should be escaped to prevent XML injection."""
-        result = _sanitize_content("<script>alert('xss')</script>")
+        result = sanitize_content("<script>alert('xss')</script>")
         assert "&lt;script&gt;" in result
         assert "&lt;/script&gt;" in result
         assert "<script>" not in result
 
     def test_sanitize_content_handles_empty_string(self):
         """Empty string should return empty string."""
-        assert _sanitize_content("") == ""
+        assert sanitize_content("") == ""
 
     def test_sanitize_content_preserves_normal_text(self):
         """Text without special chars should be unchanged."""
         text = "This is normal text without any special characters."
-        assert _sanitize_content(text) == text
+        assert sanitize_content(text) == text
 
     def test_sanitize_content_escapes_nested_tags(self):
         """Nested XML-like tags should all be escaped."""
-        result = _sanitize_content("</source><injected>malicious</injected>")
+        result = sanitize_content("</source><injected>malicious</injected>")
         assert "&lt;/source&gt;" in result
         assert "&lt;injected&gt;" in result
 

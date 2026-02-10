@@ -5,6 +5,7 @@ from anthropic import Anthropic, RateLimitError, APIError, APITimeoutError
 from .decompose import _load_context
 from .summarize import Summary
 from .errors import SynthesisError
+from .sanitize import sanitize_content
 
 # Timeout for synthesis API calls (longer due to streaming)
 SYNTHESIS_TIMEOUT = 120.0
@@ -17,14 +18,6 @@ BALANCE_INSTRUCTION = (
     "this limitation rather than presenting biased conclusions."
 )
 
-
-def _sanitize_content(text: str) -> str:
-    """
-    Sanitize untrusted content before including in prompts.
-
-    Escapes XML-like delimiters to prevent prompt injection attacks.
-    """
-    return text.replace("<", "&lt;").replace(">", "&gt;")
 
 
 def synthesize_report(
@@ -97,13 +90,13 @@ def synthesize_report(
         limited_disclaimer = ""
 
     # Sanitize the query (comes from user but be consistent)
-    safe_query = _sanitize_content(query)
+    safe_query = sanitize_content(query)
 
     # Build optional business context block
     context_block = ""
     context_instruction = ""
     if business_context:
-        safe_context = _sanitize_content(business_context)
+        safe_context = sanitize_content(business_context)
         context_block = f"\n<business_context>\n{safe_context}\n</business_context>\n"
         context_instruction = (
             "\n\nBusiness context is provided in <business_context>. Use it only for "
@@ -218,12 +211,12 @@ def _build_sources_context(summaries: list[Summary]) -> str:
     parts = []
     for i, (url, url_summaries) in enumerate(by_url.items(), 1):
         # Sanitize title and summary to prevent prompt injection
-        title = _sanitize_content(url_summaries[0].title or "Untitled")
+        title = sanitize_content(url_summaries[0].title or "Untitled")
 
         # Deduplicate summaries from same source (overlapping chunks may repeat info)
         summary_texts = [s.summary for s in url_summaries]
         unique_summaries = _deduplicate_summaries(summary_texts)
-        combined_summary = _sanitize_content(" ".join(unique_summaries))
+        combined_summary = sanitize_content(" ".join(unique_summaries))
 
         parts.append(f"""<source id="{i}">
 <title>{title}</title>
