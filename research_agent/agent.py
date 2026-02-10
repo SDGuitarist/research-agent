@@ -23,9 +23,8 @@ logger = logging.getLogger(__name__)
 SEARCH_PASS_DELAY_BASE = 1.0
 SEARCH_PASS_DELAY_JITTER = 0.5
 
-# Stagger delay between sub-query searches to avoid rate limits
-SUB_QUERY_STAGGER_BASE = 2.0
-SUB_QUERY_STAGGER_JITTER = 0.5
+# Maximum concurrent sub-query searches (semaphore cap)
+MAX_CONCURRENT_SUB_QUERIES = 2
 
 
 class ResearchAgent:
@@ -196,6 +195,45 @@ class ResearchAgent:
         return prefetched, urls_to_fetch
 
     @staticmethod
+    async def _search_sub_queries(
+        sub_queries: list[str],
+        per_sq_sources: int,
+        seen_urls: set[str],
+    ) -> list[SearchResult]:
+        """Search sub-queries in parallel with bounded concurrency.
+
+        Uses a semaphore to cap concurrent Tavily API calls, then deduplicates
+        results against seen_urls after all searches complete.
+
+        Returns new (unseen) results and updates seen_urls in place.
+        """
+        sem = asyncio.Semaphore(MAX_CONCURRENT_SUB_QUERIES)
+
+        async def _search_one(sq: str) -> tuple[str, list[SearchResult]]:
+            async with sem:
+                try:
+                    results = await asyncio.to_thread(search, sq, per_sq_sources)
+                    return (sq, results)
+                except SearchError as e:
+                    logger.warning(f"Sub-query search failed: {e}, continuing")
+                    return (sq, [])
+
+        completed = await asyncio.gather(*[_search_one(sq) for sq in sub_queries])
+
+        new_results = []
+        for sq, sq_results in completed:
+            if not sq_results:
+                print(f"      \u2192 \"{sq}\": failed, continuing")
+                continue
+            new = [r for r in sq_results if r.url not in seen_urls]
+            for r in new:
+                seen_urls.add(r.url)
+            new_results.extend(new)
+            print(f"      \u2192 \"{sq}\": {len(sq_results)} results ({len(new)} new)")
+
+        return new_results
+
+    @staticmethod
     async def _recover_failed_urls(
         urls_to_fetch: list[str],
         extracted: list[ExtractedContent],
@@ -312,21 +350,11 @@ class ResearchAgent:
         # Sub-query searches (additive — original query already ran above)
         if decomposition and decomposition["is_complex"]:
             sub_queries = decomposition["sub_queries"]
-            # Divide pass2 budget across sub-queries for additive coverage
             per_sq_sources = max(2, self.mode.pass2_sources // len(sub_queries))
-            for i, sq in enumerate(sub_queries):
-                delay = SUB_QUERY_STAGGER_BASE + random.uniform(0, SUB_QUERY_STAGGER_JITTER)
-                await asyncio.sleep(delay)
-                try:
-                    sq_results = await asyncio.to_thread(search, sq, per_sq_sources)
-                    new = [r for r in sq_results if r.url not in seen_urls]
-                    for r in new:
-                        seen_urls.add(r.url)
-                        pass1_results.append(r)
-                    print(f"      → \"{sq}\": {len(sq_results)} results ({len(new)} new)")
-                except SearchError as e:
-                    logger.warning(f"Sub-query search failed: {e}, continuing")
-                    print(f"      → \"{sq}\": failed, continuing")
+            new_from_subs = await self._search_sub_queries(
+                sub_queries, per_sq_sources, seen_urls
+            )
+            pass1_results.extend(new_from_subs)
 
         # Refine query using snippets
         snippets = [r.snippet for r in pass1_results if r.snippet]
@@ -424,19 +452,10 @@ class ResearchAgent:
         if decomposition and decomposition["is_complex"]:
             sub_queries = decomposition["sub_queries"]
             per_sq_sources = max(2, self.mode.pass1_sources // (len(sub_queries) + 1))
-            for sq in sub_queries:
-                delay = SUB_QUERY_STAGGER_BASE + random.uniform(0, SUB_QUERY_STAGGER_JITTER)
-                await asyncio.sleep(delay)
-                try:
-                    sq_results = await asyncio.to_thread(search, sq, per_sq_sources)
-                    new = [r for r in sq_results if r.url not in seen_urls]
-                    for r in new:
-                        seen_urls.add(r.url)
-                        results.append(r)
-                    print(f"      → \"{sq}\": {len(sq_results)} results ({len(new)} new)")
-                except SearchError as e:
-                    logger.warning(f"Sub-query search failed: {e}, continuing")
-                    print(f"      → \"{sq}\": failed, continuing")
+            new_from_subs = await self._search_sub_queries(
+                sub_queries, per_sq_sources, seen_urls
+            )
+            results.extend(new_from_subs)
 
         # Fetch pages (pass 1) — skip URLs with raw_content from Tavily
         prefetched, urls_to_fetch = self._split_prefetched(results)
