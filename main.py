@@ -71,19 +71,33 @@ def get_auto_save_path(query: str) -> Path:
     return reports_dir / filename
 
 
+def show_costs() -> None:
+    """Print estimated costs for all research modes and exit."""
+    modes = [ResearchMode.quick(), ResearchMode.standard(), ResearchMode.deep()]
+    print("Estimated costs per query:")
+    for m in modes:
+        default = "  [default]" if m.name == "standard" else ""
+        print(f"  {m.name:<10} {m.cost_estimate}  "
+              f"({m.max_sources} sources, ~{m.word_target} words){default}")
+
+
 def main():
     # Load environment variables from .env file
     load_dotenv()
 
+    _quick = ResearchMode.quick()
+    _standard = ResearchMode.standard()
+    _deep = ResearchMode.deep()
+
     parser = argparse.ArgumentParser(
         description="Research agent that searches the web and generates markdown reports.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
 Research Modes:
-  --quick     Fast research: 3 sources, ~300 word report (~$0.12)
-  --standard  Balanced research: 7 sources, ~1000 word report (~$0.20) [default]
+  --quick     Fast research: {_quick.max_sources} sources, ~{_quick.word_target} word report ({_quick.cost_estimate})
+  --standard  Balanced research: {_standard.max_sources} sources, ~{_standard.word_target} word report ({_standard.cost_estimate}) [default]
               Auto-saves to reports/ folder
-  --deep      Thorough research: 10+ sources, 2 search passes, ~2000 word report (~$0.50)
+  --deep      Thorough research: {_deep.max_sources}+ sources, 2 search passes, ~{_deep.word_target} word report ({_deep.cost_estimate})
               Auto-saves to reports/ folder
 
 Examples:
@@ -132,8 +146,18 @@ Examples:
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--cost",
+        action="store_true",
+        help="Show estimated costs for all modes and exit",
+    )
 
     args = parser.parse_args()
+
+    # --cost: show costs and exit (no API keys needed)
+    if args.cost:
+        show_costs()
+        sys.exit(0)
 
     # Configure logging (after parsing so --verbose is available)
     logging.basicConfig(

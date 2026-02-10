@@ -20,6 +20,7 @@ class ResearchMode:
     min_sources_short_report: int  # Minimum survivors for short report (below = insufficient)
     relevance_cutoff: int = 3  # Minimum score (1-5) for a source to be kept
     decompose: bool = True  # Whether to attempt query decomposition
+    cost_estimate: str = ""  # Estimated cost per query (e.g., "~$0.20")
 
     def __post_init__(self) -> None:
         """Validate mode configuration."""
@@ -77,6 +78,7 @@ class ResearchMode:
             min_sources_short_report=1,
             relevance_cutoff=3,
             decompose=False,  # Skip decomposition for speed
+            cost_estimate="~$0.12",
         )
 
     @classmethod
@@ -101,6 +103,7 @@ class ResearchMode:
             min_sources_full_report=4,
             min_sources_short_report=2,
             relevance_cutoff=3,
+            cost_estimate="~$0.20",
         )
 
     @classmethod
@@ -145,6 +148,7 @@ class ResearchMode:
             min_sources_full_report=8,  # Increased for deep mode
             min_sources_short_report=5,  # Increased for deep mode
             relevance_cutoff=3,
+            cost_estimate="~$0.50",
         )
 
     @classmethod
