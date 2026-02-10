@@ -15,9 +15,10 @@ research_agent/
 ├── fetch.py       — Async HTTP fetching with SSRF protection, UA rotation
 ├── cascade.py     — Three-layer fallback: Jina Reader → Tavily Extract → snippet
 ├── extract.py     — Content extraction: trafilatura + readability-lxml fallback
+├── sanitize.py    — Shared content sanitization (prompt injection defense)
 ├── summarize.py   — Batched chunk summarization with Claude (structured FACTS/QUOTES/TONE in deep mode)
 ├── relevance.py   — Source quality scoring (1-5), gate: full_report/short_report/insufficient_data
-├── synthesize.py  — Report generation with mode-specific instructions + business context
+├── synthesize.py  — Report generation with mode-specific instructions + business context validation
 ├── modes.py       — Frozen dataclass configs: quick/standard/deep
 └── errors.py      — Custom exception hierarchy
 ```
@@ -38,10 +39,12 @@ Key: Tavily search returns `raw_content` for some results. These skip the fetch+
 - **Additive pattern**: New pipeline stages (decomposition, raw_content, cascade) layer on top without changing downstream modules. Fallback is always "behave as before."
 - **Three-layer fetch cascade**: Jina Reader (free, works on most sites) → Tavily Extract (domain-filtered, 1 credit/5 URLs) → snippet fallback (`[Source: search snippet]` prefix).
 - **Tavily `include_raw_content="markdown"`**: Zero extra cost, bypasses bot protection. Content comes from Tavily's crawl infra, not our IP.
-- **Serial sub-query searches**: 2s stagger with jitter to avoid rate limits. Not parallel.
+- **Parallel sub-query searches**: `asyncio.gather` with `Semaphore(2)` cap. Saves 5+ seconds per complex query vs the old serial 2s stagger.
 - **Frozen dataclasses for modes**: Immutable configuration objects. All mode parameters in one place.
 - **Specific exception handling**: Never bare `except Exception`. Each module catches its own failure types.
 - **Three-layer prompt injection defense**: sanitize content + XML boundaries + system prompt instructions.
+- **Shared sanitization**: `sanitize_content()` in `sanitize.py` — single source of truth, imported by summarize/relevance/synthesize.
+- **Business context validation**: Deep mode checks sections 9-10 for context keywords after synthesis; auto-regenerates if missing.
 
 ## Environment
 
@@ -89,5 +92,7 @@ Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search
 | 8+ | Tavily raw_content, --verbose | Verify integrations are active; instrument before diagnosing |
 | 9 | Fetch cascade (Jina → Tavily Extract → snippet) | Live-test services before designing; one file per stage |
 | 10 | Analytical depth: business context, 12-section template, batching, structured summaries | Generic templates + context file > hardcoded specifics |
+| 11 | Rate limit root cause fix | Concurrency control belongs at the API call layer, not task organization |
+| 12 | Quick wins: shared sanitize, parallel sub-queries, context validation | replace_all on substrings corrupts method names; always run tests immediately |
 
 See `LESSONS_LEARNED.md` for detailed findings from each cycle.

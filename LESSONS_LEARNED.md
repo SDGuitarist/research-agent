@@ -1873,6 +1873,44 @@ Always place concurrency control at the API call layer, not the task organizatio
 
 ---
 
+## 16. Quick Wins — Dedup, Parallelism, Context Validation (Cycle 12)
+
+### Quick Win 1: Deduplicate `_sanitize_content`
+
+The same `_sanitize_content` function was copy-pasted in `summarize.py`, `relevance.py`, and `synthesize.py`. Extracted into `research_agent/sanitize.py` as `sanitize_content` (dropped leading underscore since it's now a public shared utility).
+
+**The `test_` prefix bug.** Used `replace_all` of `_sanitize_content` → `sanitize_content` across test files. This corrupted test method names: `test_sanitize_content_escapes_angle_brackets` became `testsanitize_content_escapes_angle_brackets` because `_sanitize` is a substring of `test_sanitize`. Pytest requires method names to start with `test_` — the corrupted names silently disappeared from collection. The test count dropped from 291 to 281 (10 tests lost across 3 files: 4 + 4 + 2). Caught it by comparing the collected count against CLAUDE.md's documented 291.
+
+**Key Lesson:** `replace_all` on substrings is dangerous when the target string appears as part of other identifiers. Always check the test count after refactoring and run the full suite immediately — a silent drop in collected tests means names were corrupted.
+
+### Quick Win 2: Parallelize Sub-Query Searches
+
+Sub-query searches were serial with a 2-2.5s stagger between each (3 sub-queries = 6-7.5s of pure sleep). Replaced with `asyncio.gather` bounded by `asyncio.Semaphore(2)` (`MAX_CONCURRENT_SUB_QUERIES`). Both `_research_with_refinement` and `_research_deep` loops were replaced with a shared `_search_sub_queries` helper. Dedup happens after gather instead of inline.
+
+**Key Lesson:** When serial delays exist purely for rate-limit avoidance, a semaphore preserves the safety while allowing overlap. The old 2s stagger was cautious but wasteful — 2 concurrent requests is safe for Tavily and saves 5+ seconds per complex query.
+
+### Quick Win 3: Business Context Injection Fix
+
+Republic of Music research got zero Pacific Flow context in sections 9 (Competitive Implications) and 10 (Positioning Advice) while 4/5 other competitor reports got full treatment. Root cause: the business context was passed to the LLM via `<business_context>` tags with instructions to use it, but there was no validation that the model actually did.
+
+Added a post-synthesis validation step in `synthesize.py`:
+1. `_find_section()` — regex extraction of a section by title keyword
+2. `validate_context_sections()` — checks sections 9-10 for keywords ("Pacific Flow", "Alex Guillen")
+3. `regenerate_context_sections()` — targeted LLM call to rewrite only sections 9-10 with context, then `_splice_sections()` replaces them in the report
+4. Called from `agent.py` in `_research_deep` only — standard/quick modes don't have numbered section headers
+
+**Key Lesson:** LLM instructions are requests, not guarantees. For critical output requirements, validate after generation and fix automatically. A targeted regeneration call for 2 sections is much cheaper than re-running the full pipeline.
+
+### Summary of Changes
+
+| Change | Files Modified | Tests |
+|--------|---------------|-------|
+| Extract `sanitize_content` into shared module | +sanitize.py, summarize.py, relevance.py, synthesize.py, 3 test files | 291 (unchanged) |
+| Parallelize sub-query searches | agent.py | 291 (unchanged) |
+| Business context validation + regeneration | synthesize.py, agent.py, test_synthesize.py | 310 (+19 new) |
+
+---
+
 ## Summary
 
 | Category | Key Takeaway |
@@ -1949,3 +1987,8 @@ Always place concurrency control at the API call layer, not the task organizatio
 | **Documentation** | When you tune parameters, update CLAUDE.md—stale docs mislead future reviewers |
 | **Performance** | Deliberate sleep calls can account for more wall time than actual computation—audit sleep budgets periodically |
 | **Review** | Multi-agent parallel review catches cross-cutting concerns that single-perspective reviews miss |
+| **Refactoring** | `replace_all` on substrings corrupts identifiers—`_sanitize` inside `test_sanitize` loses the `test_` prefix, silently dropping tests from collection |
+| **Testing** | Always compare collected test count against documented count after refactoring—silent drops mean name corruption |
+| **Performance** | Serial delays purely for rate-limit avoidance can be replaced with semaphores—overlap saves wall time while preserving safety |
+| **LLM Validation** | LLM instructions are requests, not guarantees—validate critical output requirements after generation and fix automatically |
+| **Architecture** | Targeted regeneration of 2 sections is much cheaper than re-running the full pipeline—scope the fix to the failure |
