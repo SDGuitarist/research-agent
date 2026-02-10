@@ -24,8 +24,8 @@ CHUNK_SIZE = 4000
 MAX_CHUNKS_PER_SOURCE = 3
 
 # Batching constants for rate limit management
-BATCH_SIZE = 5
-BATCH_DELAY = 3.0
+BATCH_SIZE = 8
+BATCH_DELAY = 1.5
 
 # Maximum concurrent API calls for chunk summarization
 MAX_CONCURRENT_CHUNKS = 3
