@@ -7,6 +7,7 @@ from research_agent.sanitize import sanitize_content
 from research_agent.relevance import (
     _extract_domain,
     _parse_score_response,
+    _aggregate_by_source,
     score_source,
     evaluate_sources,
     generate_insufficient_data_response,
@@ -745,3 +746,188 @@ class TestScoreSourceRetry:
         assert "rate limited" in result["explanation"].lower()
         # 1 initial + 1 retry = 2 calls
         assert mock_client.messages.create.call_count == 2
+
+
+class TestAggregateBySource:
+    """Tests for _aggregate_by_source()."""
+
+    def test_single_chunk_per_source_passes_through(self):
+        """With unique URLs, aggregation is a no-op."""
+        summaries = [
+            Summary(url="https://a.com", title="A", summary="Summary A"),
+            Summary(url="https://b.com", title="B", summary="Summary B"),
+        ]
+        scored = [
+            {"url": "https://a.com", "title": "A", "score": 4, "explanation": "Good"},
+            {"url": "https://b.com", "title": "B", "score": 2, "explanation": "Bad"},
+        ]
+        result = _aggregate_by_source(summaries, scored)
+        assert len(result) == 2
+        assert result[0]["score"] == 4
+        assert result[1]["score"] == 2
+        assert result[0]["chunk_count"] == 1
+        assert result[1]["chunk_count"] == 1
+
+    def test_multi_chunk_uses_max_score(self):
+        """Multiple chunks from same URL should use the highest score."""
+        summaries = [
+            Summary(url="https://a.com", title="A", summary="Chunk 1"),
+            Summary(url="https://a.com", title="A", summary="Chunk 2"),
+            Summary(url="https://a.com", title="A", summary="Chunk 3"),
+        ]
+        scored = [
+            {"url": "https://a.com", "title": "A", "score": 2, "explanation": "Low"},
+            {"url": "https://a.com", "title": "A", "score": 4, "explanation": "Best"},
+            {"url": "https://a.com", "title": "A", "score": 1, "explanation": "Worst"},
+        ]
+        result = _aggregate_by_source(summaries, scored)
+        assert len(result) == 1
+        assert result[0]["score"] == 4
+        assert result[0]["explanation"] == "Best"
+        assert result[0]["chunk_count"] == 3
+        assert len(result[0]["all_summaries"]) == 3
+
+    def test_exception_defaults_to_score_3(self):
+        """Exceptions from gather should default to score 3."""
+        summaries = [
+            Summary(url="https://a.com", title="A", summary="Chunk 1"),
+        ]
+        scored = [RuntimeError("API failed")]
+        result = _aggregate_by_source(summaries, scored)
+        assert result[0]["score"] == 3
+        assert "exception" in result[0]["explanation"].lower()
+
+    def test_preserves_insertion_order(self):
+        """Sources should appear in the order their first chunk was seen."""
+        summaries = [
+            Summary(url="https://a.com", title="A", summary="A1"),
+            Summary(url="https://b.com", title="B", summary="B1"),
+            Summary(url="https://a.com", title="A", summary="A2"),
+        ]
+        scored = [
+            {"url": "https://a.com", "title": "A", "score": 3, "explanation": "Ok"},
+            {"url": "https://b.com", "title": "B", "score": 4, "explanation": "Good"},
+            {"url": "https://a.com", "title": "A", "score": 5, "explanation": "Great"},
+        ]
+        result = _aggregate_by_source(summaries, scored)
+        assert result[0]["url"] == "https://a.com"
+        assert result[1]["url"] == "https://b.com"
+
+
+class TestSourceAggregation:
+    """Tests for source-level aggregation in evaluate_sources()."""
+
+    async def test_multi_chunk_source_all_chunks_survive_when_max_passes(self):
+        """When a source's max score passes, all its chunks appear in surviving_sources."""
+        summaries = [
+            Summary(url="https://a.com", title="A", summary="Chunk 1"),
+            Summary(url="https://a.com", title="A", summary="Chunk 2"),
+            Summary(url="https://a.com", title="A", summary="Chunk 3"),
+        ]
+        mode = ResearchMode.quick()
+        mock_client = AsyncMock()
+
+        # Scores: [2, 4, 1] → max = 4 (KEEP) → all 3 chunks survive
+        scores = iter([2, 4, 1])
+        async def mock_score(query, summary, client):
+            return {"url": summary.url, "title": summary.title, "score": next(scores), "explanation": "Test"}
+
+        with patch("research_agent.relevance.score_source", mock_score):
+            result = await evaluate_sources("test", summaries, mode, mock_client)
+
+        assert result["total_survived"] == 1  # 1 unique source
+        assert len(result["surviving_sources"]) == 3  # all 3 chunks kept
+
+    async def test_multi_chunk_source_all_dropped_when_max_fails(self):
+        """When a source's max score fails, all its chunks are dropped."""
+        summaries = [
+            Summary(url="https://a.com", title="A", summary="Chunk 1"),
+            Summary(url="https://a.com", title="A", summary="Chunk 2"),
+            Summary(url="https://a.com", title="A", summary="Chunk 3"),
+        ]
+        mode = ResearchMode.quick()
+        mock_client = AsyncMock()
+
+        # Scores: [1, 2, 1] → max = 2 (DROP) → all dropped
+        scores = iter([1, 2, 1])
+        async def mock_score(query, summary, client):
+            return {"url": summary.url, "title": summary.title, "score": next(scores), "explanation": "Test"}
+
+        with patch("research_agent.relevance.score_source", mock_score):
+            result = await evaluate_sources("test", summaries, mode, mock_client)
+
+        assert result["total_survived"] == 0
+        assert len(result["surviving_sources"]) == 0
+        assert len(result["dropped_sources"]) == 1  # 1 source-level drop
+
+    async def test_mixed_sources_some_multi_some_single(self):
+        """Mix of single-chunk and multi-chunk sources aggregates correctly."""
+        summaries = [
+            # Source A: 3 chunks
+            Summary(url="https://a.com", title="A", summary="A1"),
+            Summary(url="https://a.com", title="A", summary="A2"),
+            Summary(url="https://a.com", title="A", summary="A3"),
+            # Source B: 1 chunk
+            Summary(url="https://b.com", title="B", summary="B1"),
+            # Source C: 2 chunks
+            Summary(url="https://c.com", title="C", summary="C1"),
+            Summary(url="https://c.com", title="C", summary="C2"),
+        ]
+        mode = ResearchMode.quick()
+        mock_client = AsyncMock()
+
+        # A chunks: [2, 4, 1] → max 4 (KEEP)
+        # B chunk:  [2]       → max 2 (DROP)
+        # C chunks: [3, 1]    → max 3 (KEEP)
+        scores = iter([2, 4, 1, 2, 3, 1])
+        async def mock_score(query, summary, client):
+            return {"url": summary.url, "title": summary.title, "score": next(scores), "explanation": "Test"}
+
+        with patch("research_agent.relevance.score_source", mock_score):
+            result = await evaluate_sources("test", summaries, mode, mock_client)
+
+        assert result["total_scored"] == 3  # 3 unique URLs
+        assert result["total_survived"] == 2  # A and C pass
+        assert len(result["surviving_sources"]) == 5  # A's 3 + C's 2 chunks
+        assert len(result["dropped_sources"]) == 1  # B dropped
+
+    async def test_total_scored_counts_unique_urls(self):
+        """total_scored should count unique URLs, not total chunks."""
+        summaries = [
+            Summary(url="https://a.com", title="A", summary="A1"),
+            Summary(url="https://a.com", title="A", summary="A2"),
+            Summary(url="https://b.com", title="B", summary="B1"),
+            Summary(url="https://b.com", title="B", summary="B2"),
+            Summary(url="https://b.com", title="B", summary="B3"),
+        ]
+        mode = ResearchMode.standard()
+        mock_client = AsyncMock()
+
+        async def mock_score(query, summary, client):
+            return {"url": summary.url, "title": summary.title, "score": 4, "explanation": "Good"}
+
+        with patch("research_agent.relevance.score_source", mock_score):
+            result = await evaluate_sources("test", summaries, mode, mock_client)
+
+        assert result["total_scored"] == 2  # 2 unique URLs, not 5 chunks
+        assert result["total_survived"] == 2
+
+    async def test_existing_unique_url_tests_unaffected(self):
+        """Existing behavior with unique URLs (1 chunk each) is unchanged."""
+        summaries = [
+            Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Summary {i}")
+            for i in range(5)
+        ]
+        mode = ResearchMode.standard()
+        mock_client = AsyncMock()
+
+        async def mock_score(query, summary, client):
+            return {"url": summary.url, "title": summary.title, "score": 4, "explanation": "Good"}
+
+        with patch("research_agent.relevance.score_source", mock_score):
+            result = await evaluate_sources("test", summaries, mode, mock_client)
+
+        # Same as before: 5 unique URLs, 5 chunks, all pass
+        assert result["total_scored"] == 5
+        assert result["total_survived"] == 5
+        assert len(result["surviving_sources"]) == 5

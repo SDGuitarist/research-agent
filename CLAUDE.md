@@ -75,7 +75,7 @@ Step headers show cumulative elapsed time (e.g., `[3/7] Extracting content... (1
 ## Testing
 
 ```bash
-python3 -m pytest tests/ -v    # 341 tests, all must pass
+python3 -m pytest tests/ -v    # 350 tests, all must pass
 ```
 
 Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search results. Mock where the name is imported FROM, not where it's used.
@@ -105,5 +105,6 @@ Tests use `unittest.mock` — mock Anthropic clients, Tavily clients, and search
 | 12 | Quick wins: shared sanitize, parallel sub-queries, context validation | replace_all on substrings corrupts method names; always run tests immediately |
 | 13 | Sub-query divergence: prompt + max-overlap validation | Concrete examples (BAD/GOOD) outperform vague instructions; diagnose with real queries before/after |
 | 14 | CLI QoL: --cost, --list, --open, filename swap, progress timing | Cost values belong in dataclass (single source of truth); `nargs="?"` needs validation guard |
+| 15 | Source-level relevance aggregation | Score the unit you decide on (sources, not chunks); diagnose with real data before fixing |
 
 See `LESSONS_LEARNED.md` for detailed findings from each cycle.
