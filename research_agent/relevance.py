@@ -169,6 +169,61 @@ EXPLANATION: [one sentence explaining why]"""
     }
 
 
+def _aggregate_by_source(
+    summaries: list[Summary],
+    scored_results: list,
+) -> list[dict]:
+    """
+    Aggregate chunk-level scores to source-level (by URL).
+
+    Takes the max score across all chunks for each URL. When a source
+    passes the relevance gate, all its chunks are kept — giving the
+    synthesizer full context.
+
+    Args:
+        summaries: List of Summary objects (may have duplicate URLs from chunking)
+        scored_results: Parallel list of score dicts or Exceptions from gather
+
+    Returns:
+        List of source-level dicts (one per unique URL), each with keys:
+            url, title, score (max across chunks), explanation (from best chunk),
+            chunk_count, all_summaries (list of Summary objects for this URL)
+    """
+    # Build per-URL aggregation preserving insertion order
+    by_url: dict[str, dict] = {}
+
+    for summary, result in zip(summaries, scored_results):
+        # Handle exceptions from gather
+        if isinstance(result, Exception):
+            logger.warning(f"Exception scoring {summary.url}: {result}")
+            score = 3
+            explanation = "Exception during scoring, defaulting to include"
+        else:
+            score = result["score"]
+            explanation = result["explanation"]
+
+        if summary.url not in by_url:
+            by_url[summary.url] = {
+                "url": summary.url,
+                "title": summary.title or "Untitled",
+                "score": score,
+                "explanation": explanation,
+                "chunk_count": 0,
+                "all_summaries": [],
+            }
+
+        entry = by_url[summary.url]
+        entry["chunk_count"] += 1
+        entry["all_summaries"].append(summary)
+
+        # Keep the max score and its explanation
+        if score > entry["score"]:
+            entry["score"] = score
+            entry["explanation"] = explanation
+
+    return list(by_url.values())
+
+
 async def evaluate_sources(
     query: str,
     summaries: list[Summary],
@@ -206,9 +261,11 @@ async def evaluate_sources(
             "refined_query": refined_query,
         }
 
-    print(f"\n      Evaluating {len(summaries)} sources for relevance...")
+    # Count unique sources for display
+    unique_urls = {s.url for s in summaries}
+    print(f"\n      Scoring {len(summaries)} chunks from {len(unique_urls)} sources...")
 
-    # Score sources in batches to manage rate limits
+    # Score chunks in batches to manage rate limits
     scored_results = []
     for batch_start in range(0, len(summaries), BATCH_SIZE):
         batch = summaries[batch_start:batch_start + BATCH_SIZE]
@@ -218,36 +275,29 @@ async def evaluate_sources(
         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
         scored_results.extend(batch_results)
 
+    # Aggregate chunk scores to source-level (best score per URL)
+    source_scores = _aggregate_by_source(summaries, scored_results)
+
     surviving_sources = []
     dropped_sources = []
 
-    for i, (summary, result) in enumerate(zip(summaries, scored_results), 1):
-        # Handle exceptions from gather
-        if isinstance(result, Exception):
-            logger.warning(f"Exception scoring {summary.url}: {result}")
-            score_result = {
-                "url": summary.url,
-                "title": summary.title or "Untitled",
-                "score": 3,
-                "explanation": "Exception during scoring, defaulting to include",
-            }
-        else:
-            score_result = result
-
-        domain = _extract_domain(summary.url)
-        score = score_result["score"]
+    for i, source in enumerate(source_scores, 1):
+        domain = _extract_domain(source["url"])
+        score = source["score"]
+        chunks = source["chunk_count"]
+        chunk_label = f", {chunks} chunks" if chunks > 1 else ""
 
         if score >= mode.relevance_cutoff:
-            surviving_sources.append(summary)
+            surviving_sources.extend(source["all_summaries"])
             status = "KEEP"
         else:
-            dropped_sources.append(score_result)
+            dropped_sources.append(source)
             status = "DROP"
 
-        print(f"      Source {i} ({domain}): score {score}/5 — {status}")
+        print(f"      Source {i} ({domain}): score {score}/5{chunk_label} — {status}")
 
-    total_scored = len(summaries)
-    total_survived = len(surviving_sources)
+    total_scored = len(source_scores)
+    total_survived = total_scored - len(dropped_sources)
 
     # Determine decision based on mode thresholds
     if total_survived >= mode.min_sources_full_report:
