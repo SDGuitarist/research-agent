@@ -11,11 +11,13 @@ from .search import search, refine_query, SearchResult
 from .fetch import fetch_urls
 from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all
-from .synthesize import synthesize_report, validate_context_sections, regenerate_context_sections
+from .synthesize import synthesize_report, synthesize_draft, synthesize_final
 from .relevance import evaluate_sources, generate_insufficient_data_response
-from .decompose import decompose_query, _load_context
+from .decompose import decompose_query
+from .context import load_full_context, load_synthesis_context
+from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
-from .errors import ResearchError, SearchError
+from .errors import ResearchError, SearchError, SkepticError
 from .modes import ResearchMode
 
 logger = logging.getLogger(__name__)
@@ -171,9 +173,14 @@ class ResearchAgent:
                 print(f"      Simple query — skipping decomposition")
 
         # Calculate step count:
-        # Base: deep=7, quick/standard=6
+        # Quick=6, Standard=8 (+2 for draft+skeptic), Deep=9 (+2 for draft+skeptic)
         # +1 if decomposition step is shown (mode.decompose is True)
-        base_steps = 7 if is_deep else 6
+        if is_deep:
+            base_steps = 9
+        elif self.mode.name == "standard":
+            base_steps = 8
+        else:
+            base_steps = 6
         step_count = base_steps + (1 if self.mode.decompose else 0)
 
         search_step = 2 if self.mode.decompose else 1
@@ -316,27 +323,82 @@ class ResearchAgent:
         # Synthesize report (full or short)
         logger.info(f"Synthesizing report with {self.synthesize_model}...")
         limited_sources = evaluation["decision"] == "short_report"
-        if limited_sources:
-            self._step(synthesis_step, step_count, f"Synthesizing short report with {self.synthesize_model}...")
-            print()  # blank line before streaming
-        else:
-            self._step(synthesis_step, step_count, f"Synthesizing report with {self.synthesize_model}...")
+        surviving = evaluation["surviving_sources"]
+        dropped_count = len(evaluation["dropped_sources"])
+        total_count = evaluation["total_scored"]
+
+        # Quick mode: single-pass synthesis (no skeptic)
+        if self.mode.name == "quick":
+            if limited_sources:
+                self._step(synthesis_step, step_count, f"Synthesizing short report with {self.synthesize_model}...")
+            else:
+                self._step(synthesis_step, step_count, f"Synthesizing report with {self.synthesize_model}...")
             print()  # blank line before streaming
 
-        # Load business context for synthesis
-        business_context = _load_context()
+            business_context = load_full_context()
+            return synthesize_report(
+                self.client, query, surviving,
+                model=self.synthesize_model,
+                max_tokens=self.mode.max_tokens,
+                mode_instructions=self.mode.synthesis_instructions,
+                limited_sources=limited_sources,
+                dropped_count=dropped_count,
+                total_count=total_count,
+                business_context=business_context,
+            )
 
-        return synthesize_report(
-            self.client,
-            query,
-            evaluation["surviving_sources"],
+        # Standard/deep mode: draft → skeptic → final synthesis
+        is_deep = self.mode.name == "deep"
+
+        # Step 1: Draft analysis (sections 1-8)
+        self._step(synthesis_step, step_count, "Generating draft analysis...")
+        print()  # blank line before streaming
+        draft = await asyncio.to_thread(
+            synthesize_draft, self.client, query, surviving,
+            model=self.synthesize_model,
+        )
+
+        # Step 2: Skeptic review
+        self._step(synthesis_step + 1, step_count, "Running skeptic review...")
+        synthesis_context = load_synthesis_context()
+
+        try:
+            if is_deep:
+                findings = await asyncio.to_thread(
+                    run_deep_skeptic_pass,
+                    self.client, draft, synthesis_context,
+                    model=self.synthesize_model,
+                )
+                total_critical = sum(f.critical_count for f in findings)
+                total_concern = sum(f.concern_count for f in findings)
+                print(f"      3 skeptic passes complete ({total_critical} critical, {total_concern} concerns)")
+            else:
+                finding = await asyncio.to_thread(
+                    run_skeptic_combined,
+                    self.client, draft, synthesis_context,
+                    model=self.synthesize_model,
+                )
+                findings = [finding]
+                print(f"      Combined skeptic pass complete ({finding.critical_count} critical, {finding.concern_count} concerns)")
+        except SkepticError as e:
+            logger.warning(f"Skeptic review failed: {e}, continuing without it")
+            print(f"      Skeptic review failed, continuing with standard synthesis")
+            findings = []
+
+        # Step 3: Final synthesis (sections 9-12/13)
+        self._step(synthesis_step + 2, step_count, f"Synthesizing final report with {self.synthesize_model}...")
+        print()  # blank line before streaming
+
+        return await asyncio.to_thread(
+            synthesize_final,
+            self.client, query, draft, findings, surviving,
             model=self.synthesize_model,
             max_tokens=self.mode.max_tokens,
-            mode_instructions=self.mode.synthesis_instructions,
+            business_context=synthesis_context,
             limited_sources=limited_sources,
-            dropped_count=len(evaluation["dropped_sources"]),
-            total_count=evaluation["total_scored"],
-            business_context=business_context,
+            dropped_count=dropped_count,
+            total_count=total_count,
+            is_deep=is_deep,
         )
 
     async def _research_with_refinement(
@@ -577,14 +639,5 @@ class ResearchAgent:
             synthesis_step=7 + offset,
             step_count=step_count,
         )
-
-        # Validate business context in analytical sections (deep mode only)
-        business_context = _load_context()
-        if business_context and not validate_context_sections(report, business_context):
-            print(f"\n      Business context missing from sections 9-10, regenerating...")
-            report = await asyncio.to_thread(
-                regenerate_context_sections,
-                self.client, report, business_context, model=self.synthesize_model,
-            )
 
         return report

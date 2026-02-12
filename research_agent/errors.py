@@ -29,3 +29,8 @@ class SynthesisError(ResearchError):
 class RelevanceError(ResearchError):
     """Raised when relevance scoring fails."""
     pass
+
+
+class SkepticError(ResearchError):
+    """Raised when skeptic review fails."""
+    pass

@@ -246,7 +246,10 @@ class TestResearchAgentStandardMode:
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
-             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context") as mock_synth_ctx, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -272,7 +275,10 @@ class TestResearchAgentStandardMode:
                 "total_survived": 1,
                 "refined_query": "refined query",
             }
-            mock_synthesize.return_value = "Standard Report"
+            mock_draft.return_value = "## 1. Executive Summary\nDraft content"
+            mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
+            mock_synth_ctx.return_value = "Business context"
+            mock_final.return_value = "Standard Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
             result = await agent.research_async("test query")
@@ -288,7 +294,10 @@ class TestResearchAgentStandardMode:
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
-             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context") as mock_synth_ctx, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -315,7 +324,10 @@ class TestResearchAgentStandardMode:
                 "total_survived": 1,
                 "refined_query": "refined query",
             }
-            mock_synthesize.return_value = "Report"
+            mock_draft.return_value = "## 1. Executive Summary\nDraft content"
+            mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
+            mock_synth_ctx.return_value = "Business context"
+            mock_final.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
             await agent.research_async("test query")
@@ -343,7 +355,10 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
-             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context") as mock_synth_ctx, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -369,7 +384,10 @@ class TestResearchAgentDeepMode:
                 "total_survived": 1,
                 "refined_query": "refined query",
             }
-            mock_synthesize.return_value = "Deep Report"
+            mock_draft.return_value = "## 1. Executive Summary\nDraft content"
+            mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
+            mock_synth_ctx.return_value = "Business context"
+            mock_final.return_value = "Deep Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
             result = await agent.research_async("test query")
@@ -385,7 +403,10 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
-             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context") as mock_synth_ctx, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -413,7 +434,10 @@ class TestResearchAgentDeepMode:
                 "total_survived": 1,
                 "refined_query": "refined query",
             }
-            mock_synthesize.return_value = "Report"
+            mock_draft.return_value = "## 1. Executive Summary\nDraft content"
+            mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
+            mock_synth_ctx.return_value = "Business context"
+            mock_final.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
             await agent.research_async("test query")
@@ -432,7 +456,10 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
-             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context") as mock_synth_ctx, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -466,7 +493,10 @@ class TestResearchAgentDeepMode:
                 "total_survived": 1,
                 "refined_query": "refined query",
             }
-            mock_synthesize.return_value = "Report"
+            mock_draft.return_value = "## 1. Executive Summary\nDraft content"
+            mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
+            mock_synth_ctx.return_value = "Business context"
+            mock_final.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
             await agent.research_async("test query")
@@ -594,7 +624,10 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
-             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context") as mock_synth_ctx, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -614,14 +647,17 @@ class TestResearchAgentRelevanceGate:
                 "total_survived": 5,
                 "refined_query": "refined query",
             }
-            mock_synthesize.return_value = "# Full Research Report\n\nComprehensive content."
+            mock_draft.return_value = "## 1. Executive Summary\nDraft content"
+            mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
+            mock_synth_ctx.return_value = "Business context"
+            mock_final.return_value = "# Full Research Report\n\nComprehensive content."
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
             result = await agent.research_async("test query")
 
             assert "Full Research Report" in result
-            # Verify synthesize was called with surviving_sources
-            synth_call = mock_synthesize.call_args
+            # Verify synthesize_final was called with surviving_sources
+            synth_call = mock_final.call_args
             assert synth_call[1].get("limited_sources") is False
 
     @pytest.mark.asyncio
@@ -677,7 +713,10 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
-             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context") as mock_synth_ctx, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -701,14 +740,17 @@ class TestResearchAgentRelevanceGate:
                 "total_survived": 2,
                 "refined_query": "refined query",
             }
-            mock_synthesize.return_value = "# Limited Report\n\nBased on limited sources."
+            mock_draft.return_value = "## 1. Executive Summary\nDraft content"
+            mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
+            mock_synth_ctx.return_value = "Business context"
+            mock_final.return_value = "# Limited Report\n\nBased on limited sources."
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
             result = await agent.research_async("test query")
 
             assert "Report" in result
-            # Verify synthesize was called with limited_sources=True
-            synth_call = mock_synthesize.call_args
+            # Verify synthesize_final was called with limited_sources=True
+            synth_call = mock_final.call_args
             assert synth_call[1].get("limited_sources") is True
             assert synth_call[1].get("dropped_count") == 3
             assert synth_call[1].get("total_count") == 5
@@ -764,7 +806,10 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
-             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context") as mock_synth_ctx, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -788,7 +833,10 @@ class TestResearchAgentRelevanceGate:
                 "total_survived": 5,
                 "refined_query": "refined query",
             }
-            mock_synthesize.return_value = "# Deep Report"
+            mock_draft.return_value = "## 1. Executive Summary\nDraft content"
+            mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
+            mock_synth_ctx.return_value = "Business context"
+            mock_final.return_value = "# Deep Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
             result = await agent.research_async("test query")
@@ -808,7 +856,10 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
-             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context") as mock_synth_ctx, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -827,7 +878,10 @@ class TestResearchAgentRelevanceGate:
                 "total_survived": 5,
                 "refined_query": "specifically refined query",
             }
-            mock_synthesize.return_value = "# Report"
+            mock_draft.return_value = "## 1. Executive Summary\nDraft content"
+            mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
+            mock_synth_ctx.return_value = "Business context"
+            mock_final.return_value = "# Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
             await agent.research_async("test query")
@@ -850,7 +904,7 @@ class TestResearchAgentBusinessContext:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent._load_context") as mock_load_context, \
+             patch("research_agent.agent.load_full_context") as mock_load_context, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -897,7 +951,7 @@ class TestResearchAgentBusinessContext:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent._load_context") as mock_load_context, \
+             patch("research_agent.agent.load_full_context") as mock_load_context, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -946,8 +1000,11 @@ class TestResearchAgentStructuredSummaries:
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
-             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent._load_context", return_value=None), \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context") as mock_synth_ctx, \
+             patch("research_agent.agent.load_full_context", return_value=None), \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -973,7 +1030,10 @@ class TestResearchAgentStructuredSummaries:
                 "total_survived": 1,
                 "refined_query": "refined query",
             }
-            mock_synthesize.return_value = "Deep Report"
+            mock_draft.return_value = "## 1. Executive Summary\nDraft content"
+            mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
+            mock_synth_ctx.return_value = "Business context"
+            mock_final.return_value = "Deep Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
             await agent.research_async("test query")
@@ -992,8 +1052,11 @@ class TestResearchAgentStructuredSummaries:
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
-             patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent._load_context", return_value=None), \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context") as mock_synth_ctx, \
+             patch("research_agent.agent.load_full_context", return_value=None), \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -1019,7 +1082,10 @@ class TestResearchAgentStructuredSummaries:
                 "total_survived": 1,
                 "refined_query": "refined query",
             }
-            mock_synthesize.return_value = "Standard Report"
+            mock_draft.return_value = "## 1. Executive Summary\nDraft content"
+            mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
+            mock_synth_ctx.return_value = "Business context"
+            mock_final.return_value = "Standard Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
             await agent.research_async("test query")

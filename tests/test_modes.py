@@ -41,7 +41,7 @@ class TestResearchModeFactoryMethods:
         assert mode.max_sources == 12  # Increased from 10 to account for relevance filtering
         assert mode.search_passes == 2
         assert mode.word_target == 3500
-        assert mode.max_tokens == 6000
+        assert mode.max_tokens == 8000
         assert mode.auto_save is True
         assert mode.pass1_sources == 12  # Increased from 10
         assert mode.pass2_sources == 12  # Increased from 10

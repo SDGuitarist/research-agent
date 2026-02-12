@@ -6,50 +6,34 @@ from unittest.mock import patch, MagicMock
 
 from research_agent.decompose import (
     decompose_query,
-    _load_context,
     _validate_sub_queries,
     _parse_decomposition_response,
-    _sanitize_for_prompt,
 )
-
-
-class TestSanitizeForPrompt:
-    """Tests for _sanitize_for_prompt() function."""
-
-    def test_escapes_angle_brackets(self):
-        result = _sanitize_for_prompt("<script>alert('xss')</script>")
-        assert result == "&lt;script&gt;alert('xss')&lt;/script&gt;"
-
-    def test_preserves_normal_text(self):
-        text = "Normal text without special characters"
-        assert _sanitize_for_prompt(text) == text
-
-    def test_handles_empty_string(self):
-        assert _sanitize_for_prompt("") == ""
+from research_agent.context import load_full_context
 
 
 class TestLoadContext:
-    """Tests for _load_context() function."""
+    """Tests for load_full_context() function (moved to context module)."""
 
     def test_returns_content_when_file_exists(self, tmp_path):
         context_file = tmp_path / "research_context.md"
         context_file.write_text("# My Business\nSan Diego weddings")
-        result = _load_context(context_file)
+        result = load_full_context(context_file)
         assert result == "# My Business\nSan Diego weddings"
 
     def test_returns_none_when_file_missing(self, tmp_path):
-        result = _load_context(tmp_path / "nonexistent.md")
+        result = load_full_context(tmp_path / "nonexistent.md")
         assert result is None
 
     def test_returns_none_for_empty_file(self, tmp_path):
         context_file = tmp_path / "empty.md"
         context_file.write_text("   \n  ")
-        result = _load_context(context_file)
+        result = load_full_context(context_file)
         assert result is None
 
     def test_handles_os_error_gracefully(self):
         # Path that will cause an OS error (directory, not file)
-        result = _load_context(Path("/dev/null/impossible"))
+        result = load_full_context(Path("/dev/null/impossible"))
         assert result is None
 
 

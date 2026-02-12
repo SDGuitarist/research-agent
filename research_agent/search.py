@@ -11,6 +11,7 @@ from ddgs import DDGS
 from ddgs.exceptions import DDGSException, RatelimitException
 
 from .errors import SearchError
+from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
 
@@ -149,15 +150,6 @@ def _search_duckduckgo(query: str, max_results: int, retries: int = 2) -> list[S
     return []
 
 
-def _sanitize_for_prompt(text: str) -> str:
-    """
-    Sanitize untrusted content before including in prompts.
-
-    Escapes XML-like delimiters to prevent prompt injection attacks.
-    """
-    return text.replace("<", "&lt;").replace(">", "&gt;")
-
-
 def refine_query(
     client: Anthropic,
     original_query: str,
@@ -179,13 +171,13 @@ def refine_query(
     for s in summaries[:10]:  # Max 10 summaries
         snippet = s[:150].rsplit(" ", 1)[0] + "..." if len(s) > 150 else s
         # Sanitize to prevent prompt injection from web content
-        safe_snippet = _sanitize_for_prompt(snippet)
+        safe_snippet = sanitize_content(snippet)
         truncated.append(f"- {safe_snippet}")
 
     findings = "\n".join(truncated)
 
     # Sanitize the original query too (it comes from user, but be consistent)
-    safe_query = _sanitize_for_prompt(original_query)
+    safe_query = sanitize_content(original_query)
 
     try:
         response = client.messages.create(

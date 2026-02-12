@@ -7,12 +7,12 @@ from research_agent.sanitize import sanitize_content
 from research_agent.synthesize import (
     _deduplicate_summaries,
     _build_sources_context,
-    _find_section,
-    _splice_sections,
-    validate_context_sections,
-    regenerate_context_sections,
+    _format_skeptic_findings,
     synthesize_report,
+    synthesize_draft,
+    synthesize_final,
 )
+from research_agent.skeptic import SkepticFinding
 from research_agent.summarize import Summary
 from research_agent.errors import SynthesisError
 
@@ -384,214 +384,221 @@ class TestSynthesizeReport:
                 client=mock_client,
                 query="test query",
                 summaries=sample_summaries,
-                max_tokens=6000,
+                max_tokens=8000,
             )
 
         call_args = mock_client.messages.stream.call_args
-        assert call_args.kwargs["max_tokens"] == 6000
+        assert call_args.kwargs["max_tokens"] == 8000
 
 
-# --- Business context validation tests ---
-
-SAMPLE_REPORT = """# Research Report
-
-## Executive Summary
-This report covers competitor analysis.
-
-## Company Overview
-Acme Corp was founded in 2020.
-
-## Service Portfolio
-They offer DJ services and bands.
-
-## Marketing Positioning
-They position as premium entertainment.
-
-## Messaging Theme Analysis
-Authority and social proof patterns.
-
-## Buyer Psychology
-Fear of bad entertainment choices.
-
-## Content & Marketing Tactics
-Active on Instagram and Google Ads.
-
-## Business Model Analysis
-Revenue from booking commissions.
-
-## Competitive Implications
-Acme Corp threatens the local market. Pacific Flow Entertainment should
-note their aggressive pricing strategy. Alex Guillen can differentiate
-through cultural authenticity.
-
-## Positioning Advice
-Pacific Flow should emphasize consultation-first approach. Alex Guillen
-Music can leverage the ceremony niche that Acme ignores.
-
-## Limitations & Gaps
-Limited financial data available.
-
-## Sources
-[Source 1] https://example.com
-"""
-
-SAMPLE_REPORT_NO_CONTEXT = """# Research Report
-
-## Executive Summary
-Overview of findings.
-
-## Competitive Implications
-Generic competition analysis without any business-specific references.
-The market is growing and opportunities exist.
-
-## Positioning Advice
-Consider differentiating on quality and service. Invest in marketing
-to reach more customers.
-
-## Limitations & Gaps
-Limited data.
-
-## Sources
-[Source 1] https://example.com
-"""
+# --- Draft and final synthesis tests ---
 
 
-class TestFindSection:
-    """Tests for _find_section()."""
-
-    def test_finds_section_by_title(self):
-        section = _find_section(SAMPLE_REPORT, "Competitive Implications")
-        assert "Pacific Flow Entertainment" in section
-        assert "aggressive pricing" in section
-
-    def test_finds_section_with_numbered_heading(self):
-        report = "## 9. Competitive Implications\nContent here.\n\n## 10. Positioning Advice\n"
-        section = _find_section(report, "Competitive Implications")
-        assert "Content here" in section
-
-    def test_returns_empty_for_missing_section(self):
-        section = _find_section(SAMPLE_REPORT, "Nonexistent Section")
-        assert section == ""
-
-    def test_section_stops_at_next_heading(self):
-        section = _find_section(SAMPLE_REPORT, "Competitive Implications")
-        assert "Limitations" not in section
-        assert "Positioning Advice" not in section
-
-    def test_finds_positioning_advice_section(self):
-        section = _find_section(SAMPLE_REPORT, "Positioning Advice")
-        assert "consultation-first" in section
-        assert "ceremony niche" in section
+def _make_streaming_client(response_text):
+    """Create a mock client that streams response_text."""
+    mock_client = MagicMock()
+    mock_stream = MagicMock()
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+    mock_stream.text_stream = iter([response_text])
+    mock_client.messages.stream.return_value = mock_stream
+    return mock_client
 
 
-class TestValidateContextSections:
-    """Tests for validate_context_sections()."""
-
-    def test_returns_true_when_context_keywords_present(self):
-        assert validate_context_sections(SAMPLE_REPORT, "some context") is True
-
-    def test_returns_false_when_context_keywords_missing(self):
-        assert validate_context_sections(SAMPLE_REPORT_NO_CONTEXT, "some context") is False
-
-    def test_returns_true_when_no_business_context(self):
-        assert validate_context_sections(SAMPLE_REPORT_NO_CONTEXT, None) is True
-
-    def test_returns_true_when_sections_missing(self):
-        report = "## Executive Summary\nJust a summary.\n"
-        assert validate_context_sections(report, "some context") is True
-
-    def test_detects_pacific_flow_keyword(self):
-        report = "## Competitive Implications\nPacific Flow is well-positioned.\n## Sources\n"
-        assert validate_context_sections(report, "ctx") is True
-
-    def test_detects_alex_guillen_keyword(self):
-        report = "## Positioning Advice\nAlex Guillen should focus on niche.\n## Sources\n"
-        assert validate_context_sections(report, "ctx") is True
-
-    def test_case_insensitive_keyword_match(self):
-        report = "## Competitive Implications\npacific flow has advantages.\n## Sources\n"
-        assert validate_context_sections(report, "ctx") is True
+SAMPLE_SUMMARIES = [
+    Summary(
+        url="https://example.com/1",
+        title="Source One",
+        summary="Summary of source one.",
+    ),
+    Summary(
+        url="https://example.com/2",
+        title="Source Two",
+        summary="Summary of source two.",
+    ),
+]
 
 
-class TestSpliceSections:
-    """Tests for _splice_sections()."""
+class TestSynthesizeDraft:
+    """Tests for synthesize_draft()."""
 
-    def test_splices_new_sections_into_report(self):
-        new = "## Competitive Implications\nNew content.\n\n## Positioning Advice\nNew advice.\n"
-        result = _splice_sections(SAMPLE_REPORT, new)
-        assert "New content." in result
-        assert "New advice." in result
-        # Surrounding sections should be preserved
+    def test_returns_draft_on_success(self):
+        """Should return draft markdown from streaming response."""
+        client = _make_streaming_client("## Executive Summary\nDraft content.")
+        result = synthesize_draft(client, "test query", SAMPLE_SUMMARIES)
         assert "Executive Summary" in result
-        assert "Limitations & Gaps" in result
+        assert "Draft content" in result
 
-    def test_returns_original_when_section_not_found(self):
-        report = "## Executive Summary\nJust a summary.\n"
-        result = _splice_sections(report, "## New Section\n")
-        assert result == report
+    def test_raises_on_empty_summaries(self):
+        """Should raise SynthesisError when summaries list is empty."""
+        client = MagicMock()
+        with pytest.raises(SynthesisError, match="No summaries"):
+            synthesize_draft(client, "test query", [])
 
-    def test_preserves_content_before_and_after(self):
-        new = "## Competitive Implications\nUpdated.\n\n## Positioning Advice\nUpdated advice.\n"
-        result = _splice_sections(SAMPLE_REPORT, new)
-        assert "Business Model Analysis" in result
-        assert "Limitations & Gaps" in result
+    def test_raises_on_empty_response(self):
+        """Should raise SynthesisError when response is empty."""
+        client = _make_streaming_client("")
+        with pytest.raises(SynthesisError, match="empty response"):
+            synthesize_draft(client, "test query", SAMPLE_SUMMARIES)
 
+    def test_no_business_context_in_prompt(self):
+        """Draft should NOT include business_context block."""
+        client = _make_streaming_client("Draft content")
+        synthesize_draft(client, "test query", SAMPLE_SUMMARIES)
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "<business_context>" not in prompt
 
-class TestRegenerateContextSections:
-    """Tests for regenerate_context_sections()."""
+    def test_instructs_sections_1_through_8_only(self):
+        """Draft instructions should specify sections 1-8 only."""
+        client = _make_streaming_client("Draft content")
+        synthesize_draft(client, "test query", SAMPLE_SUMMARIES)
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "sections 1-8" in prompt.lower() or "sections (sections 1-8)" in prompt.lower()
+        assert "Do NOT include Competitive Implications" in prompt
 
-    def test_calls_api_and_splices_result(self):
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=(
-            "## Competitive Implications\nPacific Flow faces competition.\n\n"
-            "## Positioning Advice\nAlex Guillen should leverage cultural niche.\n"
-        ))]
-        mock_client.messages.create.return_value = mock_response
-
-        result = regenerate_context_sections(
-            mock_client, SAMPLE_REPORT_NO_CONTEXT, "Pacific Flow context"
-        )
-
-        assert "Pacific Flow faces competition" in result
-        mock_client.messages.create.assert_called_once()
-
-    def test_returns_original_on_api_error(self):
-        from anthropic import APIError
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = APIError(
-            message="fail", request=MagicMock(), body=None
-        )
-
-        result = regenerate_context_sections(
-            mock_client, SAMPLE_REPORT_NO_CONTEXT, "context"
-        )
-
-        assert result == SAMPLE_REPORT_NO_CONTEXT
-
-    def test_returns_original_on_empty_response(self):
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="")]
-        mock_client.messages.create.return_value = mock_response
-
-        result = regenerate_context_sections(
-            mock_client, SAMPLE_REPORT_NO_CONTEXT, "context"
-        )
-
-        assert result == SAMPLE_REPORT_NO_CONTEXT
-
-    def test_sanitizes_business_context(self):
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="## Competitive Implications\nNew.\n\n## Positioning Advice\nNew.\n")]
-        mock_client.messages.create.return_value = mock_response
-
-        regenerate_context_sections(
-            mock_client, SAMPLE_REPORT_NO_CONTEXT, "<script>xss</script>"
-        )
-
-        call_args = mock_client.messages.create.call_args
+    def test_sanitizes_query(self):
+        """Should sanitize the query in the prompt."""
+        client = _make_streaming_client("Draft content")
+        synthesize_draft(client, "<script>xss</script>", SAMPLE_SUMMARIES)
+        call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "&lt;script&gt;" in prompt
-        assert "<script>" not in prompt
+
+
+class TestFormatSkepticFindings:
+    """Tests for _format_skeptic_findings()."""
+
+    def test_formats_single_finding(self):
+        """Should format a single finding with lens header."""
+        findings = [
+            SkepticFinding(
+                lens="evidence_alignment",
+                checklist="- [Concern] Claim X",
+                critical_count=0,
+                concern_count=1,
+            )
+        ]
+        result = _format_skeptic_findings(findings)
+        assert "### evidence_alignment" in result
+        assert "Claim X" in result
+
+    def test_formats_multiple_findings(self):
+        """Should format multiple findings separated by blank lines."""
+        findings = [
+            SkepticFinding(lens="evidence_alignment", checklist="Finding 1",
+                          critical_count=0, concern_count=0),
+            SkepticFinding(lens="timing_stakes", checklist="Finding 2",
+                          critical_count=0, concern_count=0),
+        ]
+        result = _format_skeptic_findings(findings)
+        assert "### evidence_alignment" in result
+        assert "### timing_stakes" in result
+
+    def test_returns_empty_for_no_findings(self):
+        """Should return empty string for empty list."""
+        assert _format_skeptic_findings([]) == ""
+
+
+class TestSynthesizeFinal:
+    """Tests for synthesize_final()."""
+
+    def test_returns_combined_report(self):
+        """Should combine draft + final sections into full report."""
+        client = _make_streaming_client("## Competitive Implications\nFinal content.")
+        draft = "## Executive Summary\nDraft content."
+        result = synthesize_final(
+            client, "test query", draft, [], SAMPLE_SUMMARIES,
+        )
+        assert "Executive Summary" in result
+        assert "Draft content" in result
+        assert "Competitive Implications" in result
+        assert "Final content" in result
+
+    def test_includes_business_context_when_provided(self):
+        """Should include business_context block in prompt."""
+        client = _make_streaming_client("Final sections")
+        synthesize_final(
+            client, "query", "draft", [], SAMPLE_SUMMARIES,
+            business_context="Pacific Flow context",
+        )
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "<business_context>" in prompt
+
+    def test_includes_skeptic_findings_block(self):
+        """Should include skeptic_findings block when findings provided."""
+        findings = [
+            SkepticFinding(
+                lens="combined",
+                checklist="- [Concern] Test finding",
+                critical_count=0,
+                concern_count=1,
+            )
+        ]
+        client = _make_streaming_client("Final sections")
+        synthesize_final(
+            client, "query", "draft", findings, SAMPLE_SUMMARIES,
+        )
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "<skeptic_findings>" in prompt
+        assert "Test finding" in prompt
+
+    def test_skips_section_11_when_no_findings(self):
+        """Should instruct to skip Adversarial Analysis when findings is empty."""
+        client = _make_streaming_client("Final sections")
+        synthesize_final(
+            client, "query", "draft", [], SAMPLE_SUMMARIES,
+        )
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        # Should NOT list Adversarial Analysis as a section to write
+        assert "11. **Adversarial Analysis**" not in prompt
+        # Should instruct to skip it
+        assert "Skip the Adversarial Analysis" in prompt
+        # No skeptic_findings block
+        assert "<skeptic_findings>" not in prompt
+
+    def test_deep_mode_requests_three_subsections(self):
+        """Deep mode should request three subsections in Section 11."""
+        findings = [
+            SkepticFinding(lens="evidence_alignment", checklist="E",
+                          critical_count=0, concern_count=0),
+        ]
+        client = _make_streaming_client("Final sections")
+        synthesize_final(
+            client, "query", "draft", findings, SAMPLE_SUMMARIES,
+            is_deep=True,
+        )
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "### Evidence Alignment Skeptic" in prompt
+        assert "### Timing & Stakes Skeptic" in prompt
+        assert "### Strategic Frame Skeptic" in prompt
+
+    def test_standard_mode_single_assessment(self):
+        """Standard mode should request single combined assessment."""
+        findings = [
+            SkepticFinding(lens="combined", checklist="C",
+                          critical_count=0, concern_count=0),
+        ]
+        client = _make_streaming_client("Final sections")
+        synthesize_final(
+            client, "query", "draft", findings, SAMPLE_SUMMARIES,
+            is_deep=False,
+        )
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "summarize the key challenges" in prompt
+        # Should NOT have three subsection headers
+        assert "### Evidence Alignment Skeptic" not in prompt
+
+    def test_raises_on_empty_response(self):
+        """Should raise SynthesisError on empty response."""
+        client = _make_streaming_client("")
+        with pytest.raises(SynthesisError, match="empty response"):
+            synthesize_final(
+                client, "query", "draft", [], SAMPLE_SUMMARIES,
+            )

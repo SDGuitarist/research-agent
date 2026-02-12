@@ -103,7 +103,7 @@ class ResearchMode:
             min_sources_full_report=4,
             min_sources_short_report=2,
             relevance_cutoff=3,
-            cost_estimate="~$0.20",
+            cost_estimate="~$0.35",
         )
 
     @classmethod
@@ -113,7 +113,7 @@ class ResearchMode:
             max_sources=12,  # Increased to account for relevance filtering
             search_passes=2,
             word_target=3500,
-            max_tokens=6000,
+            max_tokens=8000,
             auto_save=True,
             synthesis_instructions=(
                 "Provide a thorough, comprehensive analysis organized into the following sections. "
@@ -137,8 +137,11 @@ class ResearchMode:
                 "Identify threats, opportunities, and gaps in the competitor's approach.\n"
                 "10. **Positioning Advice** — 3-5 actionable angles the reader could pursue based on findings. "
                 "Reference <business_context> if provided to tailor recommendations.\n"
-                "11. **Limitations & Gaps** — What the sources don't cover, confidence levels, areas needing further research.\n"
-                "12. **Sources** — All referenced URLs with [Source N] notation.\n\n"
+                "11. **Adversarial Analysis** — Synthesize findings from the skeptic review. "
+                "For each adversarial lens, summarize the key challenges to the analysis. "
+                "Include a synthesis paragraph explaining how challenges were addressed.\n"
+                "12. **Limitations & Gaps** — What the sources don't cover, confidence levels, areas needing further research.\n"
+                "13. **Sources** — All referenced URLs with [Source N] notation.\n\n"
                 "For sections 5-10: If source data is insufficient for this analysis, state that explicitly "
                 "rather than speculating. Ground all claims in source evidence.\n\n"
                 "Target approximately 3500 words."
@@ -148,7 +151,7 @@ class ResearchMode:
             min_sources_full_report=8,  # Increased for deep mode
             min_sources_short_report=5,  # Increased for deep mode
             relevance_cutoff=3,
-            cost_estimate="~$0.50",
+            cost_estimate="~$0.85",
         )
 
     @classmethod

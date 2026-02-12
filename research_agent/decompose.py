@@ -1,10 +1,12 @@
 """Query decomposition for complex multi-topic research queries."""
 
 import logging
-import os
 from pathlib import Path
 
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
+
+from .context import load_search_context
+from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +16,6 @@ ANTHROPIC_TIMEOUT = 30.0
 # Model for decomposition (same as refinement for consistency)
 DECOMPOSITION_MODEL = "claude-sonnet-4-20250514"
 
-# Default context file location (project root)
-DEFAULT_CONTEXT_PATH = Path("research_context.md")
-
 # Sub-query limits
 MAX_SUB_QUERIES = 3
 MIN_SUB_QUERY_WORDS = 2
@@ -25,33 +24,6 @@ MAX_SUB_QUERY_WORDS = 10
 # Maximum meaningful-word overlap between a sub-query and the original query.
 # Sub-queries at or above this threshold are restatements and waste API calls.
 MAX_OVERLAP_WITH_ORIGINAL = 0.8
-
-
-def _sanitize_for_prompt(text: str) -> str:
-    """Sanitize untrusted content before including in prompts."""
-    return text.replace("<", "&lt;").replace(">", "&gt;")
-
-
-def _load_context(context_path: Path | None = None) -> str | None:
-    """
-    Load business context from file if it exists.
-
-    Args:
-        context_path: Path to context file (defaults to research_context.md)
-
-    Returns:
-        Context string or None if file doesn't exist
-    """
-    path = context_path or DEFAULT_CONTEXT_PATH
-    try:
-        if path.exists():
-            content = path.read_text().strip()
-            if content:
-                logger.info(f"Loaded research context from {path}")
-                return content
-    except OSError as e:
-        logger.warning(f"Could not read context file {path}: {e}")
-    return None
 
 
 def _validate_sub_queries(sub_queries: list[str], original_query: str) -> list[str]:
@@ -143,13 +115,13 @@ def decompose_query(
             - is_complex: bool whether decomposition occurred
             - reasoning: str brief explanation of the decision
     """
-    safe_query = _sanitize_for_prompt(query)
+    safe_query = sanitize_content(query)
 
-    # Load optional business context
-    context = _load_context(context_path)
+    # Load optional business context (search-optimized slice)
+    context = load_search_context(context_path)
     context_block = ""
     if context:
-        safe_context = _sanitize_for_prompt(context)
+        safe_context = sanitize_content(context)
         context_block = f"""
 <research_context>
 {safe_context}

@@ -7,41 +7,10 @@ from unittest.mock import patch, MagicMock
 from research_agent.search import (
     search,
     _search_tavily,
-    _sanitize_for_prompt,
     refine_query,
     SearchResult,
 )
 from research_agent.errors import SearchError
-
-
-class TestSanitizeForPrompt:
-    """Tests for _sanitize_for_prompt() function."""
-
-    def test_sanitize_for_prompt_escapes_angle_brackets(self):
-        """Angle brackets should be escaped to prevent prompt injection."""
-        result = _sanitize_for_prompt("<script>alert('xss')</script>")
-        assert result == "&lt;script&gt;alert('xss')&lt;/script&gt;"
-
-    def test_sanitize_for_prompt_handles_empty_string(self):
-        """Empty string should return empty string."""
-        result = _sanitize_for_prompt("")
-        assert result == ""
-
-    def test_sanitize_for_prompt_preserves_normal_text(self):
-        """Text without special characters should be unchanged."""
-        text = "This is normal text with no special chars."
-        result = _sanitize_for_prompt(text)
-        assert result == text
-
-    def test_sanitize_for_prompt_escapes_nested_tags(self):
-        """Nested or system-like tags should be escaped."""
-        result = _sanitize_for_prompt("</system><user>malicious</user>")
-        assert result == "&lt;/system&gt;&lt;user&gt;malicious&lt;/user&gt;"
-
-    def test_sanitize_for_prompt_handles_multiple_brackets(self):
-        """Multiple bracket pairs should all be escaped."""
-        result = _sanitize_for_prompt("<a><b><c>")
-        assert result == "&lt;a&gt;&lt;b&gt;&lt;c&gt;"
 
 
 class TestSearch:
