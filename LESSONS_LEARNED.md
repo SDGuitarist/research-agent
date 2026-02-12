@@ -1965,6 +1965,74 @@ The inter-sub-query duplicate threshold is 0.7 (70%). We chose 0.8 for max overl
 
 ---
 
+## 18. Adversarial Verification Pipeline (Cycle 16)
+
+### What We Fixed
+
+The research agent produced reports with a single-pass synthesis — one LLM call generated the complete report. No mechanism existed to challenge unsupported claims, misweighted timing dynamics, or a flawed analytical frame. The report's first critic was the human reader.
+
+### Root Cause
+
+`synthesize_report()` was monolithic: one prompt, one LLM call, one output, no feedback loop. Inference presented as observation, time-sensitive dynamics left unchallenged, and the analytical frame itself never questioned — all propagated directly into the final report.
+
+### Changes
+
+| Change | File | Lines |
+|--------|------|-------|
+| `synthesize_draft()` — sections 1-8 without business context | synthesize.py | +70 |
+| `synthesize_final()` — sections 9-12/13 informed by skeptic findings | synthesize.py | +130 |
+| `skeptic.py` — 3 adversarial agents + combined mode + retry logic | skeptic.py (new) | 359 |
+| `context.py` — stage-appropriate context slicing | context.py (new) | 100 |
+| `SkepticError` custom exception | errors.py | +5 |
+| Draft→skeptic→final orchestration in agent | agent.py | +60 |
+| Deleted dead code in synthesize.py | synthesize.py | -120 |
+| Fixed `lstrip("# ")` → `removeprefix("## ")` | context.py | 1 |
+| Consolidated `_sanitize_for_prompt` → shared `sanitize_content` | multiple | -30 |
+| Removed dead tests | test_synthesize.py, test_search.py | -170 |
+| New tests for context and skeptic modules | test_context.py, test_skeptic.py | +526 |
+
+Total: 16 files changed, +1711/-481 lines. 385 tests pass.
+
+### The `lstrip` vs `removeprefix` Bug
+
+Python's `lstrip()` strips individual **characters**, not string prefixes:
+
+```python
+"## Title".lstrip("# ")   # → "Title" (strips '#', '#', ' ')
+"# Title".lstrip("# ")    # → "Title" (also strips '#', ' ')
+"## Hello".lstrip("# ")   # → "ello" (strips '#', '#', ' ', 'H' — WRONG!)
+```
+
+`removeprefix()` does what you actually want:
+
+```python
+"## Title".removeprefix("## ")  # → "Title" (removes exact prefix)
+"# Title".removeprefix("## ")   # → "# Title" (no match, unchanged)
+```
+
+This bit us in `context.py` where section headers like `"## How the Brands Work Together"` were being corrupted by `lstrip("# ")`.
+
+### Skeptic Agent Design
+
+Three specialized lenses, each catching different failures:
+
+| Lens | What It Catches |
+|------|----------------|
+| **Evidence Alignment** | Claims tagged SUPPORTED/INFERRED/UNSUPPORTED; inference disguised as observation |
+| **Timing & Stakes** | Misweighted urgency; "wait" recommendations lacking stronger justification than "act" |
+| **Strategic Frame ("Break the Trolley")** | Wrong problem being solved; sophistication disguising inaction as "strategic patience" |
+
+Standard mode: `run_skeptic_combined()` — one call, all 3 lenses.
+Deep mode: `run_deep_skeptic_pass()` — 3 sequential agents, each receiving prior findings (cumulative adversarial pressure).
+
+### Key Lesson
+
+Multi-pass synthesis (draft → review → final) catches errors that single-pass synthesis cannot, because it separates generation from evaluation. The LLM that wrote the draft cannot simultaneously critique it — a second pass with an adversarial prompt finds claims the generator would never flag. This is the same principle as code review: the author's blind spots are visible to a reviewer.
+
+Also: `lstrip` strips characters from a set, not string prefixes. If you're removing a known prefix, always use `removeprefix()`. This is a Python footgun that code review won't reliably catch because the output *looks correct* for most inputs.
+
+---
+
 ## Summary
 
 | Category | Key Takeaway |
@@ -2046,3 +2114,10 @@ The inter-sub-query duplicate threshold is 0.7 (70%). We chose 0.8 for max overl
 | **Performance** | Serial delays purely for rate-limit avoidance can be replaced with semaphores—overlap saves wall time while preserving safety |
 | **LLM Validation** | LLM instructions are requests, not guarantees—validate critical output requirements after generation and fix automatically |
 | **Architecture** | Targeted regeneration of 2 sections is much cheaper than re-running the full pipeline—scope the fix to the failure |
+| **Architecture** | Multi-pass synthesis (draft→review→final) catches errors single-pass cannot—separate generation from evaluation |
+| **Architecture** | Stage-appropriate context slicing prevents business context from coloring factual sections |
+| **Python** | `lstrip()` strips characters from a set, not string prefixes—use `removeprefix()` for known prefixes |
+| **Code Quality** | Consolidated duplicate utility functions reduce drift—if a function exists in 2+ files, extract to shared module |
+| **Code Quality** | Dead code accumulates during rapid iteration—schedule periodic sweep passes every 2-3 cycles |
+| **Resilience** | LLM API calls need standardized retry with backoff—rate limits and timeouts are routine, not exceptional |
+| **LLM Validation** | Adversarial prompts find claims the generator would never flag—the author's blind spots are visible to a reviewer |
