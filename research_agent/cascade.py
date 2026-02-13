@@ -6,6 +6,14 @@ import os
 from urllib.parse import urlparse
 
 import httpx
+from tavily.errors import (
+    BadRequestError as TavilyBadRequest,
+    InvalidAPIKeyError as TavilyInvalidKey,
+    MissingAPIKeyError as TavilyMissingKey,
+    UsageLimitExceededError as TavilyUsageLimit,
+    ForbiddenError as TavilyForbidden,
+    TimeoutError as TavilyTimeout,
+)
 
 from .extract import ExtractedContent
 from .search import SearchResult
@@ -151,7 +159,11 @@ async def _fetch_via_tavily_extract(
                 )
             )
         return contents
-    except Exception as e:
+    except (
+        TavilyBadRequest, TavilyInvalidKey, TavilyMissingKey,
+        TavilyUsageLimit, TavilyForbidden, TavilyTimeout,
+        ConnectionError, OSError,
+    ) as e:
         logger.warning(f"Tavily Extract failed: {e}")
         return []
 

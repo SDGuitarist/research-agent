@@ -255,9 +255,10 @@ class TestTavilyExtract:
     @pytest.mark.asyncio
     async def test_returns_empty_on_api_error(self):
         """API errors should return empty list, not raise."""
+        from tavily.errors import BadRequestError as TavilyBadRequest
         with patch("tavily.TavilyClient") as mock_tavily_class:
             mock_client = MagicMock()
-            mock_client.extract.side_effect = Exception("API error")
+            mock_client.extract.side_effect = TavilyBadRequest("API error")
             mock_tavily_class.return_value = mock_client
 
             results = await _fetch_via_tavily_extract(

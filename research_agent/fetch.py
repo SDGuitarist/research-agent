@@ -161,7 +161,7 @@ def _is_safe_url(url: str) -> bool:
             return False
 
         return True
-    except Exception:
+    except ValueError:
         return False
 
 

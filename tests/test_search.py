@@ -14,33 +14,35 @@ from research_agent.errors import SearchError
 
 
 class TestSearch:
-    """Tests for search() function."""
+    """Tests for search() function (DuckDuckGo path)."""
 
     def test_search_returns_results_on_success(self, mock_ddgs_results):
         """Successful search should return list of SearchResult objects."""
         mock_results = mock_ddgs_results(3)
 
-        with patch("research_agent.search.DDGS") as mock_ddgs_class:
-            mock_instance = MagicMock()
-            mock_instance.text.return_value = mock_results
-            mock_ddgs_class.return_value.__enter__.return_value = mock_instance
+        with patch.dict(os.environ, {"TAVILY_API_KEY": ""}):
+            with patch("research_agent.search.DDGS") as mock_ddgs_class:
+                mock_instance = MagicMock()
+                mock_instance.text.return_value = mock_results
+                mock_ddgs_class.return_value.__enter__.return_value = mock_instance
 
-            results = search("test query", max_results=5)
+                results = search("test query", max_results=5)
 
-            assert len(results) == 3
+                assert len(results) == 3
             assert all(isinstance(r, SearchResult) for r in results)
             assert results[0].title == "Result 1"
             assert results[0].url == "https://example1.com/page"
 
     def test_search_raises_error_on_empty_results(self):
         """Empty results should raise SearchError."""
-        with patch("research_agent.search.DDGS") as mock_ddgs_class:
-            mock_instance = MagicMock()
-            mock_instance.text.return_value = []
-            mock_ddgs_class.return_value.__enter__.return_value = mock_instance
+        with patch.dict(os.environ, {"TAVILY_API_KEY": ""}):
+            with patch("research_agent.search.DDGS") as mock_ddgs_class:
+                mock_instance = MagicMock()
+                mock_instance.text.return_value = []
+                mock_ddgs_class.return_value.__enter__.return_value = mock_instance
 
-            with pytest.raises(SearchError, match="No results found"):
-                search("obscure query with no results")
+                with pytest.raises(SearchError, match="No results found"):
+                    search("obscure query with no results")
 
     def test_search_retries_on_rate_limit(self, mock_ddgs_results):
         """RatelimitException should trigger retry with backoff."""
@@ -48,33 +50,35 @@ class TestSearch:
 
         mock_results = mock_ddgs_results(2)
 
-        with patch("research_agent.search.DDGS") as mock_ddgs_class:
-            mock_instance = MagicMock()
-            # First call raises, second succeeds
-            mock_instance.text.side_effect = [
-                RatelimitException("rate limited"),
-                mock_results,
-            ]
-            mock_ddgs_class.return_value.__enter__.return_value = mock_instance
+        with patch.dict(os.environ, {"TAVILY_API_KEY": ""}):
+            with patch("research_agent.search.DDGS") as mock_ddgs_class:
+                mock_instance = MagicMock()
+                # First call raises, second succeeds
+                mock_instance.text.side_effect = [
+                    RatelimitException("rate limited"),
+                    mock_results,
+                ]
+                mock_ddgs_class.return_value.__enter__.return_value = mock_instance
 
-            with patch("research_agent.search.time.sleep"):  # Skip actual sleep
-                results = search("test query")
+                with patch("research_agent.search.time.sleep"):  # Skip actual sleep
+                    results = search("test query")
 
-                assert len(results) == 2
-                assert mock_instance.text.call_count == 2
+                    assert len(results) == 2
+                    assert mock_instance.text.call_count == 2
 
     def test_search_respects_max_results(self, mock_ddgs_results):
         """max_results parameter should be passed to DDGS."""
         mock_results = mock_ddgs_results(3)
 
-        with patch("research_agent.search.DDGS") as mock_ddgs_class:
-            mock_instance = MagicMock()
-            mock_instance.text.return_value = mock_results
-            mock_ddgs_class.return_value.__enter__.return_value = mock_instance
+        with patch.dict(os.environ, {"TAVILY_API_KEY": ""}):
+            with patch("research_agent.search.DDGS") as mock_ddgs_class:
+                mock_instance = MagicMock()
+                mock_instance.text.return_value = mock_results
+                mock_ddgs_class.return_value.__enter__.return_value = mock_instance
 
-            search("test query", max_results=10)
+                search("test query", max_results=10)
 
-            mock_instance.text.assert_called_once_with("test query", max_results=10)
+                mock_instance.text.assert_called_once_with("test query", max_results=10)
 
     def test_search_filters_results_without_url(self, mock_ddgs_results):
         """Results without href should be filtered out."""
@@ -84,28 +88,30 @@ class TestSearch:
             {"title": "Missing href", "body": "snippet"},  # No href key
         ]
 
-        with patch("research_agent.search.DDGS") as mock_ddgs_class:
-            mock_instance = MagicMock()
-            mock_instance.text.return_value = mock_results
-            mock_ddgs_class.return_value.__enter__.return_value = mock_instance
+        with patch.dict(os.environ, {"TAVILY_API_KEY": ""}):
+            with patch("research_agent.search.DDGS") as mock_ddgs_class:
+                mock_instance = MagicMock()
+                mock_instance.text.return_value = mock_results
+                mock_ddgs_class.return_value.__enter__.return_value = mock_instance
 
-            results = search("test query")
+                results = search("test query")
 
-            assert len(results) == 1
-            assert results[0].title == "Has URL"
+                assert len(results) == 1
+                assert results[0].title == "Has URL"
 
     def test_search_raises_after_max_retries(self):
         """Should raise SearchError after exhausting retries."""
         from ddgs.exceptions import RatelimitException
 
-        with patch("research_agent.search.DDGS") as mock_ddgs_class:
-            mock_instance = MagicMock()
-            mock_instance.text.side_effect = RatelimitException("rate limited")
-            mock_ddgs_class.return_value.__enter__.return_value = mock_instance
+        with patch.dict(os.environ, {"TAVILY_API_KEY": ""}):
+            with patch("research_agent.search.DDGS") as mock_ddgs_class:
+                mock_instance = MagicMock()
+                mock_instance.text.side_effect = RatelimitException("rate limited")
+                mock_ddgs_class.return_value.__enter__.return_value = mock_instance
 
-            with patch("research_agent.search.time.sleep"):  # Skip actual sleep
-                with pytest.raises(SearchError, match="Search failed"):
-                    search("test query")
+                with patch("research_agent.search.time.sleep"):  # Skip actual sleep
+                    with pytest.raises(SearchError, match="Search failed"):
+                        search("test query")
 
 
 class TestRefineQuery:
@@ -262,11 +268,12 @@ class TestTavilySearch:
 
     def test_search_falls_back_to_ddg_when_tavily_fails(self, mock_ddgs_results):
         """search() should fall back to DuckDuckGo when Tavily fails."""
+        from tavily.errors import BadRequestError as TavilyBadRequest
         mock_results = mock_ddgs_results(2)
 
         with patch.dict(os.environ, {"TAVILY_API_KEY": "test-key"}):
             with patch("tavily.TavilyClient") as mock_tavily_class:
-                mock_tavily_class.return_value.search.side_effect = Exception("Tavily error")
+                mock_tavily_class.return_value.search.side_effect = TavilyBadRequest("Tavily error")
 
                 with patch("research_agent.search.DDGS") as mock_ddgs_class:
                     mock_instance = MagicMock()
