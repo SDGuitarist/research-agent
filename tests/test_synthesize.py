@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 from research_agent.sanitize import sanitize_content
 from research_agent.synthesize import (
-    _deduplicate_summaries,
     _build_sources_context,
     _format_skeptic_findings,
     synthesize_report,
@@ -29,67 +28,6 @@ class TestSanitizeContent:
         """Empty string should return empty string."""
         result = sanitize_content("")
         assert result == ""
-
-
-class TestDeduplicateSummaries:
-    """Tests for _deduplicate_summaries() function."""
-
-    def test_deduplicate_summaries_removes_exact_duplicates(self):
-        """Identical strings should be deduplicated."""
-        summaries = [
-            "First summary about topic.",
-            "First summary about topic.",
-            "Second summary with different content.",
-        ]
-
-        result = _deduplicate_summaries(summaries)
-
-        assert len(result) == 2
-        assert "First summary about topic." in result
-        assert "Second summary with different content." in result
-
-    def test_deduplicate_summaries_normalizes_whitespace(self):
-        """Summaries differing only in whitespace should match."""
-        summaries = [
-            "Summary  with   extra spaces.",
-            "Summary with extra spaces.",
-            "Different summary.",
-        ]
-
-        result = _deduplicate_summaries(summaries)
-
-        assert len(result) == 2
-
-    def test_deduplicate_summaries_preserves_order(self):
-        """First occurrence should be kept, maintaining order."""
-        summaries = [
-            "First",
-            "Second",
-            "First",  # Duplicate
-            "Third",
-        ]
-
-        result = _deduplicate_summaries(summaries)
-
-        assert result == ["First", "Second", "Third"]
-
-    def test_deduplicate_summaries_handles_empty_list(self):
-        """Empty list should return empty list."""
-        result = _deduplicate_summaries([])
-        assert result == []
-
-    def test_deduplicate_summaries_keeps_unique_summaries(self):
-        """Distinct summaries should all be preserved."""
-        summaries = [
-            "Summary one.",
-            "Summary two.",
-            "Summary three.",
-        ]
-
-        result = _deduplicate_summaries(summaries)
-
-        assert len(result) == 3
-        assert result == summaries
 
 
 class TestBuildSourcesContext:

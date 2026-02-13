@@ -5,7 +5,7 @@ import logging
 import random
 import time
 
-from anthropic import Anthropic, AsyncAnthropic
+from anthropic import Anthropic, AsyncAnthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
 from .search import search, refine_query, SearchResult
 from .fetch import fetch_urls
@@ -43,17 +43,6 @@ class ResearchAgent:
         report = agent.research("Comprehensive analysis of X")
     """
 
-    # Prevent accidental attribute additions that could leak sensitive data
-    __slots__ = (
-        "_client",
-        "_async_client",
-        "_start_time",
-        "mode",
-        "max_sources",
-        "summarize_model",
-        "synthesize_model",
-    )
-
     def __init__(
         self,
         api_key: str | None = None,
@@ -62,77 +51,25 @@ class ResearchAgent:
         synthesize_model: str = "claude-sonnet-4-20250514",
         mode: ResearchMode | None = None,
     ):
-        """
-        Initialize the research agent.
-
-        Args:
-            api_key: Anthropic API key (uses ANTHROPIC_API_KEY env var if not provided)
-            max_sources: Maximum number of sources (overridden by mode if provided)
-            summarize_model: Model for chunk summarization
-            synthesize_model: Model for report synthesis
-            mode: Research mode configuration (quick, standard, deep)
-        """
-        # Store clients as private attributes to reduce exposure risk
-        # The API key is passed to clients but not stored separately
-        self._client = Anthropic(api_key=api_key)
-        self._async_client = AsyncAnthropic(api_key=api_key)
+        self.client = Anthropic(api_key=api_key)
+        self.async_client = AsyncAnthropic(api_key=api_key)
         self._start_time = 0.0
+        self._step_num = 0
+        self._step_total = 0
         self.mode = mode or ResearchMode.standard()
-        # Use explicit max_sources if provided, otherwise use mode's default
         self.max_sources = max_sources if max_sources is not None else self.mode.max_sources
         self.summarize_model = summarize_model
         self.synthesize_model = synthesize_model
 
-    def __repr__(self) -> str:
-        """Safe repr that doesn't expose API clients or keys."""
-        return (
-            f"ResearchAgent(mode={self.mode.name!r}, "
-            f"max_sources={self.max_sources}, "
-            f"summarize_model={self.summarize_model!r}, "
-            f"synthesize_model={self.synthesize_model!r})"
-        )
-
-    def _step(self, step: int | str, total: int | str, message: str) -> None:
-        """Print a step header with cumulative elapsed time."""
+    def _next_step(self, message: str) -> None:
+        """Print next step header with auto-incrementing counter."""
+        self._step_num += 1
         elapsed = time.monotonic() - self._start_time
-        print(f"\n[{step}/{total}] {message} ({elapsed:.1f}s)")
-
-    @property
-    def client(self) -> Anthropic:
-        """Access the sync Anthropic client."""
-        return self._client
-
-    @property
-    def async_client(self) -> AsyncAnthropic:
-        """Access the async Anthropic client."""
-        return self._async_client
+        print(f"\n[{self._step_num}/{self._step_total}] {message} ({elapsed:.1f}s)")
 
     def research(self, query: str) -> str:
-        """
-        Perform research on a query and return a markdown report.
-
-        Args:
-            query: The research question
-
-        Returns:
-            Markdown report string
-
-        Raises:
-            ResearchError: If research fails
-            RuntimeError: If called from within an existing async event loop
-        """
-        # Check if we're already in an async context
-        try:
-            loop = asyncio.get_running_loop()
-            raise RuntimeError(
-                "research() cannot be called from within an async context. "
-                "Use 'await agent.research_async(query)' instead."
-            )
-        except RuntimeError as e:
-            if "no running event loop" in str(e):
-                # No event loop running, safe to use asyncio.run()
-                return asyncio.run(self._research_async(query))
-            raise
+        """Perform research on a query and return a markdown report."""
+        return asyncio.run(self._research_async(query))
 
     async def research_async(self, query: str) -> str:
         """
@@ -152,12 +89,24 @@ class ResearchAgent:
     async def _research_async(self, query: str) -> str:
         """Async implementation of research."""
         self._start_time = time.monotonic()
+        self._step_num = 0
         is_deep = self.mode.name == "deep"
+
+        # Calculate total steps:
+        # Quick=6, Standard=9, Deep=10
+        # +1 if decomposition step is shown (mode.decompose is True)
+        if is_deep:
+            base_steps = 9
+        elif self.mode.name == "standard":
+            base_steps = 8
+        else:
+            base_steps = 6
+        self._step_total = base_steps + (1 if self.mode.decompose else 0)
 
         # Try query decomposition if mode supports it
         decomposition = None
         if self.mode.decompose:
-            self._step(1, "?", "Analyzing query...")
+            self._next_step("Analyzing query...")
             decomposition = await asyncio.to_thread(
                 decompose_query, self.client, query
             )
@@ -172,25 +121,13 @@ class ResearchAgent:
             else:
                 print(f"      Simple query — skipping decomposition")
 
-        # Calculate step count:
-        # Quick=6, Standard=8 (+2 for draft+skeptic), Deep=9 (+2 for draft+skeptic)
-        # +1 if decomposition step is shown (mode.decompose is True)
-        if is_deep:
-            base_steps = 9
-        elif self.mode.name == "standard":
-            base_steps = 8
-        else:
-            base_steps = 6
-        step_count = base_steps + (1 if self.mode.decompose else 0)
-
-        search_step = 2 if self.mode.decompose else 1
-        self._step(search_step, step_count, f"Searching for: {query}")
+        self._next_step(f"Searching for: {query}")
         print(f"      Mode: {self.mode.name} ({self.mode.max_sources} sources, {self.mode.search_passes} passes)")
 
         if is_deep:
-            return await self._research_deep(query, step_count, decomposition)
+            return await self._research_deep(query, decomposition)
         else:
-            return await self._research_with_refinement(query, step_count, decomposition)
+            return await self._research_with_refinement(query, decomposition)
 
     @staticmethod
     def _split_prefetched(
@@ -276,32 +213,57 @@ class ResearchAgent:
             print(f"      Cascade recovered: {', '.join(parts)}")
         return recovered
 
+    async def _fetch_extract_summarize(
+        self,
+        results: list[SearchResult],
+        structured: bool = False,
+        max_chunks: int = 3,
+    ) -> list:
+        """Shared pipeline: split prefetched, fetch, extract, cascade, summarize."""
+        prefetched, urls_to_fetch = self._split_prefetched(results)
+        self._next_step(f"Fetching {len(results)} pages...")
+        pages = await fetch_urls(urls_to_fetch) if urls_to_fetch else []
+        print(f"      Successfully fetched {len(pages)} pages ({len(prefetched)} from search cache)")
+
+        if not pages and not prefetched:
+            raise ResearchError("Could not fetch any pages")
+
+        self._next_step("Extracting content...")
+        extracted = extract_all(pages)
+
+        cascade_contents = await self._recover_failed_urls(
+            urls_to_fetch, extracted, results
+        )
+        contents = prefetched + extracted + cascade_contents
+        print(f"      Extracted content from {len(contents)} pages")
+
+        if not contents:
+            raise ResearchError("Could not extract content from any pages")
+
+        logger.info(f"Summarizing content with {self.summarize_model}...")
+        self._next_step(f"Summarizing content with {self.summarize_model}...")
+        summaries = await summarize_all(
+            self.async_client,
+            contents,
+            model=self.summarize_model,
+            structured=structured,
+            max_chunks=max_chunks,
+        )
+        print(f"      Generated {len(summaries)} summaries")
+
+        if not summaries:
+            raise ResearchError("Could not generate any summaries")
+
+        return summaries
+
     async def _evaluate_and_synthesize(
         self,
         query: str,
         summaries: list,
         refined_query: str,
-        relevance_step: int,
-        synthesis_step: int,
-        step_count: int,
     ) -> str:
-        """
-        Evaluate source relevance and synthesize report.
-
-        This helper extracts common logic between quick/standard and deep modes.
-
-        Args:
-            query: Original research query
-            summaries: List of Summary objects
-            refined_query: The refined query used for pass 2
-            relevance_step: Step number for relevance evaluation
-            synthesis_step: Step number for synthesis
-            step_count: Total step count for progress display
-
-        Returns:
-            Final report string (full, short, or insufficient data response)
-        """
-        self._step(relevance_step, step_count, "Evaluating source relevance...")
+        """Evaluate source relevance and synthesize report."""
+        self._next_step("Evaluating source relevance...")
         evaluation = await evaluate_sources(
             query=query,
             summaries=summaries,
@@ -312,7 +274,7 @@ class ResearchAgent:
 
         # Branch based on relevance gate decision
         if evaluation["decision"] == "insufficient_data":
-            self._step(synthesis_step, step_count, "Generating insufficient data response...")
+            self._next_step("Generating insufficient data response...")
             return await generate_insufficient_data_response(
                 query=query,
                 refined_query=evaluation.get("refined_query"),
@@ -329,10 +291,8 @@ class ResearchAgent:
 
         # Quick mode: single-pass synthesis (no skeptic)
         if self.mode.name == "quick":
-            if limited_sources:
-                self._step(synthesis_step, step_count, f"Synthesizing short report with {self.synthesize_model}...")
-            else:
-                self._step(synthesis_step, step_count, f"Synthesizing report with {self.synthesize_model}...")
+            label = "short report" if limited_sources else "report"
+            self._next_step(f"Synthesizing {label} with {self.synthesize_model}...")
             print()  # blank line before streaming
 
             business_context = load_full_context()
@@ -350,16 +310,14 @@ class ResearchAgent:
         # Standard/deep mode: draft → skeptic → final synthesis
         is_deep = self.mode.name == "deep"
 
-        # Step 1: Draft analysis (sections 1-8)
-        self._step(synthesis_step, step_count, "Generating draft analysis...")
+        self._next_step("Generating draft analysis...")
         print()  # blank line before streaming
         draft = await asyncio.to_thread(
             synthesize_draft, self.client, query, surviving,
             model=self.synthesize_model,
         )
 
-        # Step 2: Skeptic review
-        self._step(synthesis_step + 1, step_count, "Running skeptic review...")
+        self._next_step("Running skeptic review...")
         synthesis_context = load_synthesis_context()
 
         try:
@@ -385,8 +343,7 @@ class ResearchAgent:
             print(f"      Skeptic review failed, continuing with standard synthesis")
             findings = []
 
-        # Step 3: Final synthesis (sections 9-12/13)
-        self._step(synthesis_step + 2, step_count, f"Synthesizing final report with {self.synthesize_model}...")
+        self._next_step(f"Synthesizing final report with {self.synthesize_model}...")
         print()  # blank line before streaming
 
         return await asyncio.to_thread(
@@ -402,13 +359,10 @@ class ResearchAgent:
         )
 
     async def _research_with_refinement(
-        self, query: str, step_count: int, decomposition: dict | None = None
+        self, query: str, decomposition: dict | None = None
     ) -> str:
         """Quick/standard mode: refine query using snippets before fetching."""
-        # Step offset: if decomposition step is shown, shift all steps by 1
-        offset = 1 if self.mode.decompose else 0
-
-        # Search pass 1: always search the original query
+        # Search pass 1
         print(f"      Original query: {query}")
         try:
             pass1_results = await asyncio.to_thread(
@@ -420,7 +374,7 @@ class ResearchAgent:
 
         seen_urls = {r.url for r in pass1_results}
 
-        # Sub-query searches (additive — original query already ran above)
+        # Sub-query searches (additive)
         if decomposition and decomposition["is_complex"]:
             sub_queries = decomposition["sub_queries"]
             per_sq_sources = max(2, self.mode.pass2_sources // len(sub_queries))
@@ -451,66 +405,23 @@ class ResearchAgent:
             print(f"      Refined pass failed, continuing with existing results")
             new_results = []
 
-        # Combine all results
         all_results = pass1_results + new_results
         print(f"      Total: {len(all_results)} unique sources")
 
-        # Fetch pages — skip URLs that already have raw_content from Tavily
-        prefetched, urls_to_fetch = self._split_prefetched(all_results)
-        fetch_step = 2 + offset
-        self._step(fetch_step, step_count, f"Fetching {len(all_results)} pages...")
-        pages = await fetch_urls(urls_to_fetch) if urls_to_fetch else []
-        print(f"      Successfully fetched {len(pages)} pages ({len(prefetched)} from search cache)")
+        # Fetch → extract → cascade → summarize
+        summaries = await self._fetch_extract_summarize(all_results)
 
-        if not pages and not prefetched:
-            raise ResearchError("Could not fetch any pages")
-
-        # Extract content
-        extract_step = 3 + offset
-        self._step(extract_step, step_count, "Extracting content...")
-        extracted = extract_all(pages)
-
-        # Cascade fallback for URLs that failed fetch+extract
-        cascade_contents = await self._recover_failed_urls(
-            urls_to_fetch, extracted, all_results
-        )
-        contents = prefetched + extracted + cascade_contents
-        print(f"      Extracted content from {len(contents)} pages")
-
-        if not contents:
-            raise ResearchError("Could not extract content from any pages")
-
-        # Summarize
-        summarize_step = 4 + offset
-        logger.info(f"Summarizing content with {self.summarize_model}...")
-        self._step(summarize_step, step_count, f"Summarizing content with {self.summarize_model}...")
-        summaries = await summarize_all(
-            self.async_client,
-            contents,
-            model=self.summarize_model,
-        )
-        print(f"      Generated {len(summaries)} summaries")
-
-        if not summaries:
-            raise ResearchError("Could not generate any summaries")
-
-        # Relevance gate and synthesis
         return await self._evaluate_and_synthesize(
             query=query,
             summaries=summaries,
             refined_query=refined_query,
-            relevance_step=5 + offset,
-            synthesis_step=6 + offset,
-            step_count=step_count,
         )
 
     async def _research_deep(
-        self, query: str, step_count: int, decomposition: dict | None = None
+        self, query: str, decomposition: dict | None = None
     ) -> str:
         """Deep mode: two-pass search with full fetch/summarize between passes."""
-        offset = 1 if self.mode.decompose else 0
-
-        # Search pass 1: always search the original query
+        # Search pass 1
         try:
             results = await asyncio.to_thread(
                 search, query, self.mode.pass1_sources
@@ -530,51 +441,13 @@ class ResearchAgent:
             )
             results.extend(new_from_subs)
 
-        # Fetch pages (pass 1) — skip URLs with raw_content from Tavily
-        prefetched, urls_to_fetch = self._split_prefetched(results)
-        fetch_step = 2 + offset
-        self._step(fetch_step, step_count, f"Fetching {len(results)} pages...")
-        pages = await fetch_urls(urls_to_fetch) if urls_to_fetch else []
-        print(f"      Successfully fetched {len(pages)} pages ({len(prefetched)} from search cache)")
-
-        if not pages and not prefetched:
-            raise ResearchError("Could not fetch any pages")
-
-        # Extract content (pass 1)
-        extract_step = 3 + offset
-        self._step(extract_step, step_count, "Extracting content...")
-        extracted = extract_all(pages)
-
-        # Cascade fallback for URLs that failed fetch+extract (pass 1)
-        cascade_contents = await self._recover_failed_urls(
-            urls_to_fetch, extracted, results
+        # Pass 1: fetch → extract → cascade → summarize
+        summaries = await self._fetch_extract_summarize(
+            results, structured=True, max_chunks=5
         )
-        contents = prefetched + extracted + cascade_contents
-        print(f"      Extracted content from {len(contents)} pages")
-
-        if not contents:
-            raise ResearchError("Could not extract content from any pages")
-
-        # Summarize (pass 1)
-        is_deep = self.mode.name == "deep"
-        summarize_step = 4 + offset
-        logger.info(f"Summarizing content with {self.summarize_model}...")
-        self._step(summarize_step, step_count, f"Summarizing content with {self.summarize_model}...")
-        summaries = await summarize_all(
-            self.async_client,
-            contents,
-            model=self.summarize_model,
-            structured=is_deep,
-            max_chunks=5 if is_deep else 3,
-        )
-        print(f"      Generated {len(summaries)} summaries")
-
-        if not summaries:
-            raise ResearchError("Could not generate any summaries")
 
         # Deep mode refinement and pass 2
-        refine_step = 5 + offset
-        self._step(refine_step, step_count, "Deep mode: refining search...")
+        self._next_step("Deep mode: refining search...")
 
         summary_texts = [s.summary for s in summaries]
         refined_query = refine_query(self.client, query, summary_texts)
@@ -586,7 +459,7 @@ class ResearchAgent:
         delay = SEARCH_PASS_DELAY_BASE + random.uniform(0, SEARCH_PASS_DELAY_JITTER)
         await asyncio.sleep(delay)
 
-        # Search pass 2
+        # Search pass 2 (fetch/extract/summarize inline — no step headers)
         try:
             pass2_results = await asyncio.to_thread(
                 search, refined_query, self.mode.pass2_sources
@@ -600,29 +473,25 @@ class ResearchAgent:
                 print(f"      Fetched {len(new_pages)} new pages ({len(new_prefetched)} from search cache)")
 
                 new_extracted = extract_all(new_pages)
-
-                # Cascade fallback for URLs that failed fetch+extract (pass 2)
                 new_cascade = await self._recover_failed_urls(
                     new_urls_to_fetch, new_extracted, new_results
                 )
                 new_contents = new_prefetched + new_extracted + new_cascade
                 if new_contents:
                     print(f"      Extracted {len(new_contents)} new contents")
-
-                    if new_contents:
-                        try:
-                            new_summaries = await summarize_all(
-                                self.async_client,
-                                new_contents,
-                                model=self.summarize_model,
-                                structured=is_deep,
-                                max_chunks=5 if is_deep else 3,
-                            )
-                            summaries.extend(new_summaries)
-                            print(f"      Total summaries: {len(summaries)}")
-                        except Exception as e:
-                            logger.warning(f"Pass 2 summarization failed: {e}, continuing with pass 1 results")
-                            print(f"      Pass 2 summarization failed, continuing with {len(summaries)} summaries")
+                    try:
+                        new_summaries = await summarize_all(
+                            self.async_client,
+                            new_contents,
+                            model=self.summarize_model,
+                            structured=True,
+                            max_chunks=5,
+                        )
+                        summaries.extend(new_summaries)
+                        print(f"      Total summaries: {len(summaries)}")
+                    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
+                        logger.warning(f"Pass 2 summarization failed: {e}, continuing with pass 1 results")
+                        print(f"      Pass 2 summarization failed, continuing with {len(summaries)} summaries")
             else:
                 print("      No new unique URLs from pass 2")
 
@@ -630,14 +499,8 @@ class ResearchAgent:
             logger.warning(f"Pass 2 search failed: {e}, continuing with pass 1 results")
             print(f"      Pass 2 search failed, continuing with {len(summaries)} summaries")
 
-        # Relevance gate and synthesis
-        report = await self._evaluate_and_synthesize(
+        return await self._evaluate_and_synthesize(
             query=query,
             summaries=summaries,
             refined_query=refined_query,
-            relevance_step=6 + offset,
-            synthesis_step=7 + offset,
-            step_count=step_count,
         )
-
-        return report

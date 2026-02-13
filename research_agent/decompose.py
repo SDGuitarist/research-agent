@@ -6,12 +6,10 @@ from pathlib import Path
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
 from .context import load_search_context
+from .errors import ANTHROPIC_TIMEOUT
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
-
-# Timeout for Anthropic API calls (seconds)
-ANTHROPIC_TIMEOUT = 30.0
 
 # Model for decomposition (same as refinement for consistency)
 DECOMPOSITION_MODEL = "claude-sonnet-4-20250514"

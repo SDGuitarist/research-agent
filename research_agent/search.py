@@ -9,14 +9,19 @@ from dataclasses import dataclass
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 from ddgs import DDGS
 from ddgs.exceptions import DDGSException, RatelimitException
+from tavily.errors import (
+    BadRequestError as TavilyBadRequest,
+    InvalidAPIKeyError as TavilyInvalidKey,
+    MissingAPIKeyError as TavilyMissingKey,
+    UsageLimitExceededError as TavilyUsageLimit,
+    ForbiddenError as TavilyForbidden,
+    TimeoutError as TavilyTimeout,
+)
 
-from .errors import SearchError
+from .errors import ANTHROPIC_TIMEOUT, SearchError
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
-
-# Timeout for Anthropic API calls (seconds)
-ANTHROPIC_TIMEOUT = 30.0
 
 # Model for query refinement (using Sonnet for reliability)
 REFINEMENT_MODEL = "claude-sonnet-4-20250514"
@@ -56,7 +61,11 @@ def search(query: str, max_results: int = 5) -> list[SearchResult]:
             if results:
                 return results
             logger.warning("Tavily returned no results, falling back to DuckDuckGo")
-        except Exception as e:
+        except (
+            TavilyBadRequest, TavilyInvalidKey, TavilyMissingKey,
+            TavilyUsageLimit, TavilyForbidden, TavilyTimeout,
+            ConnectionError, OSError,
+        ) as e:
             logger.warning(f"Tavily search failed: {e}, falling back to DuckDuckGo")
 
     results = _search_duckduckgo(query, max_results)

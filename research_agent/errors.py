@@ -1,4 +1,7 @@
-"""Custom exceptions for the research agent."""
+"""Custom exceptions and shared constants for the research agent."""
+
+# Timeout for Anthropic API calls (seconds)
+ANTHROPIC_TIMEOUT = 30.0
 
 
 class ResearchError(Exception):
@@ -11,23 +14,8 @@ class SearchError(ResearchError):
     pass
 
 
-class FetchError(ResearchError):
-    """Raised when URL fetching fails."""
-    pass
-
-
-class ExtractionError(ResearchError):
-    """Raised when content extraction fails."""
-    pass
-
-
 class SynthesisError(ResearchError):
     """Raised when report synthesis fails."""
-    pass
-
-
-class RelevanceError(ResearchError):
-    """Raised when relevance scoring fails."""
     pass
 
 

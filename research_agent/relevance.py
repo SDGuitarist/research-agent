@@ -10,7 +10,6 @@ from anthropic import AsyncAnthropic, APIError, RateLimitError, APIConnectionErr
 
 from .summarize import Summary
 from .modes import ResearchMode
-from .errors import RelevanceError
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
@@ -35,7 +34,7 @@ def _extract_domain(url: str) -> str:
     try:
         parsed = urlparse(url)
         return parsed.netloc or url[:30]
-    except Exception:
+    except ValueError:
         return url[:30]
 
 
@@ -155,10 +154,6 @@ EXPLANATION: [one sentence explaining why]"""
         except (APIError, APIConnectionError, APITimeoutError) as e:
             logger.warning(f"API error scoring {summary.url}: {e}")
             score, explanation = 3, "API error during scoring, defaulting to include"
-            break
-        except Exception as e:
-            logger.warning(f"Unexpected error scoring {summary.url}: {e}")
-            score, explanation = 3, "Unexpected error during scoring, defaulting to include"
             break
 
     return {
@@ -410,9 +405,6 @@ Do NOT pad the response. Keep it concise and honest."""
 
     except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
         logger.warning(f"API error generating insufficient data response: {e}")
-        return _fallback_insufficient_response(query, refined_query, dropped_sources)
-    except Exception as e:
-        logger.warning(f"Unexpected error generating insufficient data response: {e}")
         return _fallback_insufficient_response(query, refined_query, dropped_sources)
 
 

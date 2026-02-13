@@ -184,6 +184,8 @@ Write the report now:"""
         raise SynthesisError(f"Request timed out after {SYNTHESIS_TIMEOUT}s: {e}")
     except APIError as e:
         raise SynthesisError(f"API error: {e}")
+    except (SynthesisError, KeyboardInterrupt):
+        raise
     except Exception as e:
         raise SynthesisError(f"Synthesis failed: {e}")
 
@@ -285,7 +287,7 @@ Write sections 1-8 now:"""
         raise SynthesisError(f"Draft synthesis timed out: {e}")
     except APIError as e:
         raise SynthesisError(f"Draft synthesis API error: {e}")
-    except SynthesisError:
+    except (SynthesisError, KeyboardInterrupt):
         raise
     except Exception as e:
         raise SynthesisError(f"Draft synthesis failed: {e}")
@@ -495,30 +497,10 @@ Continue the report now:"""
         raise SynthesisError(f"Final synthesis timed out: {e}")
     except APIError as e:
         raise SynthesisError(f"Final synthesis API error: {e}")
-    except SynthesisError:
+    except (SynthesisError, KeyboardInterrupt):
         raise
     except Exception as e:
         raise SynthesisError(f"Final synthesis failed: {e}")
-
-
-def _deduplicate_summaries(summaries: list[str]) -> list[str]:
-    """
-    Remove duplicate or near-duplicate summaries from a list.
-
-    Uses simple exact-match deduplication. Summaries from overlapping
-    chunks may contain similar content.
-    """
-    seen: set[str] = set()
-    unique: list[str] = []
-
-    for summary in summaries:
-        # Normalize whitespace for comparison
-        normalized = " ".join(summary.split())
-        if normalized not in seen:
-            seen.add(normalized)
-            unique.append(summary)
-
-    return unique
 
 
 def _build_sources_context(summaries: list[Summary]) -> str:
@@ -536,8 +518,13 @@ def _build_sources_context(summaries: list[Summary]) -> str:
         title = sanitize_content(url_summaries[0].title or "Untitled")
 
         # Deduplicate summaries from same source (overlapping chunks may repeat info)
-        summary_texts = [s.summary for s in url_summaries]
-        unique_summaries = _deduplicate_summaries(summary_texts)
+        seen: set[str] = set()
+        unique_summaries: list[str] = []
+        for text in (s.summary for s in url_summaries):
+            normalized = " ".join(text.split())
+            if normalized not in seen:
+                seen.add(normalized)
+                unique_summaries.append(text)
         combined_summary = sanitize_content(" ".join(unique_summaries))
 
         parts.append(f"""<source id="{i}">

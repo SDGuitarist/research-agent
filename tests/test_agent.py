@@ -569,27 +569,6 @@ class TestResearchAgentErrorHandling:
                 await agent.research_async("test query")
 
 
-class TestResearchAgentRepr:
-    """Tests for ResearchAgent repr and safety."""
-
-    def test_repr_does_not_expose_api_key(self):
-        """repr should not contain API key."""
-        agent = ResearchAgent(api_key="sk-ant-secret-key-12345")
-        repr_str = repr(agent)
-
-        assert "sk-ant" not in repr_str
-        assert "secret" not in repr_str
-        assert "12345" not in repr_str
-
-    def test_repr_shows_mode_and_settings(self):
-        """repr should show mode name and settings."""
-        agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
-        repr_str = repr(agent)
-
-        assert "deep" in repr_str
-        assert "max_sources=12" in repr_str  # Updated from 10 to 12
-
-
 class TestResearchAgentRelevanceGate:
     """Integration tests for relevance gate behavior."""
 
