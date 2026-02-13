@@ -2,6 +2,7 @@
 
 import logging
 import re
+from dataclasses import dataclass
 from urllib.parse import urlparse
 
 import asyncio
@@ -27,6 +28,26 @@ INSUFFICIENT_RESPONSE_TIMEOUT = 30.0
 # Model for relevance scoring (using Sonnet for reliability)
 SCORING_MODEL = "claude-sonnet-4-20250514"
 
+
+@dataclass(frozen=True)
+class SourceScore:
+    """Score for a single source's relevance to the research query."""
+    url: str
+    title: str
+    score: int
+    explanation: str
+
+
+@dataclass(frozen=True)
+class RelevanceEvaluation:
+    """Result of evaluating all sources against the research query."""
+    decision: str
+    decision_rationale: str
+    surviving_sources: tuple[Summary, ...]
+    dropped_sources: tuple  # tuple of SourceScore or dicts from aggregation
+    total_scored: int
+    total_survived: int
+    refined_query: str | None
 
 
 def _extract_domain(url: str) -> str:
@@ -80,7 +101,7 @@ def _parse_score_response(response_text: str) -> tuple[int, str]:
     return score, explanation
 
 
-async def score_source(query: str, summary: Summary, client: AsyncAnthropic) -> dict:
+async def score_source(query: str, summary: Summary, client: AsyncAnthropic) -> SourceScore:
     """
     Score a single source's relevance to the research query.
 
@@ -90,7 +111,7 @@ async def score_source(query: str, summary: Summary, client: AsyncAnthropic) -> 
         client: Async Anthropic client for API calls
 
     Returns:
-        Dict with keys: url, title, score (1-5), explanation
+        SourceScore with url, title, score (1-5), explanation
     """
     # Sanitize content for prompt injection defense
     safe_query = sanitize_content(query)
@@ -156,12 +177,12 @@ EXPLANATION: [one sentence explaining why]"""
             score, explanation = 3, "API error during scoring, defaulting to include"
             break
 
-    return {
-        "url": summary.url,
-        "title": summary.title or "Untitled",
-        "score": score,
-        "explanation": explanation,
-    }
+    return SourceScore(
+        url=summary.url,
+        title=summary.title or "Untitled",
+        score=score,
+        explanation=explanation,
+    )
 
 
 def _aggregate_by_source(
@@ -194,8 +215,8 @@ def _aggregate_by_source(
             score = 3
             explanation = "Exception during scoring, defaulting to include"
         else:
-            score = result["score"]
-            explanation = result["explanation"]
+            score = result.score
+            explanation = result.explanation
 
         if summary.url not in by_url:
             by_url[summary.url] = {
@@ -225,7 +246,7 @@ async def evaluate_sources(
     mode: ResearchMode,
     client: AsyncAnthropic,
     refined_query: str | None = None,
-) -> dict:
+) -> RelevanceEvaluation:
     """
     Evaluate all source summaries and determine output behavior.
 
@@ -237,24 +258,18 @@ async def evaluate_sources(
         refined_query: Optional refined query (for insufficient data response)
 
     Returns:
-        Dict with keys:
-        - decision: "full_report" | "short_report" | "insufficient_data"
-        - decision_rationale: Human-readable explanation
-        - surviving_sources: List of Summary objects that passed (score >= cutoff)
-        - dropped_sources: List of dicts with score info for failed sources
-        - total_scored: int
-        - total_survived: int
+        RelevanceEvaluation with decision, surviving/dropped sources, and counts
     """
     if not summaries:
-        return {
-            "decision": "insufficient_data",
-            "decision_rationale": "No summaries to evaluate",
-            "surviving_sources": [],
-            "dropped_sources": [],
-            "total_scored": 0,
-            "total_survived": 0,
-            "refined_query": refined_query,
-        }
+        return RelevanceEvaluation(
+            decision="insufficient_data",
+            decision_rationale="No summaries to evaluate",
+            surviving_sources=(),
+            dropped_sources=(),
+            total_scored=0,
+            total_survived=0,
+            refined_query=refined_query,
+        )
 
     # Count unique sources for display
     unique_urls = {s.url for s in summaries}
@@ -317,21 +332,30 @@ async def evaluate_sources(
 
     print(f"      Decision: {decision} ({total_survived}/{total_scored} sources passed)")
 
-    return {
-        "decision": decision,
-        "decision_rationale": rationale,
-        "surviving_sources": surviving_sources,
-        "dropped_sources": dropped_sources,
-        "total_scored": total_scored,
-        "total_survived": total_survived,
-        "refined_query": refined_query,
-    }
+    # Convert dropped aggregation dicts to SourceScore objects
+    dropped_as_scores = tuple(
+        SourceScore(
+            url=d["url"], title=d["title"],
+            score=d["score"], explanation=d["explanation"],
+        )
+        for d in dropped_sources
+    )
+
+    return RelevanceEvaluation(
+        decision=decision,
+        decision_rationale=rationale,
+        surviving_sources=tuple(surviving_sources),
+        dropped_sources=dropped_as_scores,
+        total_scored=total_scored,
+        total_survived=total_survived,
+        refined_query=refined_query,
+    )
 
 
 async def generate_insufficient_data_response(
     query: str,
     refined_query: str | None,
-    dropped_sources: list[dict],
+    dropped_sources: tuple[SourceScore, ...],
     client: AsyncAnthropic,
 ) -> str:
     """
@@ -349,10 +373,10 @@ async def generate_insufficient_data_response(
     # Format dropped sources for the prompt
     sources_text = []
     for src in dropped_sources:
-        safe_title = sanitize_content(src.get("title", "Untitled"))
-        safe_explanation = sanitize_content(src.get("explanation", "No explanation"))
+        safe_title = sanitize_content(src.title)
+        safe_explanation = sanitize_content(src.explanation)
         sources_text.append(
-            f"- {safe_title} (score {src.get('score', '?')}/5): {safe_explanation}"
+            f"- {safe_title} (score {src.score}/5): {safe_explanation}"
         )
 
     dropped_sources_formatted = "\n".join(sources_text) if sources_text else "No sources were found."
@@ -411,7 +435,7 @@ Do NOT pad the response. Keep it concise and honest."""
 def _fallback_insufficient_response(
     query: str,
     refined_query: str | None,
-    dropped_sources: list[dict],
+    dropped_sources: tuple[SourceScore, ...],
 ) -> str:
     """Generate a basic insufficient data response when LLM call fails."""
     # Sanitize user-provided content for safe display
@@ -435,9 +459,9 @@ def _fallback_insufficient_response(
     ])
 
     for src in dropped_sources[:5]:  # Limit to 5 sources
-        title = sanitize_content(src.get("title", "Untitled"))
-        score = src.get("score", "?")
-        explanation = sanitize_content(src.get("explanation", "No explanation"))
+        title = sanitize_content(src.title)
+        score = src.score
+        explanation = sanitize_content(src.explanation)
         lines.append(f"- {title} (score {score}/5): {explanation}")
 
     lines.extend([

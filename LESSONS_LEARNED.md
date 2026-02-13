@@ -1,5 +1,27 @@
 # Lessons Learned: Building a Python Research Agent
 
+## Development History
+
+| Cycle | Feature | Key Lesson |
+|-------|---------|------------|
+| 1 | Core agent | SSRF vulnerability caught in review |
+| 2-3 | Research modes, query refinement | Frozen dataclasses, snippet-based refinement |
+| 4 | Security hardening | 16 issues found in review-only cycle |
+| 6 | Relevance gate | Async scoring, sanitize all code paths |
+| 7 | Tavily + DuckDuckGo fallback | YAGNI — 50 lines beat 300-line abstraction |
+| 8 | Query decomposition | Additive pattern, discovery interview |
+| 8+ | Tavily raw_content, --verbose | Verify integrations are active; instrument before diagnosing |
+| 9 | Fetch cascade (Jina → Tavily Extract → snippet) | Live-test services before designing; one file per stage |
+| 10 | Analytical depth: business context, 12-section template, batching, structured summaries | Generic templates + context file > hardcoded specifics |
+| 11 | Rate limit root cause fix | Concurrency control belongs at the API call layer, not task organization |
+| 12 | Quick wins: shared sanitize, parallel sub-queries, context validation | replace_all on substrings corrupts method names; always run tests immediately |
+| 13 | Sub-query divergence: prompt + max-overlap validation | Concrete examples (BAD/GOOD) outperform vague instructions; diagnose with real queries before/after |
+| 14 | CLI QoL: --cost, --list, --open, filename swap, progress timing | Cost values belong in dataclass (single source of truth); `nargs="?"` needs validation guard |
+| 15 | Source-level relevance aggregation | Score the unit you decide on (sources, not chunks); diagnose with real data before fixing |
+| 16 | Skeptic pass: draft→skeptic→final pipeline | Multi-pass synthesis catches unsupported claims; `lstrip` strips characters not prefixes — use `removeprefix` |
+
+---
+
 ## 1. Planning Decisions That Saved Time
 
 ### Research Before Coding Paid Off

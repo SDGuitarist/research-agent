@@ -1,6 +1,7 @@
 """Query decomposition for complex multi-topic research queries."""
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
@@ -22,6 +23,14 @@ MAX_SUB_QUERY_WORDS = 10
 # Maximum meaningful-word overlap between a sub-query and the original query.
 # Sub-queries at or above this threshold are restatements and waste API calls.
 MAX_OVERLAP_WITH_ORIGINAL = 0.8
+
+
+@dataclass(frozen=True)
+class DecompositionResult:
+    """Result of query decomposition analysis."""
+    sub_queries: tuple[str, ...]
+    is_complex: bool
+    reasoning: str
 
 
 def _validate_sub_queries(sub_queries: list[str], original_query: str) -> list[str]:
@@ -95,7 +104,7 @@ def decompose_query(
     client: Anthropic,
     query: str,
     context_path: Path | None = None,
-) -> dict:
+) -> DecompositionResult:
     """
     Analyze a query and decompose it into focused sub-queries if complex.
 
@@ -108,8 +117,8 @@ def decompose_query(
         context_path: Optional path to business context file
 
     Returns:
-        dict with keys:
-            - sub_queries: list[str] of queries to search
+        DecompositionResult with fields:
+            - sub_queries: tuple of queries to search
             - is_complex: bool whether decomposition occurred
             - reasoning: str brief explanation of the decision
     """
@@ -169,17 +178,17 @@ SUB_QUERIES:
 
         if not response.content:
             logger.warning("Empty response from decomposition, using original query")
-            return {"sub_queries": [query], "is_complex": False, "reasoning": ""}
+            return DecompositionResult(sub_queries=(query,), is_complex=False, reasoning="")
 
         text = response.content[0].text.strip()
         return _parse_decomposition_response(text, query)
 
     except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
         logger.warning(f"Query decomposition failed: {e}, using original query")
-        return {"sub_queries": [query], "is_complex": False, "reasoning": ""}
+        return DecompositionResult(sub_queries=(query,), is_complex=False, reasoning="")
 
 
-def _parse_decomposition_response(text: str, original_query: str) -> dict:
+def _parse_decomposition_response(text: str, original_query: str) -> DecompositionResult:
     """
     Parse the structured decomposition response from Claude.
 
@@ -188,7 +197,7 @@ def _parse_decomposition_response(text: str, original_query: str) -> dict:
         original_query: Fallback query
 
     Returns:
-        Parsed decomposition dict
+        Parsed DecompositionResult
     """
     lines = text.strip().split("\n")
 
@@ -206,24 +215,24 @@ def _parse_decomposition_response(text: str, original_query: str) -> dict:
             sub_queries.append(line[2:].strip())
 
     if query_type == "SIMPLE" or not sub_queries:
-        return {
-            "sub_queries": [original_query],
-            "is_complex": False,
-            "reasoning": reasoning,
-        }
+        return DecompositionResult(
+            sub_queries=(original_query,),
+            is_complex=False,
+            reasoning=reasoning,
+        )
 
     validated = _validate_sub_queries(sub_queries, original_query)
 
     # If validation reduced to 1 query, treat as simple
     if len(validated) == 1 and validated[0] == original_query:
-        return {
-            "sub_queries": [original_query],
-            "is_complex": False,
-            "reasoning": reasoning,
-        }
+        return DecompositionResult(
+            sub_queries=(original_query,),
+            is_complex=False,
+            reasoning=reasoning,
+        )
 
-    return {
-        "sub_queries": validated,
-        "is_complex": True,
-        "reasoning": reasoning,
-    }
+    return DecompositionResult(
+        sub_queries=tuple(validated),
+        is_complex=True,
+        reasoning=reasoning,
+    )

@@ -10,6 +10,7 @@ from research_agent.search import SearchResult
 from research_agent.fetch import FetchedPage
 from research_agent.extract import ExtractedContent
 from research_agent.summarize import Summary
+from research_agent.relevance import RelevanceEvaluation, SourceScore
 
 
 class TestResearchAgentQuickMode:
@@ -76,15 +77,15 @@ class TestResearchAgentQuickMode:
                 ExtractedContent(url="https://example1.com", title="Test", text="Content " * 50)
             ]
             mock_summarize.return_value = mock_summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All sources passed",
-                "surviving_sources": mock_summaries,
-                "dropped_sources": [],
-                "total_scored": len(mock_summaries),
-                "total_survived": len(mock_summaries),
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All sources passed",
+                    surviving_sources=tuple(mock_summaries),
+                    dropped_sources=(),
+                    total_scored=len(mock_summaries),
+                    total_survived=len(mock_summaries),
+                    refined_query="refined query",
+                )
             mock_synthesize.return_value = "# Research Report\n\nContent here."
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
@@ -117,15 +118,15 @@ class TestResearchAgentQuickMode:
             ]
             summaries = [Summary(url="https://example1.com", title="T", summary="S")]
             mock_summarize.return_value = summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_synthesize.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
@@ -166,15 +167,15 @@ class TestResearchAgentQuickMode:
             ]
             summaries = [Summary(url="https://example1.com", title="T", summary="S")]
             mock_summarize.return_value = summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_synthesize.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
@@ -215,15 +216,15 @@ class TestResearchAgentQuickMode:
             ]
             summaries = [Summary(url="https://example1.com", title="T", summary="S")]
             mock_summarize.return_value = summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_synthesize.return_value = "Report from pass 1 only"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
@@ -266,15 +267,15 @@ class TestResearchAgentStandardMode:
             ]
             summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
             mock_summarize.return_value = summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
             mock_synth_ctx.return_value = "Business context"
@@ -315,15 +316,15 @@ class TestResearchAgentStandardMode:
             ]
             summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
             mock_summarize.return_value = summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
             mock_synth_ctx.return_value = "Business context"
@@ -375,15 +376,15 @@ class TestResearchAgentDeepMode:
             ]
             summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
             mock_summarize.return_value = summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
             mock_synth_ctx.return_value = "Business context"
@@ -425,15 +426,15 @@ class TestResearchAgentDeepMode:
             ]
             mock_summarize.return_value = summaries
             mock_refine.return_value = "refined query"
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
             mock_synth_ctx.return_value = "Business context"
@@ -484,15 +485,15 @@ class TestResearchAgentDeepMode:
             ]
             summaries = [Summary(url="https://pass1-0.com", title="T", summary="S")]
             mock_summarize.return_value = summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
             mock_synth_ctx.return_value = "Business context"
@@ -617,15 +618,15 @@ class TestResearchAgentRelevanceGate:
             mock_summarize.return_value = base_mocks["summaries"]
 
             # All sources pass with high scores
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All sources passed",
-                "surviving_sources": base_mocks["summaries"],
-                "dropped_sources": [],
-                "total_scored": 5,
-                "total_survived": 5,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All sources passed",
+                    surviving_sources=tuple(base_mocks["summaries"]),
+                    dropped_sources=(),
+                    total_scored=5,
+                    total_survived=5,
+                    refined_query="refined query",
+                )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
             mock_synth_ctx.return_value = "Business context"
@@ -660,18 +661,18 @@ class TestResearchAgentRelevanceGate:
             mock_summarize.return_value = base_mocks["summaries"]
 
             # No sources pass
-            mock_evaluate.return_value = {
-                "decision": "insufficient_data",
-                "decision_rationale": "No sources passed relevance threshold",
-                "surviving_sources": [],
-                "dropped_sources": [
-                    {"url": f"https://example{i}.com", "title": f"Title {i}", "score": 2, "explanation": "Not relevant"}
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="insufficient_data",
+                decision_rationale="No sources passed relevance threshold",
+                surviving_sources=(),
+                dropped_sources=tuple(
+                    SourceScore(url=f"https://example{i}.com", title=f"Title {i}", score=2, explanation="Not relevant")
                     for i in range(5)
-                ],
-                "total_scored": 5,
-                "total_survived": 0,
-                "refined_query": "refined query",
-            }
+                ),
+                total_scored=5,
+                total_survived=0,
+                refined_query="refined query",
+            )
             mock_insufficient.return_value = "# Insufficient Data Found\n\nCould not find relevant sources."
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
@@ -707,18 +708,18 @@ class TestResearchAgentRelevanceGate:
 
             # Only 2 sources pass (below full_report threshold for standard)
             surviving = base_mocks["summaries"][:2]
-            mock_evaluate.return_value = {
-                "decision": "short_report",
-                "decision_rationale": "Only 2 of 5 sources passed",
-                "surviving_sources": surviving,
-                "dropped_sources": [
-                    {"url": f"https://example{i}.com", "title": f"Title {i}", "score": 2, "explanation": "Not relevant"}
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="short_report",
+                decision_rationale="Only 2 of 5 sources passed",
+                surviving_sources=tuple(surviving),
+                dropped_sources=tuple(
+                    SourceScore(url=f"https://example{i}.com", title=f"Title {i}", score=2, explanation="Not relevant")
                     for i in range(2, 5)
-                ],
-                "total_scored": 5,
-                "total_survived": 2,
-                "refined_query": "refined query",
-            }
+                ),
+                total_scored=5,
+                total_survived=2,
+                refined_query="refined query",
+            )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
             mock_synth_ctx.return_value = "Business context"
@@ -756,18 +757,18 @@ class TestResearchAgentRelevanceGate:
             mock_summarize.return_value = quick_summaries
 
             # All fail in quick mode
-            mock_evaluate.return_value = {
-                "decision": "insufficient_data",
-                "decision_rationale": "No sources passed in quick mode",
-                "surviving_sources": [],
-                "dropped_sources": [
-                    {"url": s.url, "title": s.title, "score": 1, "explanation": "Off-topic"}
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="insufficient_data",
+                decision_rationale="No sources passed in quick mode",
+                surviving_sources=(),
+                dropped_sources=tuple(
+                    SourceScore(url=s.url, title=s.title, score=1, explanation="Off-topic")
                     for s in quick_summaries
-                ],
-                "total_scored": 3,
-                "total_survived": 0,
-                "refined_query": "refined query",
-            }
+                ),
+                total_scored=3,
+                total_survived=0,
+                refined_query="refined query",
+            )
             mock_insufficient.return_value = "# Insufficient Data\n\nNo relevant sources found."
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
@@ -803,15 +804,15 @@ class TestResearchAgentRelevanceGate:
             mock_summarize.return_value = base_mocks["summaries"]
 
             # All pass
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All sources passed",
-                "surviving_sources": base_mocks["summaries"],
-                "dropped_sources": [],
-                "total_scored": 5,
-                "total_survived": 5,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All sources passed",
+                    surviving_sources=tuple(base_mocks["summaries"]),
+                    dropped_sources=(),
+                    total_scored=5,
+                    total_survived=5,
+                    refined_query="refined query",
+                )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
             mock_synth_ctx.return_value = "Business context"
@@ -848,15 +849,15 @@ class TestResearchAgentRelevanceGate:
             mock_extract.return_value = base_mocks["extracted_content"]
             mock_summarize.return_value = base_mocks["summaries"]
 
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": base_mocks["summaries"],
-                "dropped_sources": [],
-                "total_scored": 5,
-                "total_survived": 5,
-                "refined_query": "specifically refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(base_mocks["summaries"]),
+                    dropped_sources=(),
+                    total_scored=5,
+                    total_survived=5,
+                    refined_query="specifically refined query",
+                )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
             mock_synth_ctx.return_value = "Business context"
@@ -899,15 +900,15 @@ class TestResearchAgentBusinessContext:
             ]
             summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
             mock_summarize.return_value = summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_synthesize.return_value = "Report"
             mock_load_context.return_value = "We are a guitar company."
 
@@ -946,15 +947,15 @@ class TestResearchAgentBusinessContext:
             ]
             summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
             mock_summarize.return_value = summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_synthesize.return_value = "Report"
             mock_load_context.return_value = None  # No context file
 
@@ -1000,15 +1001,15 @@ class TestResearchAgentStructuredSummaries:
             ]
             summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
             mock_summarize.return_value = summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
             mock_synth_ctx.return_value = "Business context"
@@ -1052,15 +1053,15 @@ class TestResearchAgentStructuredSummaries:
             ]
             summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
             mock_summarize.return_value = summaries
-            mock_evaluate.return_value = {
-                "decision": "full_report",
-                "decision_rationale": "All passed",
-                "surviving_sources": summaries,
-                "dropped_sources": [],
-                "total_scored": 1,
-                "total_survived": 1,
-                "refined_query": "refined query",
-            }
+            mock_evaluate.return_value = RelevanceEvaluation(
+                    decision="full_report",
+                    decision_rationale="All passed",
+                    surviving_sources=tuple(summaries),
+                    dropped_sources=(),
+                    total_scored=1,
+                    total_survived=1,
+                    refined_query="refined query",
+                )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
             mock_synth_ctx.return_value = "Business context"

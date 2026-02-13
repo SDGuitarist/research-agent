@@ -6,6 +6,7 @@ from unittest.mock import patch, MagicMock
 
 from research_agent.decompose import (
     decompose_query,
+    DecompositionResult,
     _validate_sub_queries,
     _parse_decomposition_response,
 )
@@ -153,9 +154,10 @@ class TestParseDecompositionResponse:
     def test_parses_simple_response(self):
         text = "TYPE: SIMPLE\nREASONING: This is a single-topic query"
         result = _parse_decomposition_response(text, "Python async best practices")
-        assert result["is_complex"] is False
-        assert result["sub_queries"] == ["Python async best practices"]
-        assert "single-topic" in result["reasoning"]
+        assert isinstance(result, DecompositionResult)
+        assert result.is_complex is False
+        assert result.sub_queries == ("Python async best practices",)
+        assert "single-topic" in result.reasoning
 
     def test_parses_complex_response(self):
         text = (
@@ -167,34 +169,34 @@ class TestParseDecompositionResponse:
             "- live musician competitive rates"
         )
         result = _parse_decomposition_response(text, "wedding music market")
-        assert result["is_complex"] is True
-        assert len(result["sub_queries"]) >= 2
+        assert result.is_complex is True
+        assert len(result.sub_queries) >= 2
 
     def test_handles_missing_type(self):
         text = "REASONING: Something\nSUB_QUERIES:\n- query one\n- query two"
         result = _parse_decomposition_response(text, "original query")
         # Without TYPE: COMPLEX, defaults to SIMPLE
-        assert result["is_complex"] is False
-        assert result["sub_queries"] == ["original query"]
+        assert result.is_complex is False
+        assert result.sub_queries == ("original query",)
 
     def test_handles_complex_without_sub_queries(self):
         text = "TYPE: COMPLEX\nREASONING: Multiple angles needed"
         result = _parse_decomposition_response(text, "original query")
         # COMPLEX but no sub-queries → falls back to simple
-        assert result["is_complex"] is False
-        assert result["sub_queries"] == ["original query"]
+        assert result.is_complex is False
+        assert result.sub_queries == ("original query",)
 
     def test_handles_empty_response(self):
         result = _parse_decomposition_response("", "original query")
-        assert result["is_complex"] is False
-        assert result["sub_queries"] == ["original query"]
+        assert result.is_complex is False
+        assert result.sub_queries == ("original query",)
 
 
 class TestDecomposeQuery:
     """Tests for decompose_query() function."""
 
     def test_simple_query_passthrough(self, mock_anthropic_response):
-        """Simple query should return [original_query] unchanged."""
+        """Simple query should return (original_query,) unchanged."""
         mock_client = MagicMock()
         mock_client.messages.create.return_value = mock_anthropic_response(
             "TYPE: SIMPLE\nREASONING: Single clear topic about Python"
@@ -202,8 +204,9 @@ class TestDecomposeQuery:
 
         result = decompose_query(mock_client, "Python async best practices")
 
-        assert result["is_complex"] is False
-        assert result["sub_queries"] == ["Python async best practices"]
+        assert isinstance(result, DecompositionResult)
+        assert result.is_complex is False
+        assert result.sub_queries == ("Python async best practices",)
 
     def test_complex_query_decomposes(self, mock_anthropic_response):
         """Complex query should return multiple sub-queries."""
@@ -222,11 +225,11 @@ class TestDecomposeQuery:
             "McKinsey-level research on San Diego luxury wedding music market",
         )
 
-        assert result["is_complex"] is True
-        assert len(result["sub_queries"]) >= 2
+        assert result.is_complex is True
+        assert len(result.sub_queries) >= 2
 
     def test_api_failure_falls_back_gracefully(self):
-        """API errors should return [original_query], not crash."""
+        """API errors should return (original_query,), not crash."""
         from anthropic import APIError
 
         mock_client = MagicMock()
@@ -238,11 +241,11 @@ class TestDecomposeQuery:
 
         result = decompose_query(mock_client, "test query")
 
-        assert result["is_complex"] is False
-        assert result["sub_queries"] == ["test query"]
+        assert result.is_complex is False
+        assert result.sub_queries == ("test query",)
 
     def test_empty_response_falls_back(self):
-        """Empty API response should return [original_query]."""
+        """Empty API response should return (original_query,)."""
         mock_client = MagicMock()
         response = MagicMock()
         response.content = []
@@ -250,8 +253,8 @@ class TestDecomposeQuery:
 
         result = decompose_query(mock_client, "test query")
 
-        assert result["is_complex"] is False
-        assert result["sub_queries"] == ["test query"]
+        assert result.is_complex is False
+        assert result.sub_queries == ("test query",)
 
     def test_loads_context_file_when_present(self, mock_anthropic_response, tmp_path):
         """Context file should be included in the API call."""
@@ -282,7 +285,7 @@ class TestDecomposeQuery:
             context_path=Path("/nonexistent/path.md"),
         )
 
-        assert result["sub_queries"] == ["test query"]
+        assert result.sub_queries == ("test query",)
 
     def test_sanitizes_query_in_prompt(self, mock_anthropic_response):
         """Query with angle brackets should be sanitized."""
@@ -311,8 +314,8 @@ class TestDecomposeQuery:
 
         result = decompose_query(mock_client, "test query")
 
-        assert result["is_complex"] is False
-        assert result["sub_queries"] == ["test query"]
+        assert result.is_complex is False
+        assert result.sub_queries == ("test query",)
 
     def test_timeout_error_falls_back(self):
         """APITimeoutError should fall back gracefully."""
@@ -325,5 +328,5 @@ class TestDecomposeQuery:
 
         result = decompose_query(mock_client, "test query")
 
-        assert result["is_complex"] is False
-        assert result["sub_queries"] == ["test query"]
+        assert result.is_complex is False
+        assert result.sub_queries == ("test query",)

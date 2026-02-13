@@ -8,6 +8,7 @@ from research_agent.fetch import FetchedPage
 from research_agent.extract import ExtractedContent
 from research_agent.summarize import Summary
 from research_agent.search import SearchResult
+from research_agent.relevance import SourceScore, RelevanceEvaluation
 
 
 # Path to fixtures directory
@@ -193,26 +194,26 @@ def mock_httpx_response():
 
 @pytest.fixture
 def sample_scored_sources():
-    """List of scored source dicts for relevance testing."""
+    """List of SourceScore objects for relevance testing."""
     return [
-        {
-            "url": "https://example1.com/page",
-            "title": "Highly Relevant Article",
-            "score": 5,
-            "explanation": "Directly answers the query with specific information."
-        },
-        {
-            "url": "https://example2.com/page",
-            "title": "Somewhat Relevant Article",
-            "score": 3,
-            "explanation": "Touches on the topic but missing key specifics."
-        },
-        {
-            "url": "https://example3.com/page",
-            "title": "Off-topic Article",
-            "score": 1,
-            "explanation": "Does not address the research question."
-        },
+        SourceScore(
+            url="https://example1.com/page",
+            title="Highly Relevant Article",
+            score=5,
+            explanation="Directly answers the query with specific information.",
+        ),
+        SourceScore(
+            url="https://example2.com/page",
+            title="Somewhat Relevant Article",
+            score=3,
+            explanation="Touches on the topic but missing key specifics.",
+        ),
+        SourceScore(
+            url="https://example3.com/page",
+            title="Off-topic Article",
+            score=1,
+            explanation="Does not address the research question.",
+        ),
     ]
 
 
@@ -221,15 +222,15 @@ def mock_evaluate_full_report(sample_summaries):
     """Factory for creating evaluate_sources result for full report."""
     def _create_result(summaries=None):
         summaries = summaries or sample_summaries
-        return {
-            "decision": "full_report",
-            "decision_rationale": f"All {len(summaries)} sources passed relevance threshold",
-            "surviving_sources": summaries,
-            "dropped_sources": [],
-            "total_scored": len(summaries),
-            "total_survived": len(summaries),
-            "refined_query": None,
-        }
+        return RelevanceEvaluation(
+            decision="full_report",
+            decision_rationale=f"All {len(summaries)} sources passed relevance threshold",
+            surviving_sources=tuple(summaries),
+            dropped_sources=(),
+            total_scored=len(summaries),
+            total_survived=len(summaries),
+            refined_query=None,
+        )
     return _create_result
 
 
@@ -238,19 +239,19 @@ def mock_evaluate_short_report(sample_summaries):
     """Factory for creating evaluate_sources result for short report."""
     def _create_result(surviving=None, dropped_count=2):
         surviving = surviving or sample_summaries[:1]
-        dropped = [
-            {"url": f"https://dropped{i}.com", "title": f"Dropped {i}", "score": 2, "explanation": "Not relevant"}
+        dropped = tuple(
+            SourceScore(url=f"https://dropped{i}.com", title=f"Dropped {i}", score=2, explanation="Not relevant")
             for i in range(dropped_count)
-        ]
-        return {
-            "decision": "short_report",
-            "decision_rationale": f"Only {len(surviving)} sources passed, below full report threshold",
-            "surviving_sources": surviving,
-            "dropped_sources": dropped,
-            "total_scored": len(surviving) + dropped_count,
-            "total_survived": len(surviving),
-            "refined_query": None,
-        }
+        )
+        return RelevanceEvaluation(
+            decision="short_report",
+            decision_rationale=f"Only {len(surviving)} sources passed, below full report threshold",
+            surviving_sources=tuple(surviving),
+            dropped_sources=dropped,
+            total_scored=len(surviving) + dropped_count,
+            total_survived=len(surviving),
+            refined_query=None,
+        )
     return _create_result
 
 
@@ -258,17 +259,17 @@ def mock_evaluate_short_report(sample_summaries):
 def mock_evaluate_insufficient(sample_summaries):
     """Factory for creating evaluate_sources result for insufficient data."""
     def _create_result(dropped_count=3):
-        dropped = [
-            {"url": f"https://dropped{i}.com", "title": f"Dropped {i}", "score": 2, "explanation": "Not relevant"}
+        dropped = tuple(
+            SourceScore(url=f"https://dropped{i}.com", title=f"Dropped {i}", score=2, explanation="Not relevant")
             for i in range(dropped_count)
-        ]
-        return {
-            "decision": "insufficient_data",
-            "decision_rationale": "No sources passed relevance threshold",
-            "surviving_sources": [],
-            "dropped_sources": dropped,
-            "total_scored": dropped_count,
-            "total_survived": 0,
-            "refined_query": None,
-        }
+        )
+        return RelevanceEvaluation(
+            decision="insufficient_data",
+            decision_rationale="No sources passed relevance threshold",
+            surviving_sources=(),
+            dropped_sources=dropped,
+            total_scored=dropped_count,
+            total_survived=0,
+            refined_query=None,
+        )
     return _create_result

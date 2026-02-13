@@ -12,8 +12,8 @@ from .fetch import fetch_urls
 from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all
 from .synthesize import synthesize_report, synthesize_draft, synthesize_final
-from .relevance import evaluate_sources, generate_insufficient_data_response
-from .decompose import decompose_query
+from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation
+from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_synthesis_context
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
@@ -110,9 +110,9 @@ class ResearchAgent:
             decomposition = await asyncio.to_thread(
                 decompose_query, self.client, query
             )
-            if decomposition["is_complex"]:
-                sub_queries = decomposition["sub_queries"]
-                reasoning = decomposition.get("reasoning", "")
+            if decomposition.is_complex:
+                sub_queries = decomposition.sub_queries
+                reasoning = decomposition.reasoning
                 if reasoning:
                     print(f"      {reasoning}")
                 print(f"      Decomposed into {len(sub_queries)} sub-queries:")
@@ -273,21 +273,21 @@ class ResearchAgent:
         )
 
         # Branch based on relevance gate decision
-        if evaluation["decision"] == "insufficient_data":
+        if evaluation.decision == "insufficient_data":
             self._next_step("Generating insufficient data response...")
             return await generate_insufficient_data_response(
                 query=query,
-                refined_query=evaluation.get("refined_query"),
-                dropped_sources=evaluation["dropped_sources"],
+                refined_query=evaluation.refined_query,
+                dropped_sources=evaluation.dropped_sources,
                 client=self.async_client,
             )
 
         # Synthesize report (full or short)
         logger.info(f"Synthesizing report with {self.synthesize_model}...")
-        limited_sources = evaluation["decision"] == "short_report"
-        surviving = evaluation["surviving_sources"]
-        dropped_count = len(evaluation["dropped_sources"])
-        total_count = evaluation["total_scored"]
+        limited_sources = evaluation.decision == "short_report"
+        surviving = evaluation.surviving_sources
+        dropped_count = len(evaluation.dropped_sources)
+        total_count = evaluation.total_scored
 
         # Quick mode: single-pass synthesis (no skeptic)
         if self.mode.name == "quick":
@@ -359,7 +359,7 @@ class ResearchAgent:
         )
 
     async def _research_with_refinement(
-        self, query: str, decomposition: dict | None = None
+        self, query: str, decomposition: DecompositionResult | None = None
     ) -> str:
         """Quick/standard mode: refine query using snippets before fetching."""
         # Search pass 1
@@ -375,8 +375,8 @@ class ResearchAgent:
         seen_urls = {r.url for r in pass1_results}
 
         # Sub-query searches (additive)
-        if decomposition and decomposition["is_complex"]:
-            sub_queries = decomposition["sub_queries"]
+        if decomposition and decomposition.is_complex:
+            sub_queries = decomposition.sub_queries
             per_sq_sources = max(2, self.mode.pass2_sources // len(sub_queries))
             new_from_subs = await self._search_sub_queries(
                 sub_queries, per_sq_sources, seen_urls
@@ -418,7 +418,7 @@ class ResearchAgent:
         )
 
     async def _research_deep(
-        self, query: str, decomposition: dict | None = None
+        self, query: str, decomposition: DecompositionResult | None = None
     ) -> str:
         """Deep mode: two-pass search with full fetch/summarize between passes."""
         # Search pass 1
@@ -433,8 +433,8 @@ class ResearchAgent:
         seen_urls = {r.url for r in results}
 
         # Sub-query searches (additive)
-        if decomposition and decomposition["is_complex"]:
-            sub_queries = decomposition["sub_queries"]
+        if decomposition and decomposition.is_complex:
+            sub_queries = decomposition.sub_queries
             per_sq_sources = max(2, self.mode.pass1_sources // (len(sub_queries) + 1))
             new_from_subs = await self._search_sub_queries(
                 sub_queries, per_sq_sources, seen_urls
