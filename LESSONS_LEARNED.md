@@ -19,7 +19,7 @@
 | 14 | CLI QoL: --cost, --list, --open, filename swap, progress timing | Cost values belong in dataclass (single source of truth); `nargs="?"` needs validation guard |
 | 15 | Source-level relevance aggregation | Score the unit you decide on (sources, not chunks); diagnose with real data before fixing |
 | 16 | Skeptic pass: draft→skeptic→final pipeline | Multi-pass synthesis catches unsupported claims; `lstrip` strips characters not prefixes — use `removeprefix` |
-| 17+ | Real-world research runs (Lodge at Torrey Pines) | Short queries beat complex ones; LinkedIn is the biggest blind spot; agentic browsers complement the pipeline |
+| 17+ | Real-world research runs (Lodge at Torrey Pines) | Short queries beat complex ones; LinkedIn is the biggest blind spot; agentic browsers complement the pipeline; "insufficient data" can be the answer; near-identical entity names fool the relevance scorer |
 
 ---
 
@@ -2093,6 +2093,22 @@ Review sites (TripAdvisor, Yelp, Google Reviews, OpenTable) are heavily bot-prot
 
 The research agent excels at aggregating publicly reported facts — press releases, news articles, official announcements. But for real-time organizational intelligence (firings, returns, morale, operational state), the most valuable sources are authenticated platforms (LinkedIn) and insider knowledge. The agent's reports should be treated as the public-facing layer, not the complete picture.
 
+### "Insufficient Data" Can Be the Answer
+
+Question 4 (entertainment status) returned `insufficient_data` — only 1 of 28 sources passed relevance scoring. But the absence of any live music listings, events calendar entries, or social media posts mentioning entertainment *was* the finding. It confirmed insider intel that the Lodge currently has no music programming, and that silence is visible to anyone searching online.
+
+Previous cycles treated `insufficient_data` as a failure mode (Cycle 15 reframed it as "a UX failure"). But when the research question is "does X currently exist?" and the web has zero evidence of it, `insufficient_data` is the correct, strategically useful verdict. **Absence of evidence can be evidence of absence when the topic is something that would normally be advertised publicly.**
+
+**Future improvement:** The `insufficient_data` response template could distinguish between "couldn't find sources" and "searched thoroughly and found nothing" — the latter is a meaningful finding, not a failure.
+
+### Entity Disambiguation: Near-Identical Names Fool the Relevance Scorer
+
+Question 5 (property condition) pulled sources about two different properties: "The Lodge at Torrey Pines" (the Evans Hotels luxury resort) and "Torrey Pines Lodge" (a historic 1923 structure in the Torrey Pines State Natural Reserve). Sources about the state reserve lodge passed relevance scoring because the names are nearly identical and both discuss renovations.
+
+The relevance scorer evaluates topical relevance but cannot distinguish between entities with overlapping names. This is a known limitation of keyword-based search — when two real-world entities share most of their name tokens, the entire pipeline (search → fetch → summarize → score) treats them as one topic.
+
+**Implication:** For queries involving venues, people, or organizations with common or similar names, users should expect some source contamination and check annotations carefully. A future enhancement could prompt the relevance scorer with entity-specific disambiguation context (e.g., "The Lodge at Torrey Pines is a luxury resort operated by Evans Hotels — not the historic Torrey Pines Lodge in the State Natural Reserve").
+
 ---
 
 ## Summary
@@ -2189,3 +2205,5 @@ The research agent excels at aggregating publicly reported facts — press relea
 | **Fetch** | Review sites (TripAdvisor, Yelp, Google) are heavily bot-protected—the fetch cascade struggles with review extraction |
 | **Architecture** | Agentic browsers (controlling real browser sessions) bypass bot detection and auth walls the fetch pipeline cannot |
 | **Operations** | The agent finds public record; humans find ground truth—treat reports as the public-facing layer, not the complete picture |
+| **Operations** | "Insufficient data" can be the answer—when searching for something that should be publicly advertised, finding nothing is a meaningful finding |
+| **Relevance** | Near-identical entity names fool the relevance scorer—"Lodge at Torrey Pines" (resort) vs "Torrey Pines Lodge" (state reserve) both pass as relevant |
