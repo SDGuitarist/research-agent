@@ -19,6 +19,7 @@
 | 14 | CLI QoL: --cost, --list, --open, filename swap, progress timing | Cost values belong in dataclass (single source of truth); `nargs="?"` needs validation guard |
 | 15 | Source-level relevance aggregation | Score the unit you decide on (sources, not chunks); diagnose with real data before fixing |
 | 16 | Skeptic pass: draft→skeptic→final pipeline | Multi-pass synthesis catches unsupported claims; `lstrip` strips characters not prefixes — use `removeprefix` |
+| 17+ | Real-world research runs (Lodge at Torrey Pines) | Short queries beat complex ones; LinkedIn is the biggest blind spot; agentic browsers complement the pipeline |
 
 ---
 
@@ -2055,6 +2056,45 @@ Also: `lstrip` strips characters from a set, not string prefixes. If you're remo
 
 ---
 
+## 19. Real-World Research Runs — Lodge at Torrey Pines (Cycle 17+)
+
+### Query Complexity vs. Relevance Scoring
+
+Running multiple --deep reports for a real research brief revealed a critical trade-off: **complex queries pull in irrelevant sources, which the relevance scorer then drops below threshold**, resulting in `insufficient_data` verdicts.
+
+Question 1 (guest reviews) failed twice before succeeding. The fix: keep queries under ~15 words and let the decomposer handle complexity. A focused query like `"AR Valentien Lodge Torrey Pines restaurant reviews 2025"` worked where longer compound queries didn't.
+
+**Rule of thumb:** Write queries like you'd type into Google — short, specific, one topic. The decomposer and refinement pass handle breadth; the initial query handles precision.
+
+### Business Template Generates Filler for Non-Business Questions
+
+The 12-section report template (from `research_context.md`) is optimized for competitive intelligence on businesses. When the question is factual — "What are the leadership changes?" — sections like Buyer Psychology, Marketing Positioning, and Service Portfolio produce generic filler that buries the actual findings.
+
+**Future improvement:** A query-type flag or auto-detection that skips business analysis sections when the question is factual/biographical rather than competitive intelligence.
+
+### LinkedIn: The Agent's Biggest Blind Spot
+
+The most critical intelligence — Jakub Skyvara's firing as GM and Bill Gross's return in January 2026 — existed only on LinkedIn, which the agent cannot access. LinkedIn blocks scrapers, Jina Reader, and Tavily Extract. The agent's report confidently presented Skyvara as current GM because no public news sources covered his departure.
+
+This means the agent's reports can actively contradict reality when key information lives behind walled gardens. The user discovered this intel using an **agentic browser** (a tool that takes over the user's actual browser session with saved login credentials) to search LinkedIn directly.
+
+**Implications:**
+- The agent should flag when a topic likely has LinkedIn-primary sources (executive changes, hiring, company updates) and warn that coverage may be incomplete
+- An agentic browser integration could complement the fetch pipeline for authenticated sources
+- Users should treat leadership/personnel reports as "public record only" and cross-reference with their own LinkedIn research
+
+### Guest Reviews Are Hard to Find Programmatically
+
+Review sites (TripAdvisor, Yelp, Google Reviews, OpenTable) are heavily bot-protected. The agent struggled to pull recent guest reviews even with the fetch cascade. This is a known limitation of the pipeline — review content is valuable but locked behind platforms designed to prevent exactly this kind of extraction.
+
+**Workaround:** The agentic browser approach (controlling a real browser with real sessions) bypasses bot detection because it looks like a real user. This is the same pattern that worked for LinkedIn.
+
+### Key Takeaway: The Agent Finds Public Record; Humans Find Ground Truth
+
+The research agent excels at aggregating publicly reported facts — press releases, news articles, official announcements. But for real-time organizational intelligence (firings, returns, morale, operational state), the most valuable sources are authenticated platforms (LinkedIn) and insider knowledge. The agent's reports should be treated as the public-facing layer, not the complete picture.
+
+---
+
 ## Summary
 
 | Category | Key Takeaway |
@@ -2143,3 +2183,9 @@ Also: `lstrip` strips characters from a set, not string prefixes. If you're remo
 | **Code Quality** | Dead code accumulates during rapid iteration—schedule periodic sweep passes every 2-3 cycles |
 | **Resilience** | LLM API calls need standardized retry with backoff—rate limits and timeouts are routine, not exceptional |
 | **LLM Validation** | Adversarial prompts find claims the generator would never flag—the author's blind spots are visible to a reviewer |
+| **Query Design** | Keep initial queries under ~15 words—complex queries pull irrelevant sources that the relevance scorer drops |
+| **Templates** | Business analysis templates generate filler for factual questions—need query-type detection to skip irrelevant sections |
+| **Fetch** | LinkedIn is the agent's biggest blind spot—executive changes and hiring news often exist only there |
+| **Fetch** | Review sites (TripAdvisor, Yelp, Google) are heavily bot-protected—the fetch cascade struggles with review extraction |
+| **Architecture** | Agentic browsers (controlling real browser sessions) bypass bot detection and auth walls the fetch pipeline cannot |
+| **Operations** | The agent finds public record; humans find ground truth—treat reports as the public-facing layer, not the complete picture |
