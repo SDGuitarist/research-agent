@@ -1,6 +1,7 @@
 """State persistence for gap schema — atomic YAML writes and single-gap updates."""
 
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -115,3 +116,40 @@ def update_gap(
 
     save_schema(path, new_gaps_tuple)
     return updated_gap
+
+
+def mark_checked(gap: Gap, now: datetime | None = None) -> Gap:
+    """Return a new Gap with last_checked set to now.
+
+    Updates last_checked only. Does NOT change status or last_verified.
+    Use when a gap was researched but no new findings were found.
+
+    Args:
+        gap: The gap to update.
+        now: Override timestamp for testing. Defaults to UTC now.
+
+    Returns:
+        New Gap with updated last_checked.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    return replace(gap, last_checked=now.isoformat())
+
+
+def mark_verified(gap: Gap, now: datetime | None = None) -> Gap:
+    """Return a new Gap with status=VERIFIED and timestamps set to now.
+
+    Updates last_verified, last_checked, and status. Use when a gap
+    was researched and new findings were confirmed.
+
+    Args:
+        gap: The gap to update.
+        now: Override timestamp for testing. Defaults to UTC now.
+
+    Returns:
+        New Gap with status=VERIFIED and fresh timestamps.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    ts = now.isoformat()
+    return replace(gap, status=GapStatus.VERIFIED, last_verified=ts, last_checked=ts)
