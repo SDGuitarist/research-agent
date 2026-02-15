@@ -21,8 +21,15 @@ research_agent/
 ├── synthesize.py  — Report generation with mode-specific instructions + business context validation
 ├── context.py     — Business context loading (search, synthesis, full slices)
 ├── skeptic.py     — Adversarial verification: evidence, timing, framing agents
-├── modes.py       — Frozen dataclass configs: quick/standard/deep (includes model)
-└── errors.py      — Custom exception hierarchy
+├── modes.py          — Frozen dataclass configs: quick/standard/deep (includes model)
+├── context_result.py — Three-way context result (loaded/empty/not_configured)
+├── cycle_config.py   — Research cycle parameters (TTL, max gaps, model)
+├── safe_io.py        — Atomic file writes with tempfile + rename
+├── token_budget.py   — Token counting and priority-based budget pruning
+├── schema.py         — Gap data model, YAML parser, validation, cycle detection
+├── state.py          — Gap state transitions (mark_verified, mark_checked, save)
+├── staleness.py      — Staleness detection, batch selection, audit logging
+└── errors.py         — Custom exception hierarchy
 ```
 
 ## Running

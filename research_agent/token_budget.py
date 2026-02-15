@@ -31,6 +31,9 @@ COMPONENT_PRIORITY: dict[str, int] = {
     "instructions": 6,  # Never cut — these control output quality
 }
 
+# Threshold at or above which components are never pruned
+NEVER_PRUNE_THRESHOLD = COMPONENT_PRIORITY["instructions"]
+
 
 @dataclass(frozen=True)
 class BudgetAllocation:
@@ -100,8 +103,8 @@ def allocate_budget(
         if current_total <= available:
             break
 
-        # Never prune components with highest priority (6 = instructions)
-        if prio.get(name, 0) >= 6:
+        # Never prune components at or above the threshold
+        if prio.get(name, 0) >= NEVER_PRUNE_THRESHOLD:
             continue
 
         overshoot = current_total - available

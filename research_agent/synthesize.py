@@ -59,6 +59,16 @@ BALANCE_INSTRUCTION = (
 
 
 
+def _build_limited_disclaimer(total_count: int, dropped_count: int) -> str:
+    """Build the limited sources disclaimer."""
+    survived_count = max(0, total_count - dropped_count)
+    return (
+        f"**Note:** Only {survived_count} of {total_count} sources found were "
+        f"relevant to your question. This report is based on limited information "
+        f"and should be considered a starting point, not a comprehensive answer."
+    )
+
+
 def synthesize_report(
     client: Anthropic,
     query: str,
@@ -102,7 +112,8 @@ def synthesize_report(
     if mode_instructions:
         budget_components["instructions"] = mode_instructions
     if business_context:
-        budget_components["business_context"] = sanitize_content(business_context)
+        business_context = sanitize_content(business_context)
+        budget_components["business_context"] = business_context
     sources_text, business_context = _apply_budget_pruning(
         budget_components, 100_000, max_tokens, sources_text, business_context,
     )
@@ -121,13 +132,7 @@ def synthesize_report(
 
     # Modify instructions for limited sources
     if limited_sources:
-        # Validate counts to avoid negative values
-        survived_count = max(0, total_count - dropped_count)
-        limited_disclaimer = (
-            f"**Note:** Only {survived_count} of {total_count} sources found were "
-            f"relevant to your question. This report is based on limited information "
-            f"and should be considered a starting point, not a comprehensive answer."
-        )
+        limited_disclaimer = _build_limited_disclaimer(total_count, dropped_count)
         # Append short report guidance to mode instructions
         mode_instructions = (
             f"{mode_instructions} "
@@ -145,8 +150,7 @@ def synthesize_report(
     context_block = ""
     context_instruction = ""
     if business_context:
-        safe_context = sanitize_content(business_context)
-        context_block = f"\n<business_context>\n{safe_context}\n</business_context>\n"
+        context_block = f"\n<business_context>\n{business_context}\n</business_context>\n"
         context_instruction = (
             "\n\nBusiness context is provided in <business_context>. Use it only for "
             "Competitive Implications and Positioning Advice sections. Keep factual "
@@ -390,7 +394,8 @@ def synthesize_final(
     # Token budget enforcement
     budget_components = {"sources": sources_text}
     if business_context:
-        budget_components["business_context"] = sanitize_content(business_context)
+        business_context = sanitize_content(business_context)
+        budget_components["business_context"] = business_context
     if draft:
         budget_components["previous_baseline"] = safe_draft
     sources_text, business_context = _apply_budget_pruning(
@@ -401,8 +406,7 @@ def synthesize_final(
     context_block = ""
     context_instruction = ""
     if business_context:
-        safe_context = sanitize_content(business_context)
-        context_block = f"\n<business_context>\n{safe_context}\n</business_context>\n"
+        context_block = f"\n<business_context>\n{business_context}\n</business_context>\n"
         context_instruction = (
             "Use the business context in <business_context> for Competitive Implications "
             "and Positioning Advice sections. Reference specific competitive positioning, "
@@ -445,12 +449,7 @@ def synthesize_final(
     limited_disclaimer = ""
     limited_instruction = ""
     if limited_sources:
-        survived_count = max(0, total_count - dropped_count)
-        limited_disclaimer = (
-            f"**Note:** Only {survived_count} of {total_count} sources found were "
-            f"relevant to your question. This report is based on limited information "
-            f"and should be considered a starting point, not a comprehensive answer."
-        )
+        limited_disclaimer = _build_limited_disclaimer(total_count, dropped_count)
         limited_instruction = (
             "Given the limited relevant sources, write proportionally shorter sections. "
             "Focus only on what the available sources can directly answer."

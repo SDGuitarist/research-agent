@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 triage_reason: "Accepted — f-strings evaluate even when log level is disabled"
 priority: p3
 issue_id: "013"

@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 triage_reason: "Accepted — magic number 6 will break silently if priorities change"
 priority: p3
 issue_id: "014"

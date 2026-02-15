@@ -1169,8 +1169,8 @@ class TestResearchAgentGapCheck:
         schema_result = SchemaResult(gaps=verified_gaps, source="/tmp/schema.yaml")
 
         with patch("research_agent.agent.search") as mock_search, \
-             patch("research_agent.schema.load_schema", return_value=schema_result), \
-             patch("research_agent.staleness.detect_stale", return_value=[]), \
+             patch("research_agent.agent.load_schema", return_value=schema_result), \
+             patch("research_agent.agent.detect_stale", return_value=[]), \
              patch("builtins.print"):
 
             agent = ResearchAgent(
@@ -1206,9 +1206,9 @@ class TestResearchAgentGapCheck:
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
              patch("research_agent.agent.synthesize_report") as mock_synth, \
-             patch("research_agent.schema.load_schema", return_value=schema_result), \
-             patch("research_agent.staleness.detect_stale", return_value=[stale_gap]), \
-             patch("research_agent.staleness.select_batch", return_value=(stale_gap,)), \
+             patch("research_agent.agent.load_schema", return_value=schema_result), \
+             patch("research_agent.agent.detect_stale", return_value=[stale_gap]), \
+             patch("research_agent.agent.select_batch", return_value=(stale_gap,)), \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -1259,9 +1259,9 @@ class TestResearchAgentGapCheck:
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
              patch("research_agent.agent.synthesize_report") as mock_synth, \
-             patch("research_agent.schema.load_schema", return_value=schema_result), \
-             patch("research_agent.staleness.detect_stale", return_value=[]), \
-             patch("research_agent.staleness.select_batch", return_value=gaps), \
+             patch("research_agent.agent.load_schema", return_value=schema_result), \
+             patch("research_agent.agent.detect_stale", return_value=[]), \
+             patch("research_agent.agent.select_batch", return_value=gaps), \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -1318,9 +1318,9 @@ class TestResearchAgentGapCheck:
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
              patch("research_agent.agent.synthesize_report") as mock_synth, \
-             patch("research_agent.schema.load_schema", return_value=schema_result), \
-             patch("research_agent.staleness.detect_stale", return_value=stale_gaps), \
-             patch("research_agent.staleness.select_batch", return_value=batch_of_3) as mock_batch, \
+             patch("research_agent.agent.load_schema", return_value=schema_result), \
+             patch("research_agent.agent.detect_stale", return_value=stale_gaps), \
+             patch("research_agent.agent.select_batch", return_value=batch_of_3) as mock_batch, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -1371,7 +1371,7 @@ class TestResearchAgentGapCheck:
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
              patch("research_agent.agent.synthesize_report") as mock_synth, \
-             patch("research_agent.schema.load_schema", return_value=schema_result), \
+             patch("research_agent.agent.load_schema", return_value=schema_result), \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
 
@@ -1427,10 +1427,10 @@ class TestResearchAgentPostResearch:
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
         agent._current_schema_result = schema_result
 
-        with patch("research_agent.state.mark_verified") as mock_verify, \
-             patch("research_agent.state.save_schema") as mock_save, \
-             patch("research_agent.staleness.log_flip") as mock_log, \
-             patch("research_agent.schema.load_schema", return_value=schema_result):
+        with patch("research_agent.agent.mark_verified") as mock_verify, \
+             patch("research_agent.agent.save_schema") as mock_save, \
+             patch("research_agent.agent.log_flip") as mock_log, \
+             patch("research_agent.agent.load_schema", return_value=schema_result):
 
             verified_gap = Gap(
                 id="gap-1", category="test", status=GapStatus.VERIFIED,
@@ -1456,10 +1456,10 @@ class TestResearchAgentPostResearch:
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
         agent._current_schema_result = schema_result
 
-        with patch("research_agent.state.mark_verified") as mock_verify, \
-             patch("research_agent.state.save_schema") as mock_save, \
-             patch("research_agent.staleness.log_flip") as mock_log, \
-             patch("research_agent.schema.load_schema", return_value=schema_result):
+        with patch("research_agent.agent.mark_verified") as mock_verify, \
+             patch("research_agent.agent.save_schema") as mock_save, \
+             patch("research_agent.agent.log_flip") as mock_log, \
+             patch("research_agent.agent.load_schema", return_value=schema_result):
 
             verified_gap = Gap(
                 id="gap-1", category="test", status=GapStatus.VERIFIED,
@@ -1484,9 +1484,9 @@ class TestResearchAgentPostResearch:
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
         agent._current_schema_result = schema_result
 
-        with patch("research_agent.state.mark_checked") as mock_checked, \
-             patch("research_agent.state.save_schema") as mock_save, \
-             patch("research_agent.schema.load_schema", return_value=schema_result):
+        with patch("research_agent.agent.mark_checked") as mock_checked, \
+             patch("research_agent.agent.save_schema") as mock_save, \
+             patch("research_agent.agent.load_schema", return_value=schema_result):
 
             checked_gap = Gap(
                 id="gap-1", category="test", status=GapStatus.UNKNOWN,
@@ -1511,8 +1511,8 @@ class TestResearchAgentPostResearch:
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
         agent._current_schema_result = schema_result
 
-        with patch("research_agent.state.save_schema") as mock_save, \
-             patch("research_agent.schema.load_schema", return_value=schema_result):
+        with patch("research_agent.agent.save_schema") as mock_save, \
+             patch("research_agent.agent.load_schema", return_value=schema_result):
 
             agent._update_gap_states("insufficient_data")
 
@@ -1530,8 +1530,8 @@ class TestResearchAgentPostResearch:
         empty_result = SchemaResult(gaps=(), source="")
         agent._current_schema_result = empty_result
 
-        with patch("research_agent.state.save_schema") as mock_save, \
-             patch("research_agent.schema.load_schema", return_value=empty_result):
+        with patch("research_agent.agent.save_schema") as mock_save, \
+             patch("research_agent.agent.load_schema", return_value=empty_result):
 
             agent._update_gap_states("full_report")
 
@@ -1550,10 +1550,10 @@ class TestResearchAgentPostResearch:
         schema_result = SchemaResult(gaps=(batch_gap, other_gap), source="/tmp/schema.yaml")
         agent._current_schema_result = schema_result
 
-        with patch("research_agent.state.mark_verified") as mock_verify, \
-             patch("research_agent.state.save_schema") as mock_save, \
-             patch("research_agent.staleness.log_flip"), \
-             patch("research_agent.schema.load_schema", return_value=schema_result):
+        with patch("research_agent.agent.mark_verified") as mock_verify, \
+             patch("research_agent.agent.save_schema") as mock_save, \
+             patch("research_agent.agent.log_flip"), \
+             patch("research_agent.agent.load_schema", return_value=schema_result):
 
             verified_gap = Gap(
                 id="gap-1", category="test", status=GapStatus.VERIFIED,
@@ -1582,10 +1582,10 @@ class TestResearchAgentPostResearch:
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
         agent._current_schema_result = schema_result
 
-        with patch("research_agent.state.mark_verified") as mock_verify, \
-             patch("research_agent.state.save_schema"), \
-             patch("research_agent.staleness.log_flip") as mock_log, \
-             patch("research_agent.schema.load_schema", return_value=schema_result):
+        with patch("research_agent.agent.mark_verified") as mock_verify, \
+             patch("research_agent.agent.save_schema"), \
+             patch("research_agent.agent.log_flip") as mock_log, \
+             patch("research_agent.agent.load_schema", return_value=schema_result):
 
             verified_gap = Gap(
                 id="gap-1", category="test", status=GapStatus.VERIFIED,
@@ -1614,10 +1614,10 @@ class TestResearchAgentPostResearch:
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
         agent._current_schema_result = schema_result
 
-        with patch("research_agent.state.mark_verified") as mock_verify, \
-             patch("research_agent.state.save_schema", side_effect=StateError("disk full")), \
-             patch("research_agent.staleness.log_flip"), \
-             patch("research_agent.schema.load_schema", return_value=schema_result):
+        with patch("research_agent.agent.mark_verified") as mock_verify, \
+             patch("research_agent.agent.save_schema", side_effect=StateError("disk full")), \
+             patch("research_agent.agent.log_flip"), \
+             patch("research_agent.agent.load_schema", return_value=schema_result):
 
             verified_gap = Gap(
                 id="gap-1", category="test", status=GapStatus.VERIFIED,

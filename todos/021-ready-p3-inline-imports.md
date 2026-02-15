@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 triage_reason: "Accepted — no circular dependency risk, move to top-level per PEP 8"
 priority: p3
 issue_id: "021"

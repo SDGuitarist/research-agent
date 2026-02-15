@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 triage_reason: "Accepted — diagram missing 7 new modules from Cycles 17A-17D"
 priority: p3
 issue_id: "020"

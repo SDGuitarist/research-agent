@@ -24,10 +24,9 @@ from .errors import ResearchError, SearchError, SkepticError, StateError
 from .modes import ResearchMode
 from .cycle_config import CycleConfig
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .schema import Gap, SchemaResult
+from .schema import Gap, GapStatus, SchemaResult, load_schema
+from .state import mark_verified, mark_checked, save_schema
+from .staleness import detect_stale, select_batch, log_flip
 
 logger = logging.getLogger(__name__)
 
@@ -88,10 +87,6 @@ class ResearchAgent:
         - no_new_findings → mark_checked() (searched but found nothing)
         - insufficient_data → no state update (search itself failed)
         """
-        from .state import mark_verified, mark_checked, save_schema
-        from .staleness import log_flip
-        from .schema import Gap
-
         schema_result = self._current_schema_result
         if not schema_result or self._current_research_batch is None:
             return
@@ -117,16 +112,16 @@ class ResearchAgent:
             elif decision == "no_new_findings":
                 new_gap = mark_checked(gap)
                 updated_gaps.append(new_gap)
-                logger.info(f"Gap '{gap.id}' checked (no new findings)")
+                logger.info("Gap '%s' checked (no new findings)", gap.id)
             else:
                 # insufficient_data — don't update state
                 updated_gaps.append(gap)
 
         try:
             save_schema(self.schema_path, tuple(updated_gaps))
-            logger.info(f"Updated {len(batch_ids)} gap states in {self.schema_path}")
+            logger.info("Updated %d gap states in %s", len(batch_ids), self.schema_path)
         except StateError as e:
-            logger.warning(f"Failed to save gap state: {e}")
+            logger.warning("Failed to save gap state: %s", e)
 
     def _next_step(self, message: str) -> None:
         """Print next step header with auto-incrementing counter."""
@@ -193,9 +188,6 @@ class ResearchAgent:
 
         # Pre-research gap check (if schema configured)
         if self.schema_path:
-            from .schema import load_schema, GapStatus
-            from .staleness import detect_stale, select_batch
-
             schema_result = load_schema(self.schema_path)
             if schema_result.is_loaded:
                 stale = detect_stale(

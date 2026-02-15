@@ -1,5 +1,6 @@
 """Staleness detection, batch limiting, and audit logging for research gaps."""
 
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -12,7 +13,7 @@ def detect_stale(
     gaps: tuple[Gap, ...],
     default_ttl_days: int = 30,
     now: datetime | None = None,
-) -> list[Gap]:
+) -> tuple[Gap, ...]:
     """Identify gaps whose verified status has expired.
 
     Compares each VERIFIED gap's last_verified timestamp against its
@@ -32,7 +33,7 @@ def detect_stale(
         now: Override timestamp for testing. Defaults to UTC now.
 
     Returns:
-        List of Gap objects with status flipped to STALE (new instances).
+        Tuple of Gap objects with status flipped to STALE (new instances).
         Original Gap objects are unchanged.
     """
     if now is None:
@@ -54,11 +55,11 @@ def detect_stale(
         if now - verified_at > timedelta(days=ttl):
             stale.append(replace(gap, status=GapStatus.STALE))
 
-    return stale
+    return tuple(stale)
 
 
 def select_batch(
-    gaps: tuple[Gap, ...] | list[Gap],
+    gaps: Sequence[Gap],
     max_per_run: int = 5,
 ) -> tuple[Gap, ...]:
     """Select the highest-priority gaps for a single research cycle.

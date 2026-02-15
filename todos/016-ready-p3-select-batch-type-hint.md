@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 triage_reason: "Accepted — Sequence[Gap] is more Pythonic than union type"
 priority: p3
 issue_id: "016"

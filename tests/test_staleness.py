@@ -37,12 +37,12 @@ class TestDetectStale:
     def test_detect_stale_fresh_gap(self):
         gap = _verified_gap("fresh", days_ago=10)
         result = detect_stale((gap,), default_ttl_days=30, now=_NOW)
-        assert result == []
+        assert result == ()
 
     def test_detect_stale_ignores_unknown(self):
         gap = Gap(id="new", category="market")  # status=UNKNOWN by default
         result = detect_stale((gap,), now=_NOW)
-        assert result == []
+        assert result == ()
 
     def test_detect_stale_ignores_already_stale(self):
         gap = Gap(
@@ -52,7 +52,7 @@ class TestDetectStale:
             last_verified="2025-01-01T00:00:00+00:00",
         )
         result = detect_stale((gap,), now=_NOW)
-        assert result == []
+        assert result == ()
 
     def test_detect_stale_ignores_blocked(self):
         gap = Gap(
@@ -62,7 +62,7 @@ class TestDetectStale:
             last_verified="2025-01-01T00:00:00+00:00",
         )
         result = detect_stale((gap,), now=_NOW)
-        assert result == []
+        assert result == ()
 
     def test_no_cascade_through_dependencies(self):
         gap_a = _verified_gap("a", days_ago=45, blocks=("b",))
@@ -83,7 +83,7 @@ class TestDetectStale:
         gap = _verified_gap("nottl", days_ago=20, ttl_days=None)
         result = detect_stale((gap,), default_ttl_days=30, now=_NOW)
         # 20 days < 30 day default → not stale
-        assert result == []
+        assert result == ()
 
     def test_stale_gap_has_new_status(self):
         gap = _verified_gap("target", days_ago=45)
@@ -93,7 +93,7 @@ class TestDetectStale:
 
     def test_empty_gaps_returns_empty(self):
         result = detect_stale((), now=_NOW)
-        assert result == []
+        assert result == ()
 
 
 class TestSelectBatch:
