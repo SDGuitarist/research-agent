@@ -10,6 +10,7 @@ from anthropic import Anthropic, RateLimitError, APIError, APITimeoutError
 from .summarize import Summary
 from .errors import SynthesisError
 from .sanitize import sanitize_content
+from .token_budget import allocate_budget, truncate_to_budget
 
 if TYPE_CHECKING:
     from .skeptic import SkepticFinding
@@ -66,6 +67,29 @@ def synthesize_report(
 
     # Build sources context
     sources_text = _build_sources_context(summaries)
+
+    # Token budget enforcement
+    budget_components = {"sources": sources_text}
+    if mode_instructions:
+        budget_components["instructions"] = mode_instructions
+    if business_context:
+        budget_components["business_context"] = sanitize_content(business_context)
+    budget = allocate_budget(
+        budget_components,
+        max_tokens=100_000,
+        reserved_output=max_tokens,
+    )
+    if budget.pruned:
+        logger.info(f"Token budget: pruned {budget.pruned}")
+        for name in budget.pruned:
+            if name == "sources":
+                sources_text = truncate_to_budget(
+                    sources_text, budget.allocations.get("sources", 0)
+                )
+            elif name == "business_context" and business_context:
+                business_context = truncate_to_budget(
+                    business_context, budget.allocations.get("business_context", 0)
+                )
 
     # Default instructions if none provided
     if mode_instructions is None:
@@ -346,6 +370,29 @@ def synthesize_final(
     safe_query = sanitize_content(query)
     safe_draft = sanitize_content(draft)
     sources_text = _build_sources_context(summaries)
+
+    # Token budget enforcement
+    budget_components = {"sources": sources_text}
+    if business_context:
+        budget_components["business_context"] = sanitize_content(business_context)
+    if draft:
+        budget_components["previous_baseline"] = safe_draft
+    budget = allocate_budget(
+        budget_components,
+        max_tokens=100_000,
+        reserved_output=max_tokens,
+    )
+    if budget.pruned:
+        logger.info(f"Token budget: pruned {budget.pruned}")
+        for name in budget.pruned:
+            if name == "sources":
+                sources_text = truncate_to_budget(
+                    sources_text, budget.allocations.get("sources", 0)
+                )
+            elif name == "business_context" and business_context:
+                business_context = truncate_to_budget(
+                    business_context, budget.allocations.get("business_context", 0)
+                )
 
     # Business context block
     context_block = ""

@@ -141,3 +141,27 @@ def allocate_budget(
         pruned=pruned,
         total=sum(allocations.values()),
     )
+
+
+def truncate_to_budget(text: str, max_tokens: int) -> str:
+    """Truncate text to fit within a token budget.
+
+    Uses the conservative 4-chars-per-token estimate for truncation
+    (avoids an API call per truncation). Appends "[truncated]" marker
+    when content is cut.
+
+    Args:
+        text: Content to potentially truncate.
+        max_tokens: Maximum allowed tokens.
+
+    Returns:
+        Original text if within budget, truncated text otherwise.
+    """
+    if not text:
+        return text
+    current = count_tokens(text)
+    if current <= max_tokens:
+        return text
+    # Truncate by character estimate (conservative: 4 chars/token)
+    max_chars = max_tokens * 4
+    return text[:max_chars] + "\n\n[Content truncated to fit token budget]"

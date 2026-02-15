@@ -14,6 +14,7 @@ from research_agent.synthesize import (
 from research_agent.skeptic import SkepticFinding
 from research_agent.summarize import Summary
 from research_agent.errors import SynthesisError
+from research_agent.token_budget import truncate_to_budget
 
 
 class TestSanitizeContent:
@@ -540,3 +541,105 @@ class TestSynthesizeFinal:
             synthesize_final(
                 client, "query", "draft", [], SAMPLE_SUMMARIES,
             )
+
+
+# --- Token budget enforcement tests ---
+
+
+class TestTruncateToBudget:
+    """Tests for truncate_to_budget() helper."""
+
+    def _mock_count(self, text: str, model: str = "claude-sonnet-4-20250514") -> int:
+        """Deterministic token counter: 1 token per 4 chars."""
+        if not text:
+            return 0
+        return max(1, len(text) // 4)
+
+    def test_truncate_to_budget_passthrough(self):
+        """Text within budget returned unchanged."""
+        with patch("research_agent.token_budget.count_tokens", side_effect=self._mock_count):
+            result = truncate_to_budget("short text", max_tokens=1000)
+        assert result == "short text"
+
+    def test_truncate_to_budget_truncates(self):
+        """Oversized text truncated with [truncated] marker."""
+        text = "a" * 400  # 100 tokens via mock
+        with patch("research_agent.token_budget.count_tokens", side_effect=self._mock_count):
+            result = truncate_to_budget(text, max_tokens=10)
+        # max_chars = 10 * 4 = 40
+        assert len(result.split("\n\n[Content truncated")[0]) == 40
+        assert "[Content truncated to fit token budget]" in result
+
+    def test_truncate_to_budget_empty(self):
+        """Empty string returned as-is."""
+        result = truncate_to_budget("", max_tokens=100)
+        assert result == ""
+
+
+class TestSynthesizeBudgetEnforcement:
+    """Tests for token budget enforcement in synthesis functions."""
+
+    def _mock_count(self, text: str, model: str = "claude-sonnet-4-20250514") -> int:
+        if not text:
+            return 0
+        return max(1, len(text) // 4)
+
+    def test_synthesize_report_calls_budget(self):
+        """allocate_budget is called during synthesize_report()."""
+        client = _make_streaming_client("Report content")
+        with patch("research_agent.synthesize.allocate_budget") as mock_budget:
+            from research_agent.token_budget import BudgetAllocation
+            mock_budget.return_value = BudgetAllocation(
+                allocations={"sources": 100}, pruned=[], total=100
+            )
+            with patch("builtins.print"):
+                synthesize_report(
+                    client=client,
+                    query="test query",
+                    summaries=SAMPLE_SUMMARIES,
+                )
+        mock_budget.assert_called_once()
+        call_kwargs = mock_budget.call_args
+        assert call_kwargs.kwargs["max_tokens"] == 100_000
+
+    def test_synthesize_final_calls_budget(self):
+        """allocate_budget is called during synthesize_final()."""
+        client = _make_streaming_client("Final sections")
+        with patch("research_agent.synthesize.allocate_budget") as mock_budget:
+            from research_agent.token_budget import BudgetAllocation
+            mock_budget.return_value = BudgetAllocation(
+                allocations={"sources": 100}, pruned=[], total=100
+            )
+            synthesize_final(
+                client, "query", "draft", [], SAMPLE_SUMMARIES,
+            )
+        mock_budget.assert_called_once()
+        call_kwargs = mock_budget.call_args
+        assert call_kwargs.kwargs["max_tokens"] == 100_000
+
+    def test_budget_prunes_context_before_sources(self):
+        """When over budget, business_context pruned before sources."""
+        client = _make_streaming_client("Report content")
+        with patch(
+            "research_agent.synthesize.allocate_budget"
+        ) as mock_budget, patch(
+            "research_agent.synthesize.truncate_to_budget"
+        ) as mock_truncate:
+            from research_agent.token_budget import BudgetAllocation
+            mock_budget.return_value = BudgetAllocation(
+                allocations={"sources": 500, "business_context": 50},
+                pruned=["business_context"],
+                total=550,
+            )
+            mock_truncate.return_value = "truncated context"
+            with patch("builtins.print"):
+                synthesize_report(
+                    client=client,
+                    query="test query",
+                    summaries=SAMPLE_SUMMARIES,
+                    business_context="Very long business context " * 100,
+                )
+        # truncate_to_budget should be called for business_context, not sources
+        mock_truncate.assert_called_once()
+        call_args = mock_truncate.call_args
+        assert call_args.args[1] == 50  # budget allocation for business_context
