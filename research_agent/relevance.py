@@ -331,6 +331,12 @@ async def evaluate_sources(
             f"below full report threshold ({mode.min_sources_full_report}) but above minimum ({mode.min_sources_short_report}) "
             f"for {mode.name} mode — generating short report with disclaimer"
         )
+    elif total_scored > 0 and total_survived == 0:
+        decision = "no_new_findings"
+        rationale = (
+            f"All {total_scored} sources scored below {mode.relevance_cutoff}, "
+            f"suggesting no new relevant information is publicly available"
+        )
     else:
         decision = "insufficient_data"
         rationale = (

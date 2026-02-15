@@ -284,7 +284,7 @@ class ResearchAgent:
         )
 
         # Branch based on relevance gate decision
-        if evaluation.decision == "insufficient_data":
+        if evaluation.decision in ("insufficient_data", "no_new_findings"):
             self._next_step("Generating insufficient data response...")
             return await generate_insufficient_data_response(
                 query=query,

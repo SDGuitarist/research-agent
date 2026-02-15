@@ -285,10 +285,10 @@ class TestEvaluateSources:
         # With scores [4,2,5,1,3,2,4], we get 4 passing (scores >= 3)
         assert result.decision == "full_report"  # 4 >= min_sources_full_report for standard
 
-    async def test_evaluate_sources_returns_insufficient_data_when_none_survive(
+    async def test_evaluate_sources_returns_no_new_findings_when_none_survive(
         self, mock_score_all_low
     ):
-        """Should return insufficient_data when no sources pass."""
+        """Should return no_new_findings when sources scored but none pass."""
         summaries = [
             Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Summary {i}")
             for i in range(5)
@@ -299,7 +299,7 @@ class TestEvaluateSources:
         with patch("research_agent.relevance.score_source", mock_score_all_low):
             result = await evaluate_sources("test query", summaries, mode, mock_client)
 
-        assert result.decision == "insufficient_data"
+        assert result.decision == "no_new_findings"
         assert result.total_survived == 0
         assert len(result.dropped_sources) == 5
 
@@ -427,6 +427,54 @@ class TestEvaluateSources:
 
         assert "5" in result.decision_rationale  # total survived
         assert "standard" in result.decision_rationale  # mode name
+
+    async def test_evaluate_no_new_findings(self, mock_score_all_low):
+        """Sources scored but all below cutoff should return no_new_findings."""
+        summaries = [
+            Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Summary {i}")
+            for i in range(3)
+        ]
+        mode = ResearchMode.quick()
+        mock_client = AsyncMock()
+
+        with patch("research_agent.relevance.score_source", mock_score_all_low):
+            result = await evaluate_sources("test query", summaries, mode, mock_client)
+
+        assert result.decision == "no_new_findings"
+        assert result.total_scored == 3
+        assert result.total_survived == 0
+        assert "scored below" in result.decision_rationale
+
+    async def test_evaluate_insufficient_data_no_sources(self):
+        """No summaries at all should return insufficient_data (not no_new_findings)."""
+        mode = ResearchMode.standard()
+        mock_client = AsyncMock()
+
+        result = await evaluate_sources("test query", [], mode, mock_client)
+
+        assert result.decision == "insufficient_data"
+        assert result.total_scored == 0
+        assert result.total_survived == 0
+
+    async def test_no_new_findings_vs_insufficient_data(self, mock_score_all_low):
+        """no_new_findings and insufficient_data are distinct decisions."""
+        mode = ResearchMode.standard()
+        mock_client = AsyncMock()
+
+        # Case 1: no summaries → insufficient_data
+        result_empty = await evaluate_sources("test query", [], mode, mock_client)
+
+        # Case 2: summaries scored but all below cutoff → no_new_findings
+        summaries = [
+            Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Summary {i}")
+            for i in range(4)
+        ]
+        with patch("research_agent.relevance.score_source", mock_score_all_low):
+            result_scored = await evaluate_sources("test query", summaries, mode, mock_client)
+
+        assert result_empty.decision == "insufficient_data"
+        assert result_scored.decision == "no_new_findings"
+        assert result_empty.decision != result_scored.decision
 
 
 class TestGenerateInsufficientDataResponse:
