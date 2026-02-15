@@ -222,3 +222,50 @@ def validate_gaps(gaps: tuple[Gap, ...]) -> list[str]:
             )
 
     return errors
+
+
+def detect_cycles(gaps: tuple[Gap, ...]) -> list[tuple[str, ...]]:
+    """Detect circular dependencies in the gap dependency graph.
+
+    Uses DFS to find all cycles in the directed graph formed by
+    blocks relationships.
+
+    Args:
+        gaps: Validated gap objects (call validate_gaps first).
+
+    Returns:
+        List of cycles, where each cycle is a tuple of gap IDs
+        forming the cycle (e.g., ("a", "b", "a")).
+        Empty list means no cycles.
+    """
+    # Build adjacency list from blocks field only
+    graph: dict[str, list[str]] = {gap.id: list(gap.blocks) for gap in gaps}
+
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: dict[str, int] = {gap_id: WHITE for gap_id in graph}
+    path: list[str] = []
+    cycles: list[tuple[str, ...]] = []
+
+    def dfs(node: str) -> None:
+        color[node] = GRAY
+        path.append(node)
+
+        for neighbor in graph.get(node, []):
+            if neighbor not in color:
+                continue
+            if color[neighbor] == GRAY:
+                # Found a cycle — extract from where the neighbor appears in path
+                cycle_start = path.index(neighbor)
+                cycle = tuple(path[cycle_start:]) + (neighbor,)
+                cycles.append(cycle)
+            elif color[neighbor] == WHITE:
+                dfs(neighbor)
+
+        path.pop()
+        color[node] = BLACK
+
+    for node in graph:
+        if color[node] == WHITE:
+            dfs(node)
+
+    return cycles

@@ -5,7 +5,14 @@ import dataclasses
 import pytest
 
 from research_agent.errors import SchemaError
-from research_agent.schema import Gap, GapStatus, SchemaResult, load_schema, validate_gaps
+from research_agent.schema import (
+    Gap,
+    GapStatus,
+    SchemaResult,
+    detect_cycles,
+    load_schema,
+    validate_gaps,
+)
 
 
 class TestGapStatus:
@@ -283,3 +290,77 @@ class TestValidateGaps:
 
     def test_validate_empty_gaps(self):
         assert validate_gaps(()) == []
+
+
+class TestDetectCycles:
+    def test_no_cycles_empty(self):
+        assert detect_cycles(()) == []
+
+    def test_no_cycles_linear(self):
+        gaps = (
+            Gap(id="a", category="cat", blocks=("b",)),
+            Gap(id="b", category="cat", blocks=("c",)),
+            Gap(id="c", category="cat", blocks=("d",)),
+            Gap(id="d", category="cat"),
+        )
+        assert detect_cycles(gaps) == []
+
+    def test_no_cycles_diamond(self):
+        gaps = (
+            Gap(id="a", category="cat", blocks=("b", "c")),
+            Gap(id="b", category="cat", blocks=("d",)),
+            Gap(id="c", category="cat", blocks=("d",)),
+            Gap(id="d", category="cat"),
+        )
+        assert detect_cycles(gaps) == []
+
+    def test_simple_cycle(self):
+        gaps = (
+            Gap(id="a", category="cat", blocks=("b",)),
+            Gap(id="b", category="cat", blocks=("a",)),
+        )
+        cycles = detect_cycles(gaps)
+        assert len(cycles) == 1
+        assert "a" in cycles[0]
+        assert "b" in cycles[0]
+
+    def test_deep_cycle(self):
+        gaps = (
+            Gap(id="a", category="cat", blocks=("b",)),
+            Gap(id="b", category="cat", blocks=("c",)),
+            Gap(id="c", category="cat", blocks=("a",)),
+        )
+        cycles = detect_cycles(gaps)
+        assert len(cycles) == 1
+        assert cycles[0] == ("a", "b", "c", "a")
+
+    def test_multiple_cycles(self):
+        gaps = (
+            Gap(id="a", category="cat", blocks=("b",)),
+            Gap(id="b", category="cat", blocks=("a",)),
+            Gap(id="c", category="cat", blocks=("d",)),
+            Gap(id="d", category="cat", blocks=("c",)),
+        )
+        cycles = detect_cycles(gaps)
+        assert len(cycles) == 2
+
+    def test_no_dependencies(self):
+        gaps = (
+            Gap(id="a", category="cat"),
+            Gap(id="b", category="cat"),
+            Gap(id="c", category="cat"),
+        )
+        assert detect_cycles(gaps) == []
+
+    def test_cycle_includes_path(self):
+        gaps = (
+            Gap(id="a", category="cat", blocks=("b",)),
+            Gap(id="b", category="cat", blocks=("c",)),
+            Gap(id="c", category="cat", blocks=("a",)),
+        )
+        cycles = detect_cycles(gaps)
+        cycle = cycles[0]
+        # Cycle should start and end with same node
+        assert cycle[0] == cycle[-1]
+        # All nodes in the cycle should be present
+        assert set(cycle[:-1]) == {"a", "b", "c"}
