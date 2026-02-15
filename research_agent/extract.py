@@ -20,7 +20,7 @@ MAX_HTML_SIZE = 5 * 1024 * 1024
 MIN_EXTRACTED_TEXT_LENGTH = 100
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExtractedContent:
     """Extracted content from a web page."""
     url: str

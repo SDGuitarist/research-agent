@@ -8,4 +8,4 @@ def sanitize_content(text: str) -> str:
     Escapes XML-like delimiters to prevent prompt injection attacks
     where malicious web content tries to break out of data sections.
     """
-    return text.replace("<", "&lt;").replace(">", "&gt;")
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

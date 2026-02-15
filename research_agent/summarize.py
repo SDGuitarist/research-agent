@@ -12,7 +12,7 @@ from .sanitize import sanitize_content
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class Summary:
     """A summary of a content chunk."""
     url: str

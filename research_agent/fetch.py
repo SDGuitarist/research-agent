@@ -14,7 +14,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class FetchedPage:
     """A fetched web page."""
     url: str

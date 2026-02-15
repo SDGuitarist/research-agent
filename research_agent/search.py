@@ -29,7 +29,7 @@ _tavily_client_key: str | None = None
 _tavily_client_class: type | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class SearchResult:
     """A single search result."""
     title: str

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import random
 import time
 from pathlib import Path
 
@@ -29,10 +28,6 @@ from .state import mark_verified, mark_checked, save_schema
 from .staleness import detect_stale, select_batch, log_flip
 
 logger = logging.getLogger(__name__)
-
-# Base delay between search passes to avoid rate limits (with jitter added)
-SEARCH_PASS_DELAY_BASE = 1.0
-SEARCH_PASS_DELAY_JITTER = 0.5
 
 # Maximum concurrent sub-query searches (semaphore cap)
 MAX_CONCURRENT_SUB_QUERIES = 2
@@ -323,7 +318,7 @@ class ResearchAgent:
 
         if not quiet:
             self._next_step("Extracting content...")
-        extracted = extract_all(pages)
+        extracted = await asyncio.to_thread(extract_all, pages)
 
         cascade_contents = await self._recover_failed_urls(
             urls_to_fetch, extracted, results
@@ -508,8 +503,6 @@ class ResearchAgent:
             print(f"      Refined query: {refined_query}")
 
         # Search pass 2 with refined query
-        delay = SEARCH_PASS_DELAY_BASE + random.uniform(0, SEARCH_PASS_DELAY_JITTER)
-        await asyncio.sleep(delay)
         try:
             pass2_results = await asyncio.to_thread(
                 search, refined_query, self.mode.pass2_sources
@@ -573,9 +566,6 @@ class ResearchAgent:
             print(f"      Query refinement skipped (using original query)")
         else:
             print(f"      Refined query: {refined_query}")
-
-        delay = SEARCH_PASS_DELAY_BASE + random.uniform(0, SEARCH_PASS_DELAY_JITTER)
-        await asyncio.sleep(delay)
 
         # Search pass 2 (reuses shared pipeline in quiet mode)
         try:

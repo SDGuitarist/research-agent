@@ -39,10 +39,15 @@ class TestSanitizeContent:
         result = sanitize_content("<div><p>text</p></div>")
         assert result == "&lt;div&gt;&lt;p&gt;text&lt;/p&gt;&lt;/div&gt;"
 
-    def test_sanitize_content_preserves_ampersands_in_text(self):
-        """Regular ampersands in text should be preserved."""
+    def test_sanitize_content_escapes_ampersands(self):
+        """Ampersands should be escaped to prevent entity injection."""
         result = sanitize_content("Tom & Jerry")
-        assert result == "Tom & Jerry"
+        assert result == "Tom &amp; Jerry"
+
+    def test_sanitize_content_ampersand_before_angle_brackets(self):
+        """Ampersand must be escaped before angle brackets to avoid double-encoding."""
+        result = sanitize_content("&lt;script&gt;")
+        assert result == "&amp;lt;script&amp;gt;"
 
 
 class TestChunkText:

@@ -16,19 +16,13 @@ from tavily.errors import (
 )
 
 from .extract import ExtractedContent
-from .search import SearchResult
+from .search import SearchResult, _get_tavily_client
 
 logger = logging.getLogger(__name__)
 
 JINA_CONCURRENT = 5
 JINA_TIMEOUT = 20.0
 MIN_CONTENT_LENGTH = 100
-
-# Domains worth spending Tavily Extract credits on
-# Cached TavilyClient instance (avoids re-instantiation per extract call)
-_tavily_client: object | None = None
-_tavily_client_key: str | None = None
-_tavily_client_class: type | None = None
 
 # Domains worth spending Tavily Extract credits on
 EXTRACT_DOMAINS = frozenset({
@@ -41,17 +35,6 @@ EXTRACT_DOMAINS = frozenset({
     "facebook.com",
     "youtube.com",
 })
-
-
-def _get_tavily_client(api_key: str):
-    """Return a cached TavilyClient, creating one if needed."""
-    global _tavily_client, _tavily_client_key, _tavily_client_class
-    from tavily import TavilyClient
-    if _tavily_client is None or _tavily_client_key != api_key or _tavily_client_class is not TavilyClient:
-        _tavily_client = TavilyClient(api_key=api_key)
-        _tavily_client_key = api_key
-        _tavily_client_class = TavilyClient
-    return _tavily_client
 
 
 async def cascade_recover(

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 SKEPTIC_TIMEOUT = 60.0
 
 
-@dataclass
+@dataclass(frozen=True)
 class SkepticFinding:
     """Output from a single skeptic review pass."""
     lens: str           # "evidence_alignment" | "timing_stakes" | "strategic_frame" | "combined"
