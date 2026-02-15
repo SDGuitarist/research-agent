@@ -15,7 +15,7 @@ from research_agent.relevance import (
     SourceScore,
     RelevanceEvaluation,
     BATCH_SIZE,
-    BATCH_DELAY,
+    RATE_LIMIT_BACKOFF,
 )
 from research_agent.summarize import Summary
 from research_agent.modes import ResearchMode
@@ -219,7 +219,7 @@ class TestEvaluateSources:
     @pytest.fixture
     def mock_score_all_high(self):
         """Mock that scores all sources 4 or 5."""
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=4, explanation="Highly relevant",
@@ -229,7 +229,7 @@ class TestEvaluateSources:
     @pytest.fixture
     def mock_score_all_low(self):
         """Mock that scores all sources 1 or 2."""
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=2, explanation="Not relevant",
@@ -240,7 +240,7 @@ class TestEvaluateSources:
     def mock_score_mixed(self):
         """Mock that returns mixed scores."""
         scores = iter([4, 2, 5, 1, 3, 2, 4])
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=next(scores, 3), explanation="Mixed relevance",
@@ -329,7 +329,7 @@ class TestEvaluateSources:
 
         # Score: [4, 2, 4] = 2 survivors
         scores = iter([4, 2, 4])
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=next(scores), explanation="Test",
@@ -359,7 +359,7 @@ class TestEvaluateSources:
         mode = ResearchMode.quick()
         mock_client = AsyncMock()
 
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=3, explanation="Partially relevant",
@@ -379,7 +379,7 @@ class TestEvaluateSources:
         mode = ResearchMode.quick()
         mock_client = AsyncMock()
 
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=2, explanation="Tangentially related",
@@ -399,7 +399,7 @@ class TestEvaluateSources:
         mode = ResearchMode.quick()
         mock_client = AsyncMock()
 
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=4, explanation="Good",
@@ -597,7 +597,7 @@ class TestModeThresholds:
             for i in range(8)
         ]
 
-        async def mock_score_high(query, summary, client):
+        async def mock_score_high(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=4, explanation="Good",
@@ -620,7 +620,7 @@ class TestModeThresholds:
 
         # Scores: [4, 4, 4, 2, 2, 2, 2] = 3 survivors
         scores = iter([4, 4, 4, 2, 2, 2, 2])
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=next(scores), explanation="Test",
@@ -635,9 +635,8 @@ class TestModeThresholds:
 class TestEvaluateSourcesBatching:
     """Tests for batched execution in evaluate_sources()."""
 
-    async def test_batched_execution_sleeps_between_batches(self):
-        """Should call asyncio.sleep(BATCH_DELAY) between batches."""
-        # Create more summaries than one batch
+    async def test_no_sleep_between_batches_without_rate_limit(self):
+        """Should NOT sleep between batches when no 429 was encountered."""
         summaries = [
             Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Summary {i}")
             for i in range(BATCH_SIZE + 2)
@@ -645,7 +644,7 @@ class TestEvaluateSourcesBatching:
         mode = ResearchMode.standard()
         mock_client = AsyncMock()
 
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=4, explanation="Good",
@@ -655,8 +654,31 @@ class TestEvaluateSourcesBatching:
              patch("research_agent.relevance.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             await evaluate_sources("test", summaries, mode, mock_client)
 
-        # Should sleep once between batch 1 and batch 2
-        mock_sleep.assert_called_once_with(BATCH_DELAY)
+        mock_sleep.assert_not_called()
+
+    async def test_sleeps_between_batches_after_rate_limit(self):
+        """Should sleep between batches when a 429 was hit in previous batch."""
+        summaries = [
+            Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Summary {i}")
+            for i in range(BATCH_SIZE + 2)
+        ]
+        mode = ResearchMode.standard()
+        mock_client = AsyncMock()
+
+        async def mock_score(query, summary, client, rate_limit_event=None):
+            # Simulate a 429 hit in the first batch
+            if rate_limit_event is not None and summary.url == "https://example0.com":
+                rate_limit_event.set()
+            return SourceScore(
+                url=summary.url, title=summary.title,
+                score=4, explanation="Good",
+            )
+
+        with patch("research_agent.relevance.score_source", mock_score), \
+             patch("research_agent.relevance.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await evaluate_sources("test", summaries, mode, mock_client)
+
+        mock_sleep.assert_called_once_with(RATE_LIMIT_BACKOFF)
 
     async def test_single_batch_does_not_sleep(self):
         """Fewer items than BATCH_SIZE should not trigger sleep."""
@@ -667,7 +689,7 @@ class TestEvaluateSourcesBatching:
         mode = ResearchMode.standard()
         mock_client = AsyncMock()
 
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=4, explanation="Good",
@@ -690,7 +712,7 @@ class TestEvaluateSourcesBatching:
         mode = ResearchMode.deep()
         mock_client = AsyncMock()
 
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=4, explanation="Good",
@@ -836,7 +858,7 @@ class TestSourceAggregation:
 
         # Scores: [2, 4, 1] → max = 4 (KEEP) → all 3 chunks survive
         scores = iter([2, 4, 1])
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=next(scores), explanation="Test",
@@ -860,7 +882,7 @@ class TestSourceAggregation:
 
         # Scores: [1, 2, 1] → max = 2 (DROP) → all dropped
         scores = iter([1, 2, 1])
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=next(scores), explanation="Test",
@@ -893,7 +915,7 @@ class TestSourceAggregation:
         # B chunk:  [2]       → max 2 (DROP)
         # C chunks: [3, 1]    → max 3 (KEEP)
         scores = iter([2, 4, 1, 2, 3, 1])
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=next(scores), explanation="Test",
@@ -919,7 +941,7 @@ class TestSourceAggregation:
         mode = ResearchMode.standard()
         mock_client = AsyncMock()
 
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=4, explanation="Good",
@@ -940,7 +962,7 @@ class TestSourceAggregation:
         mode = ResearchMode.standard()
         mock_client = AsyncMock()
 
-        async def mock_score(query, summary, client):
+        async def mock_score(query, summary, client, rate_limit_event=None):
             return SourceScore(
                 url=summary.url, title=summary.title,
                 score=4, explanation="Good",

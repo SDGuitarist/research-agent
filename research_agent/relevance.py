@@ -20,7 +20,7 @@ SCORING_TIMEOUT = 15.0
 
 # Batching constants for rate limit management
 BATCH_SIZE = 5
-BATCH_DELAY = 3.0
+RATE_LIMIT_BACKOFF = 2.0  # seconds to wait between batches after a 429
 
 # Timeout for insufficient data response (longer due to more detailed output)
 INSUFFICIENT_RESPONSE_TIMEOUT = 30.0
@@ -101,7 +101,12 @@ def _parse_score_response(response_text: str) -> tuple[int, str]:
     return score, explanation
 
 
-async def score_source(query: str, summary: Summary, client: AsyncAnthropic) -> SourceScore:
+async def score_source(
+    query: str,
+    summary: Summary,
+    client: AsyncAnthropic,
+    rate_limit_event: asyncio.Event | None = None,
+) -> SourceScore:
     """
     Score a single source's relevance to the research query.
 
@@ -109,6 +114,7 @@ async def score_source(query: str, summary: Summary, client: AsyncAnthropic) -> 
         query: The original research query
         summary: A Summary object containing url, title, and summary text
         client: Async Anthropic client for API calls
+        rate_limit_event: Optional event to signal when a 429 is encountered
 
     Returns:
         SourceScore with url, title, score (1-5), explanation
@@ -166,6 +172,8 @@ EXPLANATION: [one sentence explaining why]"""
             break  # Success — exit retry loop
 
         except RateLimitError:
+            if rate_limit_event is not None:
+                rate_limit_event.set()
             if attempt < max_retries:
                 logger.warning(f"Rate limited scoring {summary.url}, retrying in 2s...")
                 await asyncio.sleep(2.0)
@@ -275,13 +283,15 @@ async def evaluate_sources(
     unique_urls = {s.url for s in summaries}
     print(f"\n      Scoring {len(summaries)} chunks from {len(unique_urls)} sources...")
 
-    # Score chunks in batches to manage rate limits
+    # Score chunks in batches with adaptive backoff (only delay after a 429)
     scored_results = []
+    rate_limit_hit = asyncio.Event()
     for batch_start in range(0, len(summaries), BATCH_SIZE):
         batch = summaries[batch_start:batch_start + BATCH_SIZE]
-        if batch_start > 0:
-            await asyncio.sleep(BATCH_DELAY)
-        tasks = [score_source(query, summary, client) for summary in batch]
+        if batch_start > 0 and rate_limit_hit.is_set():
+            await asyncio.sleep(RATE_LIMIT_BACKOFF)
+            rate_limit_hit.clear()
+        tasks = [score_source(query, summary, client, rate_limit_event=rate_limit_hit) for summary in batch]
         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
         scored_results.extend(batch_results)
 

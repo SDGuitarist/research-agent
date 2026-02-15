@@ -26,7 +26,7 @@ MAX_CHUNKS_PER_SOURCE = 3
 
 # Batching constants for rate limit management
 BATCH_SIZE = 8
-BATCH_DELAY = 1.5
+RATE_LIMIT_BACKOFF = 2.0  # seconds to wait between batches after a 429
 
 # Maximum concurrent API calls for chunk summarization
 MAX_CONCURRENT_CHUNKS = 3
@@ -73,6 +73,7 @@ async def summarize_chunk(
     title: str,
     model: str = "claude-sonnet-4-20250514",
     structured: bool = False,
+    rate_limit_event: asyncio.Event | None = None,
 ) -> Summary | None:
     """Summarize a single chunk of content."""
     # Sanitize untrusted web content to prevent prompt injection
@@ -142,6 +143,8 @@ Provide only a factual summary of the content above:"""
             )
 
         except RateLimitError:
+            if rate_limit_event is not None:
+                rate_limit_event.set()
             if attempt < max_retries:
                 logger.warning(f"Rate limited for {url}, retrying in 2s...")
                 await asyncio.sleep(2.0)
@@ -165,6 +168,7 @@ async def summarize_content(
     structured: bool = False,
     max_chunks: int = MAX_CHUNKS_PER_SOURCE,
     semaphore: asyncio.Semaphore | None = None,
+    rate_limit_event: asyncio.Event | None = None,
 ) -> list[Summary]:
     """
     Summarize extracted content, chunking if necessary.
@@ -176,6 +180,7 @@ async def summarize_content(
         structured: If True, use FACTS/KEY QUOTES/TONE format
         max_chunks: Maximum chunks per source
         semaphore: Optional semaphore for concurrency limiting across sources
+        rate_limit_event: Optional event to signal when a 429 is encountered
 
     Returns:
         List of summaries (one per chunk)
@@ -188,10 +193,12 @@ async def summarize_content(
                 return await summarize_chunk(
                     client=client, chunk=chunk, url=content.url,
                     title=content.title, model=model, structured=structured,
+                    rate_limit_event=rate_limit_event,
                 )
         return await summarize_chunk(
             client=client, chunk=chunk, url=content.url,
             title=content.title, model=model, structured=structured,
+            rate_limit_event=rate_limit_event,
         )
 
     tasks = [_guarded_summarize(chunk) for chunk in chunks]
@@ -229,14 +236,17 @@ async def summarize_all(
     """
     all_summaries = []
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_CHUNKS)
+    rate_limit_hit = asyncio.Event()
 
     for batch_start in range(0, len(contents), BATCH_SIZE):
         batch = contents[batch_start:batch_start + BATCH_SIZE]
-        if batch_start > 0:
-            await asyncio.sleep(BATCH_DELAY)
+        if batch_start > 0 and rate_limit_hit.is_set():
+            await asyncio.sleep(RATE_LIMIT_BACKOFF)
+            rate_limit_hit.clear()
         tasks = [
             summarize_content(client, content, model, structured=structured,
-                              max_chunks=max_chunks, semaphore=semaphore)
+                              max_chunks=max_chunks, semaphore=semaphore,
+                              rate_limit_event=rate_limit_hit)
             for content in batch
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)

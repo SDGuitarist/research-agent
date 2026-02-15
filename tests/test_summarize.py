@@ -15,7 +15,7 @@ from research_agent.summarize import (
     CHUNK_SIZE,
     MAX_CHUNKS_PER_SOURCE,
     BATCH_SIZE,
-    BATCH_DELAY,
+    RATE_LIMIT_BACKOFF,
     MAX_CONCURRENT_CHUNKS,
 )
 from research_agent.extract import ExtractedContent
@@ -334,8 +334,8 @@ class TestSummarizeAll:
         mock_client.messages.create.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_summarize_all_sleeps_between_batches(self):
-        """Should call asyncio.sleep between batches when more than BATCH_SIZE items."""
+    async def test_summarize_all_no_sleep_without_rate_limit(self):
+        """Should NOT sleep between batches when no 429 was encountered."""
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="Summary")]
@@ -350,9 +350,40 @@ class TestSummarizeAll:
         with patch("research_agent.summarize.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             result = await summarize_all(mock_client, contents)
 
-        # Should have slept once (between batch 1 and batch 2)
-        mock_sleep.assert_called_once_with(BATCH_DELAY)
+        mock_sleep.assert_not_called()
         assert len(result) == BATCH_SIZE + 2
+
+    @pytest.mark.asyncio
+    async def test_summarize_all_sleeps_after_rate_limit(self):
+        """Should sleep between batches when a 429 was hit in previous batch."""
+        from anthropic import RateLimitError
+
+        mock_client = AsyncMock()
+        mock_response_429 = MagicMock()
+        mock_response_429.status_code = 429
+        mock_response_429.headers = {}
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary")]
+
+        # First call raises 429 (triggers backoff), rest succeed
+        side_effects = [
+            RateLimitError(message="Rate limited", response=mock_response_429, body=None),
+        ] + [mock_response] * (BATCH_SIZE + 1 + 1)  # retry + rest of batch 1 + batch 2
+        mock_client.messages.create.side_effect = side_effects
+
+        contents = [
+            ExtractedContent(url=f"https://ex{i}.com", title=f"T{i}", text="Short content")
+            for i in range(BATCH_SIZE + 2)
+        ]
+
+        with patch("research_agent.summarize.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await summarize_all(mock_client, contents)
+
+        # Should have slept for the retry (2.0) and for backoff between batches
+        sleep_values = [call.args[0] for call in mock_sleep.call_args_list]
+        assert 2.0 in sleep_values  # retry sleep
+        assert RATE_LIMIT_BACKOFF in sleep_values  # adaptive backoff
 
     @pytest.mark.asyncio
     async def test_summarize_all_no_sleep_for_single_batch(self):
@@ -406,9 +437,9 @@ class TestSummarizeAll:
         assert len(result) < BATCH_SIZE + 2
 
     def test_batch_constants_are_reasonable(self):
-        """BATCH_SIZE and BATCH_DELAY should be within sensible ranges."""
+        """BATCH_SIZE and RATE_LIMIT_BACKOFF should be within sensible ranges."""
         assert 5 <= BATCH_SIZE <= 20
-        assert BATCH_DELAY >= 1.0
+        assert RATE_LIMIT_BACKOFF >= 1.0
         assert 1 <= MAX_CONCURRENT_CHUNKS <= 10
 
 
