@@ -275,8 +275,8 @@ class TestRunDeepSkepticPass:
         assert findings[1].lens == "timing_stakes"
         assert findings[2].lens == "strategic_frame"
 
-    def test_prior_findings_accumulate(self):
-        """Later skeptics should receive prior findings."""
+    def test_evidence_and_timing_have_no_prior_findings(self):
+        """Evidence and timing run in parallel — neither has prior findings."""
         client = self._make_mock_client([
             "[Observation] Evidence note",
             "[Observation] Timing note",
@@ -285,14 +285,21 @@ class TestRunDeepSkepticPass:
         run_deep_skeptic_pass(client, "Draft text")
         calls = client.messages.create.call_args_list
 
-        # First call (evidence) should NOT have prior_skeptic_findings
-        prompt_1 = calls[0].kwargs["messages"][0]["content"]
-        assert "<prior_skeptic_findings>" not in prompt_1
+        # Evidence and timing run concurrently — order may vary,
+        # but neither should have prior_skeptic_findings
+        for call in calls[:2]:
+            prompt = call.kwargs["messages"][0]["content"]
+            assert "<prior_skeptic_findings>" not in prompt
 
-        # Second call (timing) should have evidence findings
-        prompt_2 = calls[1].kwargs["messages"][0]["content"]
-        assert "<prior_skeptic_findings>" in prompt_2
-        assert "evidence_alignment" in prompt_2
+    def test_frame_receives_both_prior_findings(self):
+        """Frame agent should receive both evidence and timing findings."""
+        client = self._make_mock_client([
+            "[Observation] Evidence note",
+            "[Observation] Timing note",
+            "[Observation] Frame note",
+        ])
+        run_deep_skeptic_pass(client, "Draft text")
+        calls = client.messages.create.call_args_list
 
         # Third call (frame) should have both evidence and timing findings
         prompt_3 = calls[2].kwargs["messages"][0]["content"]

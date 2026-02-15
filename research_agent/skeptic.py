@@ -2,6 +2,7 @@
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from anthropic import Anthropic, RateLimitError, APIError, APITimeoutError
@@ -338,19 +339,26 @@ def run_deep_skeptic_pass(
     synthesis_context: str | None = None,
     model: str = "claude-sonnet-4-20250514",
 ) -> list[SkepticFinding]:
-    """Run all three skeptic agents sequentially (deep mode).
+    """Run three skeptic agents with evidence+timing in parallel (deep mode).
 
-    Each agent receives the draft plus all prior agents' findings.
+    Evidence and timing agents are independent — run them concurrently.
+    Frame agent depends on both, so it runs after they complete.
     Returns list of 3 SkepticFinding objects.
     """
-    findings: list[SkepticFinding] = []
+    # Evidence and timing are independent — run concurrently
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        evidence_future = executor.submit(
+            run_skeptic_evidence, client, draft, synthesis_context, model=model,
+        )
+        timing_future = executor.submit(
+            run_skeptic_timing, client, draft, synthesis_context, model=model,
+        )
+        evidence = evidence_future.result()
+        timing = timing_future.result()
 
-    findings.append(run_skeptic_evidence(
-        client, draft, synthesis_context, model=model,
-    ))
-    findings.append(run_skeptic_timing(
-        client, draft, synthesis_context, prior_findings=findings, model=model,
-    ))
+    findings = [evidence, timing]
+
+    # Frame depends on both prior findings
     findings.append(run_skeptic_frame(
         client, draft, synthesis_context, prior_findings=findings, model=model,
     ))

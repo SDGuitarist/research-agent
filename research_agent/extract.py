@@ -2,6 +2,7 @@
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from html import unescape
 
@@ -115,7 +116,7 @@ def _extract_with_readability(page: FetchedPage) -> ExtractedContent | None:
 
 def extract_all(pages: list[FetchedPage]) -> list[ExtractedContent]:
     """
-    Extract content from multiple pages.
+    Extract content from multiple pages using parallel threads.
 
     Args:
         pages: List of fetched pages
@@ -123,9 +124,10 @@ def extract_all(pages: list[FetchedPage]) -> list[ExtractedContent]:
     Returns:
         List of successfully extracted content
     """
-    results = []
-    for page in pages:
-        content = extract_content(page)
-        if content:
-            results.append(content)
-    return results
+    if not pages:
+        return []
+
+    with ThreadPoolExecutor(max_workers=min(len(pages), 4)) as executor:
+        results = list(executor.map(extract_content, pages))
+
+    return [r for r in results if r is not None]

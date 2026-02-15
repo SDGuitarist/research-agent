@@ -101,16 +101,19 @@ def _is_private_ip(ip_str: str) -> bool:
         return True  # Invalid IP is unsafe
 
 
-def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
+async def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
     """
-    Resolve hostname via DNS and validate all resolved IPs are safe.
+    Resolve hostname via async DNS and validate all resolved IPs are safe.
 
     This prevents DNS rebinding attacks by checking resolved IPs,
-    not just the hostname string.
+    not just the hostname string. Uses asyncio's getaddrinfo to avoid
+    blocking the event loop.
     """
     try:
-        # Resolve all addresses for the hostname
-        addrinfo = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
+        loop = asyncio.get_running_loop()
+        addrinfo = await loop.getaddrinfo(
+            hostname, port, proto=socket.IPPROTO_TCP,
+        )
 
         if not addrinfo:
             return False
@@ -128,14 +131,14 @@ def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
         return False
 
 
-def _is_safe_url(url: str) -> bool:
+async def _is_safe_url(url: str) -> bool:
     """
     Validate URL to prevent SSRF attacks.
 
     Blocks:
     - Non-HTTP(S) schemes (file://, ftp://, etc.)
     - Localhost and loopback addresses
-    - Private IP ranges (checked via DNS resolution to prevent rebinding)
+    - Private IP ranges (checked via async DNS resolution to prevent rebinding)
     """
     try:
         parsed = urlparse(url)
@@ -157,7 +160,7 @@ def _is_safe_url(url: str) -> bool:
 
         # Resolve DNS and validate all resolved IPs are safe
         # This prevents DNS rebinding attacks
-        if not _resolve_and_validate_host(host, port):
+        if not await _resolve_and_validate_host(host, port):
             return False
 
         return True
@@ -172,7 +175,7 @@ async def _fetch_single(
 ) -> FetchedPage | None:
     """Fetch a single URL using a shared client with concurrency control."""
     # Validate URL to prevent SSRF
-    if not _is_safe_url(url):
+    if not await _is_safe_url(url):
         return None
 
     async with semaphore:
