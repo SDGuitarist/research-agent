@@ -9,8 +9,10 @@ from research_agent.schema import (
     Gap,
     GapStatus,
     SchemaResult,
+    SortedGaps,
     detect_cycles,
     load_schema,
+    sort_gaps,
     validate_gaps,
 )
 
@@ -364,3 +366,121 @@ class TestDetectCycles:
         assert cycle[0] == cycle[-1]
         # All nodes in the cycle should be present
         assert set(cycle[:-1]) == {"a", "b", "c"}
+
+
+class TestSortGaps:
+    def test_sort_empty(self):
+        result = sort_gaps(())
+        assert result.ordered == ()
+        assert result.cycled == ()
+        assert not result.has_cycles
+
+    def test_sort_respects_dependencies(self):
+        # A blocks B → A must appear before B
+        gaps = (
+            Gap(id="b", category="cat", priority=5),
+            Gap(id="a", category="cat", priority=1, blocks=("b",)),
+        )
+        result = sort_gaps(gaps)
+        ids = [g.id for g in result.ordered]
+        assert ids.index("a") < ids.index("b")
+
+    def test_sort_breaks_ties_by_priority(self):
+        # No dependencies — sorted purely by priority (highest first)
+        gaps = (
+            Gap(id="low", category="cat", priority=1),
+            Gap(id="high", category="cat", priority=5),
+            Gap(id="mid", category="cat", priority=3),
+        )
+        result = sort_gaps(gaps)
+        ids = [g.id for g in result.ordered]
+        assert ids == ["high", "mid", "low"]
+
+    def test_sort_handles_all_unknown(self):
+        # Edge Case 1: all UNKNOWN, no deps → priority-only ordering
+        gaps = (
+            Gap(id="c", category="cat", priority=2),
+            Gap(id="a", category="cat", priority=5),
+            Gap(id="b", category="cat", priority=3),
+        )
+        result = sort_gaps(gaps)
+        ids = [g.id for g in result.ordered]
+        assert ids == ["a", "b", "c"]
+        assert not result.has_cycles
+
+    def test_sort_cycled_nodes_not_dropped(self):
+        # Cycled nodes must appear in both ordered and cycled
+        gaps = (
+            Gap(id="a", category="cat", blocks=("b",)),
+            Gap(id="b", category="cat", blocks=("a",)),
+        )
+        result = sort_gaps(gaps)
+        ordered_ids = {g.id for g in result.ordered}
+        assert "a" in ordered_ids
+        assert "b" in ordered_ids
+        assert "a" in result.cycled
+        assert "b" in result.cycled
+
+    def test_sort_cycled_nodes_after_acyclic(self):
+        # Acyclic gap "x" should come before cycled "a" and "b"
+        gaps = (
+            Gap(id="a", category="cat", blocks=("b",)),
+            Gap(id="b", category="cat", blocks=("a",)),
+            Gap(id="x", category="cat", priority=1),
+        )
+        result = sort_gaps(gaps)
+        ids = [g.id for g in result.ordered]
+        assert ids.index("x") < ids.index("a")
+        assert ids.index("x") < ids.index("b")
+
+    def test_sort_cycled_nodes_by_priority(self):
+        # Cycled nodes sorted by priority among themselves
+        gaps = (
+            Gap(id="a", category="cat", priority=1, blocks=("b",)),
+            Gap(id="b", category="cat", priority=5, blocks=("a",)),
+        )
+        result = sort_gaps(gaps)
+        assert result.cycled == ("b", "a")
+
+    def test_sort_has_cycles_property(self):
+        no_cycles = (Gap(id="a", category="cat"),)
+        assert not sort_gaps(no_cycles).has_cycles
+
+        with_cycles = (
+            Gap(id="a", category="cat", blocks=("b",)),
+            Gap(id="b", category="cat", blocks=("a",)),
+        )
+        assert sort_gaps(with_cycles).has_cycles
+
+    def test_sort_fully_populated_schema(self):
+        # Edge Case 2: all VERIFIED gaps still appear in output
+        gaps = (
+            Gap(id="a", category="cat", status=GapStatus.VERIFIED,
+                last_verified="2026-01-01", priority=3),
+            Gap(id="b", category="cat", status=GapStatus.VERIFIED,
+                last_verified="2026-01-01", priority=5),
+        )
+        result = sort_gaps(gaps)
+        assert len(result.ordered) == 2
+        assert not result.has_cycles
+
+    def test_sort_complex_dag(self):
+        # Multi-level DAG: root→mid1→leaf, root→mid2→leaf
+        gaps = (
+            Gap(id="root", category="cat", priority=5,
+                blocks=("mid1", "mid2")),
+            Gap(id="mid1", category="cat", priority=3, blocks=("leaf",)),
+            Gap(id="mid2", category="cat", priority=4, blocks=("leaf",)),
+            Gap(id="leaf", category="cat", priority=1),
+        )
+        result = sort_gaps(gaps)
+        ids = [g.id for g in result.ordered]
+        # root before mid1 and mid2
+        assert ids.index("root") < ids.index("mid1")
+        assert ids.index("root") < ids.index("mid2")
+        # mid1 and mid2 before leaf
+        assert ids.index("mid1") < ids.index("leaf")
+        assert ids.index("mid2") < ids.index("leaf")
+        # mid2 (priority 4) before mid1 (priority 3) at same level
+        assert ids.index("mid2") < ids.index("mid1")
+        assert not result.has_cycles

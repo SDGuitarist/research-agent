@@ -1,5 +1,6 @@
 """Gap data model and YAML parser for research schema."""
 
+import heapq
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -269,3 +270,93 @@ def detect_cycles(gaps: tuple[Gap, ...]) -> list[tuple[str, ...]]:
             dfs(node)
 
     return cycles
+
+
+@dataclass(frozen=True)
+class SortedGaps:
+    """Result of priority sorting.
+
+    ordered: Gaps in dependency-respecting, priority-weighted order.
+    cycled: Gap IDs that are part of cycles (sorted by priority as fallback).
+    """
+
+    ordered: tuple[Gap, ...] = ()
+    cycled: tuple[str, ...] = ()
+
+    @property
+    def has_cycles(self) -> bool:
+        return len(self.cycled) > 0
+
+
+def sort_gaps(
+    gaps: tuple[Gap, ...],
+    cycles: list[tuple[str, ...]] | None = None,
+) -> SortedGaps:
+    """Sort gaps by dependency order with priority-based tiebreaking.
+
+    Uses Kahn's algorithm for topological sort. Among gaps at the
+    same dependency level (same in-degree), higher priority comes first.
+
+    Args:
+        gaps: Gap objects to sort.
+        cycles: Pre-detected cycles from detect_cycles(). If None,
+            detect_cycles() is called internally.
+
+    Returns:
+        SortedGaps with ordered gaps and any cycled node IDs.
+    """
+    if not gaps:
+        return SortedGaps()
+
+    if cycles is None:
+        cycles = detect_cycles(gaps)
+
+    # Identify cycled node IDs
+    cycled_ids: set[str] = set()
+    for cycle in cycles:
+        for node_id in cycle:
+            cycled_ids.add(node_id)
+
+    gap_map = {gap.id: gap for gap in gaps}
+    acyclic_ids = {g.id for g in gaps if g.id not in cycled_ids}
+
+    # Build in-degree and adjacency for acyclic nodes only
+    in_degree: dict[str, int] = {gid: 0 for gid in acyclic_ids}
+    adj: dict[str, list[str]] = {gid: [] for gid in acyclic_ids}
+
+    for gap in gaps:
+        if gap.id not in acyclic_ids:
+            continue
+        for blocked_id in gap.blocks:
+            if blocked_id in acyclic_ids:
+                adj[gap.id].append(blocked_id)
+                in_degree[blocked_id] += 1
+
+    # Kahn's with max-heap on priority (negate for min-heap)
+    heap = [
+        (-gap_map[gid].priority, gid)
+        for gid in acyclic_ids
+        if in_degree[gid] == 0
+    ]
+    heapq.heapify(heap)
+
+    ordered: list[Gap] = []
+    while heap:
+        _neg_pri, node_id = heapq.heappop(heap)
+        ordered.append(gap_map[node_id])
+        for neighbor in adj[node_id]:
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                heapq.heappush(
+                    heap, (-gap_map[neighbor].priority, neighbor)
+                )
+
+    # Append cycled gaps sorted by priority (highest first)
+    cycled_gaps = sorted(
+        (g for g in gaps if g.id in cycled_ids),
+        key=lambda g: (-g.priority, g.id),
+    )
+    ordered.extend(cycled_gaps)
+    cycled_id_tuple = tuple(g.id for g in cycled_gaps)
+
+    return SortedGaps(ordered=tuple(ordered), cycled=cycled_id_tuple)
