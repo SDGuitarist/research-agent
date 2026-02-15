@@ -218,17 +218,24 @@ class ResearchAgent:
         results: list[SearchResult],
         structured: bool = False,
         max_chunks: int = 3,
+        quiet: bool = False,
     ) -> list:
-        """Shared pipeline: split prefetched, fetch, extract, cascade, summarize."""
+        """Shared pipeline: split prefetched, fetch, extract, cascade, summarize.
+
+        Args:
+            quiet: If True, suppress step headers (used by deep mode pass 2).
+        """
         prefetched, urls_to_fetch = self._split_prefetched(results)
-        self._next_step(f"Fetching {len(results)} pages...")
+        if not quiet:
+            self._next_step(f"Fetching {len(results)} pages...")
         pages = await fetch_urls(urls_to_fetch) if urls_to_fetch else []
         print(f"      Successfully fetched {len(pages)} pages ({len(prefetched)} from search cache)")
 
         if not pages and not prefetched:
             raise ResearchError("Could not fetch any pages")
 
-        self._next_step("Extracting content...")
+        if not quiet:
+            self._next_step("Extracting content...")
         extracted = extract_all(pages)
 
         cascade_contents = await self._recover_failed_urls(
@@ -241,7 +248,8 @@ class ResearchAgent:
             raise ResearchError("Could not extract content from any pages")
 
         logger.info(f"Summarizing content with {self.summarize_model}...")
-        self._next_step(f"Summarizing content with {self.summarize_model}...")
+        if not quiet:
+            self._next_step(f"Summarizing content with {self.summarize_model}...")
         summaries = await summarize_all(
             self.async_client,
             contents,
@@ -463,7 +471,7 @@ class ResearchAgent:
         delay = SEARCH_PASS_DELAY_BASE + random.uniform(0, SEARCH_PASS_DELAY_JITTER)
         await asyncio.sleep(delay)
 
-        # Search pass 2 (fetch/extract/summarize inline — no step headers)
+        # Search pass 2 (reuses shared pipeline in quiet mode)
         try:
             pass2_results = await asyncio.to_thread(
                 search, refined_query, self.mode.pass2_sources
@@ -472,30 +480,15 @@ class ResearchAgent:
             print(f"      Pass 2 found {len(pass2_results)} results ({len(new_results)} new)")
 
             if new_results:
-                new_prefetched, new_urls_to_fetch = self._split_prefetched(new_results)
-                new_pages = await fetch_urls(new_urls_to_fetch) if new_urls_to_fetch else []
-                print(f"      Fetched {len(new_pages)} new pages ({len(new_prefetched)} from search cache)")
-
-                new_extracted = extract_all(new_pages)
-                new_cascade = await self._recover_failed_urls(
-                    new_urls_to_fetch, new_extracted, new_results
-                )
-                new_contents = new_prefetched + new_extracted + new_cascade
-                if new_contents:
-                    print(f"      Extracted {len(new_contents)} new contents")
-                    try:
-                        new_summaries = await summarize_all(
-                            self.async_client,
-                            new_contents,
-                            model=self.summarize_model,
-                            structured=True,
-                            max_chunks=5,
-                        )
-                        summaries.extend(new_summaries)
-                        print(f"      Total summaries: {len(summaries)}")
-                    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
-                        logger.warning(f"Pass 2 summarization failed: {e}, continuing with pass 1 results")
-                        print(f"      Pass 2 summarization failed, continuing with {len(summaries)} summaries")
+                try:
+                    new_summaries = await self._fetch_extract_summarize(
+                        new_results, structured=True, max_chunks=5, quiet=True,
+                    )
+                    summaries.extend(new_summaries)
+                    print(f"      Total summaries: {len(summaries)}")
+                except (ResearchError, APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
+                    logger.warning(f"Pass 2 processing failed: {e}, continuing with pass 1 results")
+                    print(f"      Pass 2 failed, continuing with {len(summaries)} summaries")
             else:
                 print("      No new unique URLs from pass 2")
 
