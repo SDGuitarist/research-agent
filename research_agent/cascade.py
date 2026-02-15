@@ -186,7 +186,7 @@ async def _fetch_via_tavily_extract(
 def _is_extract_domain(url: str) -> bool:
     """Check if URL belongs to a high-value domain for Tavily Extract."""
     host = urlparse(url).hostname or ""
-    return any(host.endswith(d) for d in EXTRACT_DOMAINS)
+    return any(host == d or host.endswith("." + d) for d in EXTRACT_DOMAINS)
 
 
 def _snippet_fallback(

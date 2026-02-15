@@ -309,10 +309,8 @@ class TestIsExtractDomain:
 
     def test_rejects_partial_domain_match(self):
         """'notweddingwire.com' should not match 'weddingwire.com'."""
-        # This WILL match because "notweddingwire.com".endswith("weddingwire.com") is True
-        # This is acceptable — false positives waste a credit but don't cause errors
-        # and "notweddingwire.com" is not a real domain we'd encounter
-        pass
+        assert _is_extract_domain("https://notweddingwire.com/page") is False
+        assert _is_extract_domain("https://evilyelp.com/biz/123") is False
 
 
 # --- TestSnippetFallback ---

@@ -236,7 +236,15 @@ class ResearchAgent:
         cascade_contents = await self._recover_failed_urls(
             urls_to_fetch, extracted, results
         )
-        contents = prefetched + extracted + cascade_contents
+        all_contents = prefetched + extracted + cascade_contents
+        seen_content_urls: set[str] = set()
+        contents = []
+        for c in all_contents:
+            if c.url not in seen_content_urls:
+                seen_content_urls.add(c.url)
+                contents.append(c)
+        if len(contents) < len(all_contents):
+            print(f"      Deduplicated: {len(all_contents)} → {len(contents)} unique pages")
         print(f"      Extracted content from {len(contents)} pages")
 
         if not contents:
