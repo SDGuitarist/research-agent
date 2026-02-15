@@ -18,7 +18,7 @@ from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_synthesis_context
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
-from .errors import ResearchError, SearchError, SkepticError
+from .errors import ResearchError, SearchError, SkepticError, StateError
 from .modes import ResearchMode
 from .cycle_config import CycleConfig
 
@@ -73,6 +73,53 @@ class ResearchAgent:
             f"freshness windows. No new research needed at this time.\n\n"
             f"Run with `--force` to research anyway, or wait for gaps to become stale."
         )
+
+    def _update_gap_states(self, decision: str) -> None:
+        """Update gap schema after research completes.
+
+        - full_report / short_report → mark_verified() for researched gaps
+        - no_new_findings → mark_checked() (searched but found nothing)
+        - insufficient_data → no state update (search itself failed)
+        """
+        from .state import mark_verified, mark_checked, save_schema
+        from .staleness import log_flip
+        from .schema import load_schema, Gap, GapStatus
+
+        schema_result = load_schema(self.schema_path)
+        if not schema_result:
+            return
+
+        batch_ids = {g.id for g in self._current_research_batch}
+        updated_gaps: list[Gap] = []
+        audit_log_path = self.schema_path.parent / "gap_audit.log"
+
+        for gap in schema_result.gaps:
+            if gap.id not in batch_ids:
+                updated_gaps.append(gap)
+                continue
+
+            if decision in ("full_report", "short_report"):
+                new_gap = mark_verified(gap)
+                if gap.status != new_gap.status:
+                    log_flip(
+                        audit_log_path, gap.id,
+                        gap.status, new_gap.status,
+                        reason=f"Research completed: {decision}",
+                    )
+                updated_gaps.append(new_gap)
+            elif decision == "no_new_findings":
+                new_gap = mark_checked(gap)
+                updated_gaps.append(new_gap)
+                logger.info(f"Gap '{gap.id}' checked (no new findings)")
+            else:
+                # insufficient_data — don't update state
+                updated_gaps.append(gap)
+
+        try:
+            save_schema(self.schema_path, tuple(updated_gaps))
+            logger.info(f"Updated {len(batch_ids)} gap states in {self.schema_path}")
+        except StateError as e:
+            logger.warning(f"Failed to save gap state: {e}")
 
     def _next_step(self, message: str) -> None:
         """Print next step header with auto-incrementing counter."""
@@ -328,6 +375,8 @@ class ResearchAgent:
 
         # Branch based on relevance gate decision
         if evaluation.decision in ("insufficient_data", "no_new_findings"):
+            if evaluation.decision == "no_new_findings" and self.schema_path and self._current_research_batch:
+                self._update_gap_states("no_new_findings")
             self._next_step("Generating insufficient data response...")
             return await generate_insufficient_data_response(
                 query=query,
@@ -352,7 +401,7 @@ class ResearchAgent:
 
             ctx_result = load_full_context()
             business_context = ctx_result.content
-            return synthesize_report(
+            report = synthesize_report(
                 self.client, query, surviving,
                 model=self.mode.model,
                 max_tokens=self.mode.max_tokens,
@@ -362,6 +411,9 @@ class ResearchAgent:
                 total_count=total_count,
                 business_context=business_context,
             )
+            if self.schema_path and self._current_research_batch:
+                self._update_gap_states(evaluation.decision)
+            return report
 
         # Standard/deep mode: draft → skeptic → final synthesis
         is_deep = self.mode.name == "deep"
@@ -403,7 +455,7 @@ class ResearchAgent:
         self._next_step(f"Synthesizing final report with {self.mode.model}...")
         print()  # blank line before streaming
 
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             synthesize_final,
             self.client, query, draft, findings, surviving,
             model=self.mode.model,
@@ -414,6 +466,9 @@ class ResearchAgent:
             total_count=total_count,
             is_deep=is_deep,
         )
+        if self.schema_path and self._current_research_batch:
+            self._update_gap_states(evaluation.decision)
+        return result
 
     async def _research_with_refinement(
         self, query: str, decomposition: DecompositionResult | None = None

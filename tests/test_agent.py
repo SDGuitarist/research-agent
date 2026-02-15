@@ -14,6 +14,9 @@ from research_agent.extract import ExtractedContent
 from research_agent.summarize import Summary
 from research_agent.relevance import RelevanceEvaluation, SourceScore
 from research_agent.context_result import ContextResult
+from research_agent.schema import Gap, GapStatus, SchemaResult
+from research_agent.cycle_config import CycleConfig
+from research_agent.errors import StateError
 
 
 class TestResearchAgentQuickMode:
@@ -1400,3 +1403,220 @@ class TestResearchAgentGapCheck:
 
             assert result == "Report"
             mock_search.assert_called()
+
+
+class TestResearchAgentPostResearch:
+    """Tests for post-research gap state updates (Session 5)."""
+
+    def _make_agent(self, schema_path="/tmp/schema.yaml"):
+        """Create agent with schema_path configured."""
+        with patch("research_agent.agent.Anthropic"), \
+             patch("research_agent.agent.AsyncAnthropic"):
+            agent = ResearchAgent(
+                api_key="test-key",
+                schema_path=schema_path,
+            )
+        return agent
+
+    def test_post_research_marks_verified_on_full_report(self):
+        """After full_report, batch gaps have status=VERIFIED."""
+        agent = self._make_agent()
+        gap = Gap(id="gap-1", category="test", status=GapStatus.UNKNOWN, priority=3)
+        agent._current_research_batch = (gap,)
+
+        schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+
+        with patch("research_agent.state.mark_verified") as mock_verify, \
+             patch("research_agent.state.save_schema") as mock_save, \
+             patch("research_agent.staleness.log_flip") as mock_log, \
+             patch("research_agent.schema.load_schema", return_value=schema_result):
+
+            verified_gap = Gap(
+                id="gap-1", category="test", status=GapStatus.VERIFIED,
+                priority=3, last_verified="2026-01-01T00:00:00+00:00",
+                last_checked="2026-01-01T00:00:00+00:00",
+            )
+            mock_verify.return_value = verified_gap
+
+            agent._update_gap_states("full_report")
+
+            mock_verify.assert_called_once_with(gap)
+            mock_save.assert_called_once()
+            saved_gaps = mock_save.call_args[0][1]
+            assert saved_gaps[0].status == GapStatus.VERIFIED
+
+    def test_post_research_marks_verified_on_short_report(self):
+        """After short_report, batch gaps have status=VERIFIED."""
+        agent = self._make_agent()
+        gap = Gap(id="gap-1", category="test", status=GapStatus.STALE, priority=3,
+                  last_verified="2020-01-01T00:00:00+00:00")
+        agent._current_research_batch = (gap,)
+
+        schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+
+        with patch("research_agent.state.mark_verified") as mock_verify, \
+             patch("research_agent.state.save_schema") as mock_save, \
+             patch("research_agent.staleness.log_flip") as mock_log, \
+             patch("research_agent.schema.load_schema", return_value=schema_result):
+
+            verified_gap = Gap(
+                id="gap-1", category="test", status=GapStatus.VERIFIED,
+                priority=3, last_verified="2026-01-01T00:00:00+00:00",
+                last_checked="2026-01-01T00:00:00+00:00",
+            )
+            mock_verify.return_value = verified_gap
+
+            agent._update_gap_states("short_report")
+
+            mock_verify.assert_called_once_with(gap)
+            mock_save.assert_called_once()
+            # Status flipped from STALE → VERIFIED, so log_flip should be called
+            mock_log.assert_called_once()
+
+    def test_post_research_marks_checked_on_no_findings(self):
+        """After no_new_findings, batch gaps have updated last_checked."""
+        agent = self._make_agent()
+        gap = Gap(id="gap-1", category="test", status=GapStatus.UNKNOWN, priority=3)
+        agent._current_research_batch = (gap,)
+
+        schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+
+        with patch("research_agent.state.mark_checked") as mock_checked, \
+             patch("research_agent.state.save_schema") as mock_save, \
+             patch("research_agent.schema.load_schema", return_value=schema_result):
+
+            checked_gap = Gap(
+                id="gap-1", category="test", status=GapStatus.UNKNOWN,
+                priority=3, last_checked="2026-01-01T00:00:00+00:00",
+            )
+            mock_checked.return_value = checked_gap
+
+            agent._update_gap_states("no_new_findings")
+
+            mock_checked.assert_called_once_with(gap)
+            mock_save.assert_called_once()
+            saved_gaps = mock_save.call_args[0][1]
+            assert saved_gaps[0].status == GapStatus.UNKNOWN
+            assert saved_gaps[0].last_checked is not None
+
+    def test_post_research_no_update_on_insufficient(self):
+        """After insufficient_data, gap states unchanged."""
+        agent = self._make_agent()
+        gap = Gap(id="gap-1", category="test", status=GapStatus.UNKNOWN, priority=3)
+        agent._current_research_batch = (gap,)
+
+        schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+
+        with patch("research_agent.state.save_schema") as mock_save, \
+             patch("research_agent.schema.load_schema", return_value=schema_result):
+
+            agent._update_gap_states("insufficient_data")
+
+            mock_save.assert_called_once()
+            saved_gaps = mock_save.call_args[0][1]
+            # Gap should be unchanged (same object)
+            assert saved_gaps[0] is gap
+
+    def test_post_research_no_schema_no_update(self):
+        """Without schema loaded, no state writes occur."""
+        agent = self._make_agent()
+        agent._current_research_batch = (
+            Gap(id="gap-1", category="test", status=GapStatus.UNKNOWN, priority=3),
+        )
+        empty_result = SchemaResult(gaps=(), source="")
+
+        with patch("research_agent.state.save_schema") as mock_save, \
+             patch("research_agent.schema.load_schema", return_value=empty_result):
+
+            agent._update_gap_states("full_report")
+
+            mock_save.assert_not_called()
+
+    def test_post_research_preserves_other_gaps(self):
+        """Non-batch gaps unchanged in schema file."""
+        agent = self._make_agent()
+        batch_gap = Gap(id="gap-1", category="test", status=GapStatus.UNKNOWN, priority=3)
+        other_gap = Gap(
+            id="gap-2", category="other", status=GapStatus.VERIFIED,
+            priority=5, last_verified="2099-01-01T00:00:00+00:00",
+        )
+        agent._current_research_batch = (batch_gap,)
+
+        schema_result = SchemaResult(gaps=(batch_gap, other_gap), source="/tmp/schema.yaml")
+
+        with patch("research_agent.state.mark_verified") as mock_verify, \
+             patch("research_agent.state.save_schema") as mock_save, \
+             patch("research_agent.staleness.log_flip"), \
+             patch("research_agent.schema.load_schema", return_value=schema_result):
+
+            verified_gap = Gap(
+                id="gap-1", category="test", status=GapStatus.VERIFIED,
+                priority=3, last_verified="2026-01-01T00:00:00+00:00",
+                last_checked="2026-01-01T00:00:00+00:00",
+            )
+            mock_verify.return_value = verified_gap
+
+            agent._update_gap_states("full_report")
+
+            mock_save.assert_called_once()
+            saved_gaps = mock_save.call_args[0][1]
+            assert len(saved_gaps) == 2
+            # gap-1 was updated
+            assert saved_gaps[0].status == GapStatus.VERIFIED
+            assert saved_gaps[0].id == "gap-1"
+            # gap-2 was preserved unchanged
+            assert saved_gaps[1] is other_gap
+
+    def test_post_research_audit_log_written(self):
+        """Status flips recorded in gap_audit.log."""
+        agent = self._make_agent()
+        gap = Gap(id="gap-1", category="test", status=GapStatus.UNKNOWN, priority=3)
+        agent._current_research_batch = (gap,)
+
+        schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+
+        with patch("research_agent.state.mark_verified") as mock_verify, \
+             patch("research_agent.state.save_schema"), \
+             patch("research_agent.staleness.log_flip") as mock_log, \
+             patch("research_agent.schema.load_schema", return_value=schema_result):
+
+            verified_gap = Gap(
+                id="gap-1", category="test", status=GapStatus.VERIFIED,
+                priority=3, last_verified="2026-01-01T00:00:00+00:00",
+                last_checked="2026-01-01T00:00:00+00:00",
+            )
+            mock_verify.return_value = verified_gap
+
+            agent._update_gap_states("full_report")
+
+            # Status changed from UNKNOWN → VERIFIED, so log_flip should be called
+            mock_log.assert_called_once_with(
+                Path("/tmp") / "gap_audit.log",
+                "gap-1",
+                GapStatus.UNKNOWN,
+                GapStatus.VERIFIED,
+                reason="Research completed: full_report",
+            )
+
+    def test_post_research_save_failure_logged(self):
+        """StateError logged but pipeline returns successfully."""
+        agent = self._make_agent()
+        gap = Gap(id="gap-1", category="test", status=GapStatus.UNKNOWN, priority=3)
+        agent._current_research_batch = (gap,)
+
+        schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+
+        with patch("research_agent.state.mark_verified") as mock_verify, \
+             patch("research_agent.state.save_schema", side_effect=StateError("disk full")), \
+             patch("research_agent.staleness.log_flip"), \
+             patch("research_agent.schema.load_schema", return_value=schema_result):
+
+            verified_gap = Gap(
+                id="gap-1", category="test", status=GapStatus.VERIFIED,
+                priority=3, last_verified="2026-01-01T00:00:00+00:00",
+                last_checked="2026-01-01T00:00:00+00:00",
+            )
+            mock_verify.return_value = verified_gap
+
+            # Should NOT raise — graceful degradation
+            agent._update_gap_states("full_report")
