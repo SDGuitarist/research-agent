@@ -1,13 +1,15 @@
-"""Async URL fetching with retry logic."""
+"""Async URL fetching with SSRF-safe redirect handling and size limits."""
 
 import asyncio
 import ipaddress
 import logging
 import random
 import socket
+import typing
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+import httpcore
 import httpx
 
 
@@ -84,6 +86,12 @@ BLOCKED_HOSTS = {
     "::1",
 }
 
+# Maximum redirects to follow per URL (prevents redirect loops)
+MAX_REDIRECTS = 10
+
+# Maximum response body size (10 MB) — enforced via streaming
+MAX_RESPONSE_SIZE = 10 * 1024 * 1024
+
 
 def _is_private_ip(ip_str: str) -> bool:
     """Check if an IP address is private, loopback, or otherwise unsafe."""
@@ -101,13 +109,63 @@ def _is_private_ip(ip_str: str) -> bool:
         return True  # Invalid IP is unsafe
 
 
+class _SSRFSafeBackend(httpcore.AsyncNetworkBackend):
+    """Network backend that validates DNS at TCP connect time.
+
+    Resolves DNS, validates all IPs are public, then connects to the
+    pinned IP — all in one step. This eliminates the TOCTOU gap where
+    an attacker could rebind DNS between validation and connection.
+    """
+
+    def __init__(self) -> None:
+        self._inner = httpcore.AnyIOBackend()
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: typing.Iterable | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        loop = asyncio.get_running_loop()
+        addrinfo = await loop.getaddrinfo(
+            host, port, proto=socket.IPPROTO_TCP,
+        )
+        if not addrinfo:
+            raise httpcore.ConnectError(f"DNS resolution failed for {host}")
+
+        for _, _, _, _, sockaddr in addrinfo:
+            if _is_private_ip(sockaddr[0]):
+                raise httpcore.ConnectError(
+                    f"SSRF blocked: {host} resolves to private IP {sockaddr[0]}"
+                )
+
+        pinned_ip = addrinfo[0][4][0]
+        return await self._inner.connect_tcp(
+            pinned_ip, port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
+        )
+
+    async def connect_unix_socket(
+        self, path: str, timeout: float | None = None,
+        socket_options: typing.Iterable | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        raise httpcore.ConnectError("Unix sockets not supported")
+
+    async def sleep(self, seconds: float) -> None:
+        await self._inner.sleep(seconds)
+
+
 async def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
     """
     Resolve hostname via async DNS and validate all resolved IPs are safe.
 
-    This prevents DNS rebinding attacks by checking resolved IPs,
-    not just the hostname string. Uses asyncio's getaddrinfo to avoid
-    blocking the event loop.
+    Used as a pre-flight check to reject obviously unsafe URLs before
+    opening a connection. The _SSRFSafeBackend provides defense-in-depth
+    by re-validating at TCP connect time.
     """
     try:
         loop = asyncio.get_running_loop()
@@ -138,7 +196,7 @@ async def _is_safe_url(url: str) -> bool:
     Blocks:
     - Non-HTTP(S) schemes (file://, ftp://, etc.)
     - Localhost and loopback addresses
-    - Private IP ranges (checked via async DNS resolution to prevent rebinding)
+    - Private IP ranges (checked via async DNS resolution)
     """
     try:
         parsed = urlparse(url)
@@ -158,8 +216,7 @@ async def _is_safe_url(url: str) -> bool:
         # Determine port for DNS resolution
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
 
-        # Resolve DNS and validate all resolved IPs are safe
-        # This prevents DNS rebinding attacks
+        # Pre-flight DNS validation (defense-in-depth with _SSRFSafeBackend)
         if not await _resolve_and_validate_host(host, port):
             return False
 
@@ -173,45 +230,100 @@ async def _fetch_single(
     url: str,
     semaphore: asyncio.Semaphore,
 ) -> FetchedPage | None:
-    """Fetch a single URL using a shared client with concurrency control."""
-    # Validate URL to prevent SSRF
+    """Fetch a single URL with SSRF-safe redirect handling and size limits.
+
+    Handles redirects manually so each hop is validated against SSRF checks.
+    Uses streaming to enforce response size limits before reading into memory.
+    """
+    # Pre-flight SSRF check on the original URL
     if not await _is_safe_url(url):
         return None
 
     async with semaphore:
-        try:
-            response = await client.get(url)
+        current_url = url
+        for _ in range(MAX_REDIRECTS + 1):
+            try:
+                async with client.stream("GET", current_url) as response:
+                    # Handle redirects manually — validate each target
+                    if response.is_redirect:
+                        location = response.headers.get("location", "")
+                        if not location:
+                            return None
+                        redirect_url = str(response.url.join(location))
+                        if not await _is_safe_url(redirect_url):
+                            logger.warning(
+                                "Blocked redirect to unsafe URL: %s", redirect_url
+                            )
+                            return None
+                        current_url = redirect_url
+                        continue
 
-            if response.status_code in SKIP_STATUS_CODES:
+                    # Non-redirect response
+                    if response.status_code in SKIP_STATUS_CODES:
+                        return None
+                    if response.status_code == 429:
+                        return None
+
+                    response.raise_for_status()
+
+                    # Check Content-Type
+                    content_type = response.headers.get("content-type", "").lower()
+                    media_type = content_type.split(";")[0].strip()
+                    if media_type and media_type not in PROCESSABLE_CONTENT_TYPES:
+                        logger.debug(
+                            "Skipping non-HTML content type '%s' from %s",
+                            media_type, current_url,
+                        )
+                        return None
+
+                    # Early rejection via Content-Length header
+                    content_length = response.headers.get("content-length")
+                    if content_length:
+                        try:
+                            if int(content_length) > MAX_RESPONSE_SIZE:
+                                logger.warning(
+                                    "Response too large (%s bytes) from %s",
+                                    content_length, current_url,
+                                )
+                                return None
+                        except ValueError:
+                            pass
+
+                    # Stream body with size enforcement
+                    chunks: list[bytes] = []
+                    total_size = 0
+                    async for chunk in response.aiter_bytes():
+                        total_size += len(chunk)
+                        if total_size > MAX_RESPONSE_SIZE:
+                            logger.warning(
+                                "Response exceeded %d bytes from %s",
+                                MAX_RESPONSE_SIZE, current_url,
+                            )
+                            return None
+                        chunks.append(chunk)
+
+                    body = b"".join(chunks)
+                    encoding = response.encoding or "utf-8"
+                    text = body.decode(encoding, errors="replace")
+
+                    return FetchedPage(
+                        url=str(response.url),
+                        html=text,
+                        status_code=response.status_code,
+                    )
+
+            except httpx.TimeoutException:
+                return None
+            except httpx.HTTPStatusError:
+                return None
+            except httpx.ConnectError:
+                return None
+            except httpx.ReadError:
                 return None
 
-            if response.status_code == 429:
-                return None
-
-            response.raise_for_status()
-
-            # Check Content-Type to avoid processing binary files (PDFs, images, etc.)
-            content_type = response.headers.get("content-type", "").lower()
-            # Extract the media type (ignore charset and other params)
-            media_type = content_type.split(";")[0].strip()
-            if media_type and media_type not in PROCESSABLE_CONTENT_TYPES:
-                logger.debug(f"Skipping non-HTML content type '{media_type}' from {url}")
-                return None
-
-            return FetchedPage(
-                url=str(response.url),
-                html=response.text,
-                status_code=response.status_code,
-            )
-
-        except httpx.TimeoutException:
-            return None
-        except httpx.HTTPStatusError:
-            return None
-        except httpx.ConnectError:
-            return None
-        except httpx.ReadError:
-            return None
+        # Exceeded MAX_REDIRECTS
+        logger.warning("Too many redirects for %s", url)
+        return None
 
 
 async def fetch_urls(
@@ -220,7 +332,7 @@ async def fetch_urls(
     max_concurrent: int = MAX_CONCURRENT_REQUESTS,
 ) -> list[FetchedPage]:
     """
-    Fetch multiple URLs concurrently with connection pooling.
+    Fetch multiple URLs concurrently with SSRF protection and size limits.
 
     Args:
         urls: List of URLs to fetch
@@ -232,11 +344,17 @@ async def fetch_urls(
     """
     semaphore = asyncio.Semaphore(max_concurrent)
 
+    transport = httpx.AsyncHTTPTransport(
+        limits=httpx.Limits(max_connections=max_concurrent),
+    )
+    # Pin DNS resolution at TCP connect time to prevent DNS rebinding
+    transport._pool._network_backend = _SSRFSafeBackend()  # noqa: SLF001
+
     async with httpx.AsyncClient(
         timeout=timeout,
-        follow_redirects=True,
+        follow_redirects=False,
         headers=_get_random_headers(),
-        limits=httpx.Limits(max_connections=max_concurrent),
+        transport=transport,
     ) as client:
         tasks = [_fetch_single(client, url, semaphore) for url in urls]
         results = await asyncio.gather(*tasks)

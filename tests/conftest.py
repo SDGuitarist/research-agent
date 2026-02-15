@@ -162,18 +162,36 @@ def mock_ddgs_results():
 
 @pytest.fixture
 def mock_httpx_response():
-    """Factory for creating mock httpx responses."""
+    """Factory for creating mock httpx streaming responses.
+
+    Returns a response compatible with `client.stream("GET", url)`.
+    Includes `is_redirect`, `aiter_bytes()`, and `encoding` for streaming.
+    """
     def _create_response(
         status_code: int = 200,
         text: str = "<html><body>Content</body></html>",
         content_type: str = "text/html",
-        url: str = "https://example.com"
+        url: str = "https://example.com",
+        is_redirect: bool = False,
+        location: str | None = None,
     ):
         response = MagicMock()
         response.status_code = status_code
         response.text = text
-        response.headers = {"content-type": content_type}
-        response.url = url
+        response.is_redirect = is_redirect
+        response.encoding = "utf-8"
+        headers = {"content-type": content_type}
+        if location:
+            headers["location"] = location
+        response.headers = headers
+        response.url = MagicMock()
+        response.url.__str__ = MagicMock(return_value=url)
+        response.url.join = MagicMock(return_value=MagicMock(__str__=MagicMock(return_value=location or "")))
+
+        # Async byte iterator for streaming
+        async def _aiter_bytes():
+            yield text.encode("utf-8")
+        response.aiter_bytes = _aiter_bytes
 
         # For raise_for_status
         if status_code >= 400:

@@ -12,6 +12,13 @@ from research_agent.fetch import (
 )
 
 
+def _make_stream_ctx(mock_response):
+    """Create an async context manager mock for client.stream()."""
+    ctx = AsyncMock()
+    ctx.__aenter__.return_value = mock_response
+    return ctx
+
+
 class TestIsPrivateIp:
     """Tests for _is_private_ip() function."""
 
@@ -129,7 +136,7 @@ class TestFetchUrls:
         with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
-                mock_client.get = AsyncMock(return_value=mock_response)
+                mock_client.stream = MagicMock(return_value=_make_stream_ctx(mock_response))
                 mock_client_class.return_value.__aenter__.return_value = mock_client
 
                 results = await fetch_urls(["https://example.com"])
@@ -148,7 +155,7 @@ class TestFetchUrls:
         with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
-                mock_client.get = AsyncMock(return_value=mock_response)
+                mock_client.stream = MagicMock(return_value=_make_stream_ctx(mock_response))
                 mock_client_class.return_value.__aenter__.return_value = mock_client
 
                 results = await fetch_urls(["https://example.com"])
@@ -163,7 +170,9 @@ class TestFetchUrls:
         with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
-                mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
+                err_ctx = AsyncMock()
+                err_ctx.__aenter__.side_effect = httpx.TimeoutException("timeout")
+                mock_client.stream = MagicMock(return_value=err_ctx)
                 mock_client_class.return_value.__aenter__.return_value = mock_client
 
                 results = await fetch_urls(["https://example.com"])
@@ -183,7 +192,7 @@ class TestFetchUrls:
         with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
-                mock_client.get = AsyncMock(return_value=mock_response)
+                mock_client.stream = MagicMock(return_value=_make_stream_ctx(mock_response))
                 mock_client_class.return_value.__aenter__.return_value = mock_client
 
                 results = await fetch_urls(["https://example.com/doc.pdf"])
@@ -201,8 +210,8 @@ class TestFetchUrls:
                 results = await fetch_urls(["http://localhost/admin"])
 
                 assert len(results) == 0
-                # Should not have attempted to fetch
-                mock_client.get.assert_not_called()
+                # Should not have attempted to stream
+                mock_client.stream.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_fetch_urls_handles_multiple_urls(self, mock_httpx_response):
@@ -216,7 +225,9 @@ class TestFetchUrls:
         with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
-                mock_client.get = AsyncMock(return_value=mock_response)
+                mock_client.stream = MagicMock(
+                    side_effect=lambda *a, **kw: _make_stream_ctx(mock_response)
+                )
                 mock_client_class.return_value.__aenter__.return_value = mock_client
 
                 urls = [
@@ -227,7 +238,7 @@ class TestFetchUrls:
                 results = await fetch_urls(urls)
 
                 assert len(results) == 3
-                assert mock_client.get.call_count == 3
+                assert mock_client.stream.call_count == 3
 
     @pytest.mark.asyncio
     async def test_fetch_urls_skips_429_rate_limit_responses(self, mock_httpx_response):
@@ -238,7 +249,7 @@ class TestFetchUrls:
         with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
-                mock_client.get = AsyncMock(return_value=mock_response)
+                mock_client.stream = MagicMock(return_value=_make_stream_ctx(mock_response))
                 mock_client_class.return_value.__aenter__.return_value = mock_client
 
                 results = await fetch_urls(["https://example.com"])
@@ -258,7 +269,7 @@ class TestFetchUrls:
         with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
-                mock_client.get = AsyncMock(return_value=mock_response)
+                mock_client.stream = MagicMock(return_value=_make_stream_ctx(mock_response))
                 mock_client_class.return_value.__aenter__.return_value = mock_client
 
                 results = await fetch_urls(["https://example.com/file.txt"])
@@ -273,7 +284,9 @@ class TestFetchUrls:
         with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
-                mock_client.get = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+                err_ctx = AsyncMock()
+                err_ctx.__aenter__.side_effect = httpx.ConnectError("connection refused")
+                mock_client.stream = MagicMock(return_value=err_ctx)
                 mock_client_class.return_value.__aenter__.return_value = mock_client
 
                 results = await fetch_urls(["https://example.com"])
