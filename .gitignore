@@ -15,6 +15,9 @@ build/
 .vscode/
 *.swp
 
+# macOS
+.DS_Store
+
 # Output
 reports/
 research_log.md
