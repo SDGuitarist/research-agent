@@ -1,8 +1,10 @@
-"""Staleness detection for research gaps."""
+"""Staleness detection, batch limiting, and audit logging for research gaps."""
 
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
+from .errors import StateError
 from .schema import Gap, GapStatus
 
 
@@ -73,3 +75,45 @@ def select_batch(
     """
     sorted_gaps = sorted(gaps, key=lambda g: (-g.priority, g.id))
     return tuple(sorted_gaps[:max_per_run])
+
+
+def log_flip(
+    log_path: Path | str,
+    gap_id: str,
+    old_status: GapStatus,
+    new_status: GapStatus,
+    reason: str,
+    now: datetime | None = None,
+) -> None:
+    """Append a status flip event to the audit log.
+
+    Each entry is a single line of structured text:
+    [ISO_TIMESTAMP] gap_id: old_status -> new_status (reason)
+
+    The log file is append-only. If it doesn't exist, it is created.
+    Parent directories are created if needed.
+
+    Args:
+        log_path: Path to the audit log file.
+        gap_id: ID of the gap that changed.
+        old_status: Previous status.
+        new_status: New status.
+        reason: Human-readable reason for the flip.
+        now: Override timestamp for testing. Defaults to UTC now.
+
+    Raises:
+        StateError: If the write fails.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    timestamp = now.isoformat()
+    line = f"[{timestamp}] {gap_id}: {old_status.value} -> {new_status.value} ({reason})\n"
+
+    path = Path(log_path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a") as f:
+            f.write(line)
+    except OSError as exc:
+        raise StateError(f"Failed to write audit log: {exc}") from exc
