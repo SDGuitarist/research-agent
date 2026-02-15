@@ -1,5 +1,5 @@
 ---
-status: pending
+status: ready
 priority: p1
 issue_id: "023"
 tags: [code-review, security, ssrf, dns]
