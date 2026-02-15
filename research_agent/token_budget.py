@@ -16,18 +16,9 @@ def count_tokens(text: str, model: str = "claude-sonnet-4-20250514") -> int:
     if not text:
         return 0
 
-    try:
-        import anthropic
-
-        client = anthropic.Anthropic()
-        response = client.messages.count_tokens(
-            model=model,
-            messages=[{"role": "user", "content": text}],
-        )
-        return response.input_tokens
-    except Exception:
-        # Conservative estimate: 1 token ≈ 4 characters
-        return max(1, len(text) // 4)
+    # Conservative estimate: 1 token ≈ 4 characters.
+    # Budget allocation is approximate — avoids per-call API round-trips.
+    return max(1, len(text) // 4)
 
 
 # Priority order for pruning (lowest priority number pruned first)

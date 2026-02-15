@@ -86,7 +86,7 @@ class ResearchAgent:
         from .schema import load_schema, Gap, GapStatus
 
         schema_result = load_schema(self.schema_path)
-        if not schema_result:
+        if not schema_result or self._current_research_batch is None:
             return
 
         batch_ids = {g.id for g in self._current_research_batch}

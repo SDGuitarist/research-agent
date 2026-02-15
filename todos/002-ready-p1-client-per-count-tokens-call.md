@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 triage_reason: "Accepted — 8-16 unnecessary API calls per run, easy fix"
 priority: p1
 issue_id: "002"

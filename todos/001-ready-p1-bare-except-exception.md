@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 triage_reason: "Accepted — violates core project convention, 5/7 agents flagged"
 priority: p1
 issue_id: "001"
