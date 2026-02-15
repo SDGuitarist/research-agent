@@ -25,6 +25,12 @@ JINA_TIMEOUT = 20.0
 MIN_CONTENT_LENGTH = 100
 
 # Domains worth spending Tavily Extract credits on
+# Cached TavilyClient instance (avoids re-instantiation per extract call)
+_tavily_client: object | None = None
+_tavily_client_key: str | None = None
+_tavily_client_class: type | None = None
+
+# Domains worth spending Tavily Extract credits on
 EXTRACT_DOMAINS = frozenset({
     "weddingwire.com",
     "theknot.com",
@@ -35,6 +41,17 @@ EXTRACT_DOMAINS = frozenset({
     "facebook.com",
     "youtube.com",
 })
+
+
+def _get_tavily_client(api_key: str):
+    """Return a cached TavilyClient, creating one if needed."""
+    global _tavily_client, _tavily_client_key, _tavily_client_class
+    from tavily import TavilyClient
+    if _tavily_client is None or _tavily_client_key != api_key or _tavily_client_class is not TavilyClient:
+        _tavily_client = TavilyClient(api_key=api_key)
+        _tavily_client_key = api_key
+        _tavily_client_class = TavilyClient
+    return _tavily_client
 
 
 async def cascade_recover(
@@ -141,9 +158,7 @@ async def _fetch_via_tavily_extract(
         return []
 
     try:
-        from tavily import TavilyClient
-
-        client = TavilyClient(api_key=tavily_key)
+        client = _get_tavily_client(tavily_key)
         result = await asyncio.to_thread(client.extract, urls=urls[:20])
 
         contents = []

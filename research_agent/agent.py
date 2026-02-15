@@ -385,7 +385,9 @@ class ResearchAgent:
 
         # Refine query using snippets
         snippets = [r.snippet for r in pass1_results if r.snippet]
-        refined_query = refine_query(self.client, query, snippets)
+        refined_query = await asyncio.to_thread(
+            refine_query, self.client, query, snippets
+        )
         if refined_query == query:
             print(f"      Query refinement skipped (using original query)")
         else:
@@ -450,7 +452,9 @@ class ResearchAgent:
         self._next_step("Deep mode: refining search...")
 
         summary_texts = [s.summary for s in summaries]
-        refined_query = refine_query(self.client, query, summary_texts)
+        refined_query = await asyncio.to_thread(
+            refine_query, self.client, query, summary_texts
+        )
         if refined_query == query:
             print(f"      Query refinement skipped (using original query)")
         else:

@@ -154,7 +154,7 @@ Write the report now:"""
             print()  # Blank line before report content
 
         # Use streaming for longer responses
-        full_response = ""
+        chunks: list[str] = []
 
         with client.messages.stream(
             model=model,
@@ -164,11 +164,11 @@ Write the report now:"""
             messages=[{"role": "user", "content": prompt}]
         ) as stream:
             for text in stream.text_stream:
-                full_response += text
+                chunks.append(text)
                 print(text, end="", flush=True)
 
         print()  # Newline after streaming
-        result = full_response.strip()
+        result = "".join(chunks).strip()
         if not result:
             raise SynthesisError("Model returned empty response")
 
@@ -263,7 +263,7 @@ Write sections 1-8 now:"""
     )
 
     try:
-        full_response = ""
+        chunks: list[str] = []
         with client.messages.stream(
             model=model,
             max_tokens=max_tokens,
@@ -272,11 +272,11 @@ Write sections 1-8 now:"""
             messages=[{"role": "user", "content": prompt}],
         ) as stream:
             for text in stream.text_stream:
-                full_response += text
+                chunks.append(text)
                 print(text, end="", flush=True)
 
         print()  # Newline after streaming
-        result = full_response.strip()
+        result = "".join(chunks).strip()
         if not result:
             raise SynthesisError("Draft synthesis returned empty response")
         return result
@@ -466,7 +466,7 @@ Continue the report now:"""
             print(limited_disclaimer)
             print()
 
-        full_response = ""
+        chunks: list[str] = []
         with client.messages.stream(
             model=model,
             max_tokens=max_tokens,
@@ -475,11 +475,11 @@ Continue the report now:"""
             messages=[{"role": "user", "content": prompt}],
         ) as stream:
             for text in stream.text_stream:
-                full_response += text
+                chunks.append(text)
                 print(text, end="", flush=True)
 
         print()  # Newline after streaming
-        result = full_response.strip()
+        result = "".join(chunks).strip()
         if not result:
             raise SynthesisError("Final synthesis returned empty response")
 

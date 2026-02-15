@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 # Model for query refinement (using Sonnet for reliability)
 REFINEMENT_MODEL = "claude-sonnet-4-20250514"
 
+# Cached TavilyClient instance (avoids re-instantiation per search call)
+_tavily_client: object | None = None
+_tavily_client_key: str | None = None
+_tavily_client_class: type | None = None
+
 
 @dataclass
 class SearchResult:
@@ -76,6 +81,17 @@ def search(query: str, max_results: int = 5) -> list[SearchResult]:
     return results
 
 
+def _get_tavily_client(api_key: str):
+    """Return a cached TavilyClient, creating one if needed."""
+    global _tavily_client, _tavily_client_key, _tavily_client_class
+    from tavily import TavilyClient
+    if _tavily_client is None or _tavily_client_key != api_key or _tavily_client_class is not TavilyClient:
+        _tavily_client = TavilyClient(api_key=api_key)
+        _tavily_client_key = api_key
+        _tavily_client_class = TavilyClient
+    return _tavily_client
+
+
 def _search_tavily(query: str, max_results: int, api_key: str) -> list[SearchResult]:
     """
     Search using Tavily API.
@@ -91,10 +107,7 @@ def _search_tavily(query: str, max_results: int, api_key: str) -> list[SearchRes
     Returns:
         List of SearchResult objects
     """
-    # Import here to avoid requiring tavily-python when not used
-    from tavily import TavilyClient
-
-    client = TavilyClient(api_key=api_key)
+    client = _get_tavily_client(api_key)
 
     response = client.search(
         query=query,

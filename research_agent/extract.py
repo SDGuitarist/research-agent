@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 # Maximum HTML size to process (5MB) - prevents memory exhaustion attacks
 MAX_HTML_SIZE = 5 * 1024 * 1024
 
+# Minimum extracted text length to consider extraction successful
+MIN_EXTRACTED_TEXT_LENGTH = 100
+
 
 @dataclass
 class ExtractedContent:
@@ -45,12 +48,12 @@ def extract_content(page: FetchedPage) -> ExtractedContent | None:
 
     # Try trafilatura first (highest accuracy)
     result = _extract_with_trafilatura(page)
-    if result and len(result.text) > 100:
+    if result and len(result.text) > MIN_EXTRACTED_TEXT_LENGTH:
         return result
 
     # Fallback to readability
     result = _extract_with_readability(page)
-    if result and len(result.text) > 100:
+    if result and len(result.text) > MIN_EXTRACTED_TEXT_LENGTH:
         return result
 
     return None
