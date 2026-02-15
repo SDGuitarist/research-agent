@@ -9,6 +9,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONTEXT_PATH = Path("research_context.md")
 
+# Per-run cache: avoids re-reading the same context file multiple times.
+# Call clear_context_cache() at the start of each research run.
+_context_cache: dict[str, ContextResult] = {}
+
 # Section headers included in each slice (matched against ## headings)
 _SEARCH_SECTIONS = {
     "Two Brands, One Operator",
@@ -26,8 +30,16 @@ _SYNTHESIS_SECTIONS = {
 }
 
 
+def clear_context_cache() -> None:
+    """Clear the per-run context cache. Call at the start of each research run."""
+    _context_cache.clear()
+
+
 def load_full_context(context_path: Path | None = None) -> ContextResult:
     """Load the complete business context file.
+
+    Caches the result per path to avoid redundant disk reads within a run.
+    Call clear_context_cache() at the start of each run.
 
     Args:
         context_path: Path to context file (defaults to research_context.md)
@@ -37,14 +49,22 @@ def load_full_context(context_path: Path | None = None) -> ContextResult:
     """
     path = context_path or DEFAULT_CONTEXT_PATH
     source = str(path)
+    if source in _context_cache:
+        return _context_cache[source]
     try:
         if not path.exists():
-            return ContextResult.not_configured(source=source)
+            result = ContextResult.not_configured(source=source)
+            _context_cache[source] = result
+            return result
         content = path.read_text().strip()
         if not content:
-            return ContextResult.empty(source=source)
+            result = ContextResult.empty(source=source)
+            _context_cache[source] = result
+            return result
         logger.info(f"Loaded research context from {path}")
-        return ContextResult.loaded(content, source=source)
+        result = ContextResult.loaded(content, source=source)
+        _context_cache[source] = result
+        return result
     except OSError as e:
         logger.warning(f"Could not read context file {path}: {e}")
         return ContextResult.failed(str(e), source=source)

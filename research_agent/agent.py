@@ -1,5 +1,7 @@
 """Main research agent orchestrating the full pipeline."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import random
@@ -15,12 +17,17 @@ from .summarize import summarize_all
 from .synthesize import synthesize_report, synthesize_draft, synthesize_final
 from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation
 from .decompose import decompose_query, DecompositionResult
-from .context import load_full_context, load_synthesis_context
+from .context import load_full_context, load_synthesis_context, clear_context_cache
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .errors import ResearchError, SearchError, SkepticError, StateError
 from .modes import ResearchMode
 from .cycle_config import CycleConfig
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .schema import Gap, SchemaResult
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +68,10 @@ class ResearchAgent:
         self.mode = mode or ResearchMode.standard()
         self.cycle_config = cycle_config or CycleConfig()
         self.schema_path = Path(schema_path) if schema_path else None
-        self._current_schema_result = None
-        self._current_research_batch = None
+        self._current_schema_result: SchemaResult | None = None
+        self._current_research_batch: tuple[Gap, ...] | None = None
 
-    def _already_covered_response(self, schema_result) -> str:
+    def _already_covered_response(self, schema_result: SchemaResult) -> str:
         """Generate a response when all gaps are verified and fresh."""
         gap_count = len(schema_result.gaps)
         return (
@@ -83,9 +90,9 @@ class ResearchAgent:
         """
         from .state import mark_verified, mark_checked, save_schema
         from .staleness import log_flip
-        from .schema import load_schema, Gap, GapStatus
+        from .schema import Gap
 
-        schema_result = load_schema(self.schema_path)
+        schema_result = self._current_schema_result
         if not schema_result or self._current_research_batch is None:
             return
 
@@ -150,6 +157,9 @@ class ResearchAgent:
         """Async implementation of research."""
         self._start_time = time.monotonic()
         self._step_num = 0
+        self._current_schema_result = None
+        self._current_research_batch = None
+        clear_context_cache()
         is_deep = self.mode.name == "deep"
 
         # Calculate total steps:

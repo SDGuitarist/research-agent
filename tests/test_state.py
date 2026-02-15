@@ -38,7 +38,6 @@ class TestGapToDict:
         assert "last_verified" not in result
         assert "last_checked" not in result
         assert "ttl_days" not in result
-        assert "metadata" not in result
 
     def test_gap_to_dict_converts_tuples(self):
         gap = Gap(
@@ -119,7 +118,6 @@ class TestSaveSchema:
                 blocks=("other",),
                 blocked_by=("other",),
                 findings="Important data",
-                metadata={"source": "web"},
             ),
             Gap(id="other", category="tech", blocks=("full",), blocked_by=("full",)),
         )

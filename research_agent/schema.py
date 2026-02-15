@@ -1,7 +1,7 @@
 """Gap data model and YAML parser for research schema."""
 
 import heapq
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
@@ -36,7 +36,6 @@ class Gap:
     blocks: tuple[str, ...] = ()
     blocked_by: tuple[str, ...] = ()
     findings: str = ""
-    metadata: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -103,7 +102,6 @@ def _parse_gap(raw: dict, index: int) -> Gap:
         blocks=tuple(blocks) if blocks else (),
         blocked_by=tuple(blocked_by) if blocked_by else (),
         findings=raw.get("findings", ""),
-        metadata=raw.get("metadata", {}),
     )
 
 

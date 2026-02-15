@@ -20,6 +20,35 @@ logger = logging.getLogger(__name__)
 # Timeout for synthesis API calls (longer due to streaming)
 SYNTHESIS_TIMEOUT = 120.0
 
+
+def _apply_budget_pruning(
+    components: dict[str, str],
+    max_tokens: int,
+    reserved_output: int,
+    sources_text: str,
+    business_context: str | None,
+) -> tuple[str, str | None]:
+    """Apply token budget and truncate pruned components.
+
+    Returns:
+        (sources_text, business_context) after any truncation.
+    """
+    budget = allocate_budget(
+        components, max_tokens=max_tokens, reserved_output=reserved_output,
+    )
+    if budget.pruned:
+        logger.info(f"Token budget: pruned {budget.pruned}")
+        for name in budget.pruned:
+            if name == "sources":
+                sources_text = truncate_to_budget(
+                    sources_text, budget.allocations.get("sources", 0)
+                )
+            elif name == "business_context" and business_context:
+                business_context = truncate_to_budget(
+                    business_context, budget.allocations.get("business_context", 0)
+                )
+    return sources_text, business_context
+
 # Instruction for balanced coverage of comparison queries
 BALANCE_INSTRUCTION = (
     "If this query compares multiple options (e.g., 'X vs Y', 'which is better'), "
@@ -74,22 +103,9 @@ def synthesize_report(
         budget_components["instructions"] = mode_instructions
     if business_context:
         budget_components["business_context"] = sanitize_content(business_context)
-    budget = allocate_budget(
-        budget_components,
-        max_tokens=100_000,
-        reserved_output=max_tokens,
+    sources_text, business_context = _apply_budget_pruning(
+        budget_components, 100_000, max_tokens, sources_text, business_context,
     )
-    if budget.pruned:
-        logger.info(f"Token budget: pruned {budget.pruned}")
-        for name in budget.pruned:
-            if name == "sources":
-                sources_text = truncate_to_budget(
-                    sources_text, budget.allocations.get("sources", 0)
-                )
-            elif name == "business_context" and business_context:
-                business_context = truncate_to_budget(
-                    business_context, budget.allocations.get("business_context", 0)
-                )
 
     # Default instructions if none provided
     if mode_instructions is None:
@@ -377,22 +393,9 @@ def synthesize_final(
         budget_components["business_context"] = sanitize_content(business_context)
     if draft:
         budget_components["previous_baseline"] = safe_draft
-    budget = allocate_budget(
-        budget_components,
-        max_tokens=100_000,
-        reserved_output=max_tokens,
+    sources_text, business_context = _apply_budget_pruning(
+        budget_components, 100_000, max_tokens, sources_text, business_context,
     )
-    if budget.pruned:
-        logger.info(f"Token budget: pruned {budget.pruned}")
-        for name in budget.pruned:
-            if name == "sources":
-                sources_text = truncate_to_budget(
-                    sources_text, budget.allocations.get("sources", 0)
-                )
-            elif name == "business_context" and business_context:
-                business_context = truncate_to_budget(
-                    business_context, budget.allocations.get("business_context", 0)
-                )
 
     # Business context block
     context_block = ""

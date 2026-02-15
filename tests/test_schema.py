@@ -48,7 +48,6 @@ class TestGap:
         assert gap.last_checked is None
         assert gap.ttl_days is None
         assert gap.findings == ""
-        assert gap.metadata == {}
 
     def test_gap_full_construction(self):
         gap = Gap(
@@ -62,7 +61,6 @@ class TestGap:
             blocks=("market-position",),
             blocked_by=("team",),
             findings="Found pricing details",
-            metadata={"source": "website"},
         )
         assert gap.id == "pricing"
         assert gap.category == "competitor-a"
@@ -74,7 +72,6 @@ class TestGap:
         assert gap.blocks == ("market-position",)
         assert gap.blocked_by == ("team",)
         assert gap.findings == "Found pricing details"
-        assert gap.metadata == {"source": "website"}
 
     def test_gap_blocks_is_tuple(self):
         gap = Gap(id="x", category="y", blocks=("a", "b"))

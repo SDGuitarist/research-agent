@@ -25,7 +25,9 @@ def atomic_write(path: Path | str, content: str, encoding: str = "utf-8") -> Non
     Raises:
         StateError: If the write fails (wraps underlying OSError).
     """
-    target = Path(path)
+    target = Path(path).resolve()
+    if Path(path).is_symlink():
+        raise StateError(f"Refusing to write through symlink: {path}")
     target.parent.mkdir(parents=True, exist_ok=True)
 
     fd = None

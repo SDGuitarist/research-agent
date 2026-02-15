@@ -24,7 +24,6 @@ _DEFAULTS: dict[str, object] = {
     "blocks": (),
     "blocked_by": (),
     "findings": "",
-    "metadata": {},
 }
 
 

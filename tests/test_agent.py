@@ -1425,6 +1425,7 @@ class TestResearchAgentPostResearch:
         agent._current_research_batch = (gap,)
 
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+        agent._current_schema_result = schema_result
 
         with patch("research_agent.state.mark_verified") as mock_verify, \
              patch("research_agent.state.save_schema") as mock_save, \
@@ -1453,6 +1454,7 @@ class TestResearchAgentPostResearch:
         agent._current_research_batch = (gap,)
 
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+        agent._current_schema_result = schema_result
 
         with patch("research_agent.state.mark_verified") as mock_verify, \
              patch("research_agent.state.save_schema") as mock_save, \
@@ -1480,6 +1482,7 @@ class TestResearchAgentPostResearch:
         agent._current_research_batch = (gap,)
 
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+        agent._current_schema_result = schema_result
 
         with patch("research_agent.state.mark_checked") as mock_checked, \
              patch("research_agent.state.save_schema") as mock_save, \
@@ -1506,6 +1509,7 @@ class TestResearchAgentPostResearch:
         agent._current_research_batch = (gap,)
 
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+        agent._current_schema_result = schema_result
 
         with patch("research_agent.state.save_schema") as mock_save, \
              patch("research_agent.schema.load_schema", return_value=schema_result):
@@ -1524,6 +1528,7 @@ class TestResearchAgentPostResearch:
             Gap(id="gap-1", category="test", status=GapStatus.UNKNOWN, priority=3),
         )
         empty_result = SchemaResult(gaps=(), source="")
+        agent._current_schema_result = empty_result
 
         with patch("research_agent.state.save_schema") as mock_save, \
              patch("research_agent.schema.load_schema", return_value=empty_result):
@@ -1543,6 +1548,7 @@ class TestResearchAgentPostResearch:
         agent._current_research_batch = (batch_gap,)
 
         schema_result = SchemaResult(gaps=(batch_gap, other_gap), source="/tmp/schema.yaml")
+        agent._current_schema_result = schema_result
 
         with patch("research_agent.state.mark_verified") as mock_verify, \
              patch("research_agent.state.save_schema") as mock_save, \
@@ -1574,6 +1580,7 @@ class TestResearchAgentPostResearch:
         agent._current_research_batch = (gap,)
 
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+        agent._current_schema_result = schema_result
 
         with patch("research_agent.state.mark_verified") as mock_verify, \
              patch("research_agent.state.save_schema"), \
@@ -1605,6 +1612,7 @@ class TestResearchAgentPostResearch:
         agent._current_research_batch = (gap,)
 
         schema_result = SchemaResult(gaps=(gap,), source="/tmp/schema.yaml")
+        agent._current_schema_result = schema_result
 
         with patch("research_agent.state.mark_verified") as mock_verify, \
              patch("research_agent.state.save_schema", side_effect=StateError("disk full")), \
