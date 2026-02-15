@@ -1,9 +1,9 @@
-"""Tests for staleness detection (Deliverable 3)."""
+"""Tests for staleness detection + batch limiting."""
 
 from datetime import datetime, timedelta, timezone
 
 from research_agent.schema import Gap, GapStatus
-from research_agent.staleness import detect_stale
+from research_agent.staleness import detect_stale, select_batch
 
 # Fixed reference time for all tests
 _NOW = datetime(2026, 2, 15, 12, 0, 0, tzinfo=timezone.utc)
@@ -90,3 +90,50 @@ class TestDetectStale:
     def test_empty_gaps_returns_empty(self):
         result = detect_stale((), now=_NOW)
         assert result == []
+
+
+class TestSelectBatch:
+    def test_batch_selects_highest_priority(self):
+        gaps = tuple(
+            Gap(id=f"g{i}", category="market", priority=i) for i in range(1, 11)
+        )
+        result = select_batch(gaps, max_per_run=3)
+        assert len(result) == 3
+        assert result[0].priority == 10
+        assert result[1].priority == 9
+        assert result[2].priority == 8
+
+    def test_batch_respects_limit(self):
+        gaps = tuple(
+            Gap(id=f"g{i}", category="market", priority=5) for i in range(10)
+        )
+        result = select_batch(gaps, max_per_run=3)
+        assert len(result) == 3
+
+    def test_batch_breaks_ties_by_id(self):
+        gaps = (
+            Gap(id="charlie", category="market", priority=5),
+            Gap(id="alpha", category="market", priority=5),
+            Gap(id="bravo", category="market", priority=5),
+        )
+        result = select_batch(gaps, max_per_run=3)
+        assert result[0].id == "alpha"
+        assert result[1].id == "bravo"
+        assert result[2].id == "charlie"
+
+    def test_batch_fewer_than_limit(self):
+        gaps = (
+            Gap(id="a", category="market", priority=5),
+            Gap(id="b", category="market", priority=3),
+        )
+        result = select_batch(gaps, max_per_run=5)
+        assert len(result) == 2
+
+    def test_batch_empty_input(self):
+        result = select_batch((), max_per_run=5)
+        assert result == ()
+
+    def test_batch_returns_tuple(self):
+        gaps = [Gap(id="a", category="market")]
+        result = select_batch(gaps, max_per_run=5)
+        assert isinstance(result, tuple)

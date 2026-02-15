@@ -53,3 +53,23 @@ def detect_stale(
             stale.append(replace(gap, status=GapStatus.STALE))
 
     return stale
+
+
+def select_batch(
+    gaps: tuple[Gap, ...] | list[Gap],
+    max_per_run: int = 5,
+) -> tuple[Gap, ...]:
+    """Select the highest-priority gaps for a single research cycle.
+
+    Sorts by priority (highest first), then by gap ID (alphabetical)
+    for deterministic ordering. Returns at most max_per_run gaps.
+
+    Args:
+        gaps: Candidate gaps (typically stale + unknown gaps).
+        max_per_run: Maximum gaps to return.
+
+    Returns:
+        Tuple of at most max_per_run Gap objects, sorted by priority.
+    """
+    sorted_gaps = sorted(gaps, key=lambda g: (-g.priority, g.id))
+    return tuple(sorted_gaps[:max_per_run])
