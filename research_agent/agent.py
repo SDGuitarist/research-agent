@@ -307,7 +307,8 @@ class ResearchAgent:
             self._next_step(f"Synthesizing {label} with {self.mode.model}...")
             print()  # blank line before streaming
 
-            business_context = load_full_context()
+            ctx_result = load_full_context()
+            business_context = ctx_result.content
             return synthesize_report(
                 self.client, query, surviving,
                 model=self.mode.model,
@@ -330,7 +331,8 @@ class ResearchAgent:
         )
 
         self._next_step("Running skeptic review...")
-        synthesis_context = load_synthesis_context()
+        synth_result = load_synthesis_context()
+        synthesis_context = synth_result.content
 
         try:
             if is_deep:

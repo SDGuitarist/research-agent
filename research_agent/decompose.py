@@ -123,7 +123,8 @@ def decompose_query(
     safe_query = sanitize_content(query)
 
     # Load optional business context (search-optimized slice)
-    context = load_search_context(context_path)
+    ctx_result = load_search_context(context_path)
+    context = ctx_result.content
     context_block = ""
     if context:
         safe_context = sanitize_content(context)

@@ -11,6 +11,7 @@ from research_agent.decompose import (
     _parse_decomposition_response,
 )
 from research_agent.context import load_full_context
+from research_agent.context_result import ContextResult, ContextStatus
 
 
 class TestLoadContext:
@@ -20,22 +21,28 @@ class TestLoadContext:
         context_file = tmp_path / "research_context.md"
         context_file.write_text("# My Business\nSan Diego weddings")
         result = load_full_context(context_file)
-        assert result == "# My Business\nSan Diego weddings"
+        assert result.status == ContextStatus.LOADED
+        assert result.content == "# My Business\nSan Diego weddings"
 
-    def test_returns_none_when_file_missing(self, tmp_path):
+    def test_returns_not_configured_when_file_missing(self, tmp_path):
         result = load_full_context(tmp_path / "nonexistent.md")
-        assert result is None
+        assert result.status == ContextStatus.NOT_CONFIGURED
+        assert result.content is None
 
-    def test_returns_none_for_empty_file(self, tmp_path):
+    def test_returns_empty_for_empty_file(self, tmp_path):
         context_file = tmp_path / "empty.md"
         context_file.write_text("   \n  ")
         result = load_full_context(context_file)
-        assert result is None
+        assert result.status == ContextStatus.EMPTY
+        assert result.content is None
 
-    def test_handles_os_error_gracefully(self):
-        # Path that will cause an OS error (directory, not file)
-        result = load_full_context(Path("/dev/null/impossible"))
-        assert result is None
+    def test_handles_os_error_gracefully(self, tmp_path):
+        # Create a directory where a file is expected to force read_text() to raise
+        fake_file = tmp_path / "context.md"
+        fake_file.mkdir()
+        result = load_full_context(fake_file)
+        assert result.status == ContextStatus.FAILED
+        assert result.error != ""
 
 
 class TestValidateSubQueries:
