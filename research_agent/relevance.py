@@ -25,9 +25,6 @@ RATE_LIMIT_BACKOFF = 2.0  # seconds to wait between batches after a 429
 # Timeout for insufficient data response (longer due to more detailed output)
 INSUFFICIENT_RESPONSE_TIMEOUT = 30.0
 
-# Model for relevance scoring (using Sonnet for reliability)
-SCORING_MODEL = "claude-sonnet-4-20250514"
-
 
 @dataclass(frozen=True)
 class SourceScore:
@@ -106,6 +103,7 @@ async def score_source(
     summary: Summary,
     client: AsyncAnthropic,
     rate_limit_event: asyncio.Event | None = None,
+    model: str = "claude-sonnet-4-20250514",
 ) -> SourceScore:
     """
     Score a single source's relevance to the research query.
@@ -155,7 +153,7 @@ EXPLANATION: [one sentence explaining why]"""
     for attempt in range(max_retries + 1):
         try:
             response = await client.messages.create(
-                model=SCORING_MODEL,
+                model=model,
                 max_tokens=100,
                 timeout=SCORING_TIMEOUT,
                 system=system_prompt,
@@ -291,7 +289,7 @@ async def evaluate_sources(
         if batch_start > 0 and rate_limit_hit.is_set():
             await asyncio.sleep(RATE_LIMIT_BACKOFF)
             rate_limit_hit.clear()
-        tasks = [score_source(query, summary, client, rate_limit_event=rate_limit_hit) for summary in batch]
+        tasks = [score_source(query, summary, client, rate_limit_event=rate_limit_hit, model=mode.model) for summary in batch]
         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
         scored_results.extend(batch_results)
 
@@ -367,6 +365,7 @@ async def generate_insufficient_data_response(
     refined_query: str | None,
     dropped_sources: tuple[SourceScore, ...],
     client: AsyncAnthropic,
+    model: str = "claude-sonnet-4-20250514",
 ) -> str:
     """
     Generate a response explaining why insufficient relevant data was found.
@@ -420,7 +419,7 @@ Do NOT pad the response. Keep it concise and honest."""
 
     try:
         response = await client.messages.create(
-            model=SCORING_MODEL,
+            model=model,
             max_tokens=500,
             timeout=INSUFFICIENT_RESPONSE_TIMEOUT,
             system=system_prompt,
