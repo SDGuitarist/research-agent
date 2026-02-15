@@ -1,5 +1,7 @@
 """Integration tests for research_agent.agent module."""
 
+from pathlib import Path
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
@@ -1075,3 +1077,326 @@ class TestResearchAgentStructuredSummaries:
             summarize_call = mock_summarize.call_args
             # structured should either not be present or be False
             assert summarize_call.kwargs.get("structured", False) is False
+
+
+class TestResearchAgentGapCheck:
+    """Tests for pre-research gap check (Session 4)."""
+
+    def test_init_default_cycle_config(self):
+        """ResearchAgent() uses CycleConfig() defaults."""
+        with patch("research_agent.agent.Anthropic"), \
+             patch("research_agent.agent.AsyncAnthropic"):
+            agent = ResearchAgent(api_key="test-key")
+
+        from research_agent.cycle_config import CycleConfig
+        assert agent.cycle_config.max_gaps_per_run == CycleConfig().max_gaps_per_run
+        assert agent.cycle_config.default_ttl_days == CycleConfig().default_ttl_days
+        assert agent.schema_path is None
+
+    def test_init_custom_cycle_config(self):
+        """Custom CycleConfig is stored on instance."""
+        from research_agent.cycle_config import CycleConfig
+        config = CycleConfig(max_gaps_per_run=3, default_ttl_days=7)
+
+        with patch("research_agent.agent.Anthropic"), \
+             patch("research_agent.agent.AsyncAnthropic"):
+            agent = ResearchAgent(
+                api_key="test-key",
+                cycle_config=config,
+                schema_path="/tmp/schema.yaml",
+            )
+
+        assert agent.cycle_config is config
+        assert agent.cycle_config.max_gaps_per_run == 3
+        assert agent.schema_path == Path("/tmp/schema.yaml")
+
+    @pytest.mark.asyncio
+    async def test_pre_research_no_schema_unchanged(self):
+        """With no schema_path, pipeline runs normally (backward compat)."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
+             patch("research_agent.agent.synthesize_report") as mock_synth, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
+             patch("builtins.print"):
+
+            mock_search.return_value = [
+                SearchResult(title="R", url=f"https://ex{i}.com", snippet="S")
+                for i in range(3)
+            ]
+            mock_refine.return_value = "test query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            mock_summarize.return_value = [
+                Summary(url="https://ex1.com", title="T", summary="S")
+            ]
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report", decision_rationale="ok",
+                surviving_sources=(Summary(url="https://ex1.com", title="T", summary="S"),),
+                dropped_sources=(), total_scored=1, total_survived=1, refined_query=None,
+            )
+            mock_synth.return_value = "Report"
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
+            result = await agent.research_async("test query")
+
+            assert result == "Report"
+            mock_search.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_pre_research_all_verified_returns_early(self):
+        """All gaps verified+fresh → already_covered response without search."""
+        from research_agent.schema import Gap, GapStatus, SchemaResult
+
+        verified_gaps = tuple(
+            Gap(
+                id=f"gap-{i}", category="test", status=GapStatus.VERIFIED,
+                priority=3, last_verified="2099-01-01T00:00:00+00:00",
+            )
+            for i in range(3)
+        )
+        schema_result = SchemaResult(gaps=verified_gaps, source="/tmp/schema.yaml")
+
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.schema.load_schema", return_value=schema_result), \
+             patch("research_agent.staleness.detect_stale", return_value=[]), \
+             patch("builtins.print"):
+
+            agent = ResearchAgent(
+                api_key="test-key", mode=ResearchMode.quick(),
+                schema_path="/tmp/schema.yaml",
+            )
+            result = await agent.research_async("test query")
+
+            assert "All Intelligence Current" in result
+            assert "3 gaps" in result
+            mock_search.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_pre_research_stale_gaps_continues(self):
+        """Some stale gaps → pipeline continues with batch selection."""
+        from research_agent.schema import Gap, GapStatus, SchemaResult
+        from dataclasses import replace
+
+        gaps = (
+            Gap(id="gap-1", category="test", status=GapStatus.VERIFIED,
+                priority=3, last_verified="2020-01-01T00:00:00+00:00"),
+            Gap(id="gap-2", category="test", status=GapStatus.VERIFIED,
+                priority=3, last_verified="2099-01-01T00:00:00+00:00"),
+        )
+        schema_result = SchemaResult(gaps=gaps, source="/tmp/schema.yaml")
+        stale_gap = replace(gaps[0], status=GapStatus.STALE)
+
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
+             patch("research_agent.agent.synthesize_report") as mock_synth, \
+             patch("research_agent.schema.load_schema", return_value=schema_result), \
+             patch("research_agent.staleness.detect_stale", return_value=[stale_gap]), \
+             patch("research_agent.staleness.select_batch", return_value=(stale_gap,)), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
+             patch("builtins.print"):
+
+            mock_search.return_value = [
+                SearchResult(title="R", url="https://ex1.com", snippet="S")
+            ]
+            mock_refine.return_value = "test query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            mock_summarize.return_value = [
+                Summary(url="https://ex1.com", title="T", summary="S")
+            ]
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report", decision_rationale="ok",
+                surviving_sources=(Summary(url="https://ex1.com", title="T", summary="S"),),
+                dropped_sources=(), total_scored=1, total_survived=1, refined_query=None,
+            )
+            mock_synth.return_value = "Report"
+
+            agent = ResearchAgent(
+                api_key="test-key", mode=ResearchMode.quick(),
+                schema_path="/tmp/schema.yaml",
+            )
+            result = await agent.research_async("test query")
+
+            assert result == "Report"
+            mock_search.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_pre_research_unknown_gaps_continues(self):
+        """Unknown gaps → pipeline continues."""
+        from research_agent.schema import Gap, GapStatus, SchemaResult
+
+        gaps = (
+            Gap(id="gap-1", category="test", status=GapStatus.UNKNOWN, priority=3),
+        )
+        schema_result = SchemaResult(gaps=gaps, source="/tmp/schema.yaml")
+
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
+             patch("research_agent.agent.synthesize_report") as mock_synth, \
+             patch("research_agent.schema.load_schema", return_value=schema_result), \
+             patch("research_agent.staleness.detect_stale", return_value=[]), \
+             patch("research_agent.staleness.select_batch", return_value=gaps), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
+             patch("builtins.print"):
+
+            mock_search.return_value = [
+                SearchResult(title="R", url="https://ex1.com", snippet="S")
+            ]
+            mock_refine.return_value = "test query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            mock_summarize.return_value = [
+                Summary(url="https://ex1.com", title="T", summary="S")
+            ]
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report", decision_rationale="ok",
+                surviving_sources=(Summary(url="https://ex1.com", title="T", summary="S"),),
+                dropped_sources=(), total_scored=1, total_survived=1, refined_query=None,
+            )
+            mock_synth.return_value = "Report"
+
+            agent = ResearchAgent(
+                api_key="test-key", mode=ResearchMode.quick(),
+                schema_path="/tmp/schema.yaml",
+            )
+            result = await agent.research_async("test query")
+
+            assert result == "Report"
+            assert agent._current_research_batch == gaps
+
+    @pytest.mark.asyncio
+    async def test_pre_research_batch_limit_respected(self):
+        """With 10 stale gaps and max_gaps_per_run=3, only 3 selected."""
+        from research_agent.schema import Gap, GapStatus, SchemaResult
+        from research_agent.cycle_config import CycleConfig
+        from dataclasses import replace
+
+        gaps = tuple(
+            Gap(id=f"gap-{i}", category="test", status=GapStatus.VERIFIED,
+                priority=3, last_verified="2020-01-01T00:00:00+00:00")
+            for i in range(10)
+        )
+        schema_result = SchemaResult(gaps=gaps, source="/tmp/schema.yaml")
+        stale_gaps = [replace(g, status=GapStatus.STALE) for g in gaps]
+        batch_of_3 = tuple(stale_gaps[:3])
+
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
+             patch("research_agent.agent.synthesize_report") as mock_synth, \
+             patch("research_agent.schema.load_schema", return_value=schema_result), \
+             patch("research_agent.staleness.detect_stale", return_value=stale_gaps), \
+             patch("research_agent.staleness.select_batch", return_value=batch_of_3) as mock_batch, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
+             patch("builtins.print"):
+
+            mock_search.return_value = [
+                SearchResult(title="R", url="https://ex1.com", snippet="S")
+            ]
+            mock_refine.return_value = "test query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            mock_summarize.return_value = [
+                Summary(url="https://ex1.com", title="T", summary="S")
+            ]
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report", decision_rationale="ok",
+                surviving_sources=(Summary(url="https://ex1.com", title="T", summary="S"),),
+                dropped_sources=(), total_scored=1, total_survived=1, refined_query=None,
+            )
+            mock_synth.return_value = "Report"
+
+            config = CycleConfig(max_gaps_per_run=3)
+            agent = ResearchAgent(
+                api_key="test-key", mode=ResearchMode.quick(),
+                cycle_config=config, schema_path="/tmp/schema.yaml",
+            )
+            await agent.research_async("test query")
+
+            mock_batch.assert_called_once()
+            _, call_kwargs = mock_batch.call_args
+            assert call_kwargs.get("max_per_run", mock_batch.call_args[0][1]) == 3
+            assert agent._current_research_batch == batch_of_3
+
+    @pytest.mark.asyncio
+    async def test_pre_research_empty_schema_proceeds(self):
+        """Empty schema (no gaps) → pipeline runs normally."""
+        from research_agent.schema import SchemaResult
+
+        schema_result = SchemaResult(gaps=(), source="/tmp/schema.yaml")
+
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
+             patch("research_agent.agent.synthesize_report") as mock_synth, \
+             patch("research_agent.schema.load_schema", return_value=schema_result), \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
+             patch("builtins.print"):
+
+            mock_search.return_value = [
+                SearchResult(title="R", url="https://ex1.com", snippet="S")
+            ]
+            mock_refine.return_value = "test query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            mock_summarize.return_value = [
+                Summary(url="https://ex1.com", title="T", summary="S")
+            ]
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report", decision_rationale="ok",
+                surviving_sources=(Summary(url="https://ex1.com", title="T", summary="S"),),
+                dropped_sources=(), total_scored=1, total_survived=1, refined_query=None,
+            )
+            mock_synth.return_value = "Report"
+
+            agent = ResearchAgent(
+                api_key="test-key", mode=ResearchMode.quick(),
+                schema_path="/tmp/schema.yaml",
+            )
+            result = await agent.research_async("test query")
+
+            assert result == "Report"
+            mock_search.assert_called()

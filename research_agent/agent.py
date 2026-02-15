@@ -4,6 +4,7 @@ import asyncio
 import logging
 import random
 import time
+from pathlib import Path
 
 from anthropic import Anthropic, AsyncAnthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
@@ -19,6 +20,7 @@ from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .errors import ResearchError, SearchError, SkepticError
 from .modes import ResearchMode
+from .cycle_config import CycleConfig
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,8 @@ class ResearchAgent:
         api_key: str | None = None,
         max_sources: int | None = None,
         mode: ResearchMode | None = None,
+        cycle_config: CycleConfig | None = None,
+        schema_path: Path | str | None = None,
     ):
         self.client = Anthropic(api_key=api_key)
         self.async_client = AsyncAnthropic(api_key=api_key)
@@ -55,6 +59,20 @@ class ResearchAgent:
         self._step_num = 0
         self._step_total = 0
         self.mode = mode or ResearchMode.standard()
+        self.cycle_config = cycle_config or CycleConfig()
+        self.schema_path = Path(schema_path) if schema_path else None
+        self._current_schema_result = None
+        self._current_research_batch = None
+
+    def _already_covered_response(self, schema_result) -> str:
+        """Generate a response when all gaps are verified and fresh."""
+        gap_count = len(schema_result.gaps)
+        return (
+            f"# All Intelligence Current\n\n"
+            f"All {gap_count} gaps in the schema are verified and within their "
+            f"freshness windows. No new research needed at this time.\n\n"
+            f"Run with `--force` to research anyway, or wait for gaps to become stale."
+        )
 
     def _next_step(self, message: str) -> None:
         """Print next step header with auto-incrementing counter."""
@@ -115,6 +133,31 @@ class ResearchAgent:
                     print(f"      → {sq}")
             else:
                 print(f"      Simple query — skipping decomposition")
+
+        # Pre-research gap check (if schema configured)
+        if self.schema_path:
+            from .schema import load_schema, GapStatus
+            from .staleness import detect_stale, select_batch
+
+            schema_result = load_schema(self.schema_path)
+            if schema_result.is_loaded:
+                stale = detect_stale(
+                    schema_result.gaps,
+                    default_ttl_days=self.cycle_config.default_ttl_days,
+                )
+                stale_ids = {g.id for g in stale}
+                candidates = tuple(
+                    g for g in schema_result.gaps
+                    if g.id in stale_ids or g.status == GapStatus.UNKNOWN
+                )
+                if not candidates:
+                    return self._already_covered_response(schema_result)
+                research_batch = select_batch(candidates, self.cycle_config.max_gaps_per_run)
+                unknown_count = sum(1 for g in candidates if g.status == GapStatus.UNKNOWN)
+                print(f"      Gap schema: {len(research_batch)} gaps to research "
+                      f"({len(stale)} stale, {unknown_count} unknown)")
+                self._current_schema_result = schema_result
+                self._current_research_batch = research_batch
 
         self._next_step(f"Searching for: {query}")
         print(f"      Mode: {self.mode.name} ({self.mode.max_sources} sources, {self.mode.search_passes} passes)")
