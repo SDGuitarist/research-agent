@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 
 from research_agent.errors import SchemaError
-from research_agent.schema import Gap, GapStatus, SchemaResult, load_schema
+from research_agent.schema import Gap, GapStatus, SchemaResult, load_schema, validate_gaps
 
 
 class TestGapStatus:
@@ -193,3 +193,93 @@ class TestLoadSchema:
         schema_file.write_text("gaps: []\n")
         result = load_schema(schema_file)
         assert bool(result) is False
+
+
+class TestValidateGaps:
+    def test_validate_valid_gaps(self):
+        gaps = (
+            Gap(id="a", category="cat", priority=3),
+            Gap(id="b", category="cat", priority=4, blocked_by=("a",)),
+        )
+        assert validate_gaps(gaps) == []
+
+    def test_validate_duplicate_ids(self):
+        gaps = (
+            Gap(id="a", category="cat"),
+            Gap(id="a", category="other"),
+        )
+        errors = validate_gaps(gaps)
+        assert len(errors) == 1
+        assert "Duplicate gap ID: 'a'" in errors[0]
+
+    def test_validate_verified_needs_timestamp(self):
+        gaps = (Gap(id="a", category="cat", status=GapStatus.VERIFIED),)
+        errors = validate_gaps(gaps)
+        assert len(errors) == 1
+        assert "verified" in errors[0]
+        assert "last_verified is None" in errors[0]
+
+    def test_validate_unknown_has_no_timestamp(self):
+        gaps = (
+            Gap(
+                id="a",
+                category="cat",
+                status=GapStatus.UNKNOWN,
+                last_verified="2026-01-01",
+            ),
+        )
+        errors = validate_gaps(gaps)
+        assert len(errors) == 1
+        assert "unknown" in errors[0]
+        assert "last_verified is set" in errors[0]
+
+    def test_validate_reference_integrity(self):
+        gaps = (Gap(id="a", category="cat", blocked_by=("nonexistent",)),)
+        errors = validate_gaps(gaps)
+        assert len(errors) == 1
+        assert "nonexistent" in errors[0]
+
+    def test_validate_self_reference_blocks(self):
+        gaps = (Gap(id="a", category="cat", blocks=("a",)),)
+        errors = validate_gaps(gaps)
+        assert len(errors) == 1
+        assert "references itself" in errors[0]
+        assert "blocks" in errors[0]
+
+    def test_validate_self_reference_blocked_by(self):
+        gaps = (Gap(id="a", category="cat", blocked_by=("a",)),)
+        errors = validate_gaps(gaps)
+        assert len(errors) == 1
+        assert "references itself" in errors[0]
+        assert "blocked_by" in errors[0]
+
+    def test_validate_priority_too_low(self):
+        gaps = (Gap(id="a", category="cat", priority=0),)
+        errors = validate_gaps(gaps)
+        assert len(errors) == 1
+        assert "priority" in errors[0]
+        assert "0" in errors[0]
+
+    def test_validate_priority_too_high(self):
+        gaps = (Gap(id="a", category="cat", priority=6),)
+        errors = validate_gaps(gaps)
+        assert len(errors) == 1
+        assert "priority" in errors[0]
+        assert "6" in errors[0]
+
+    def test_validate_ttl_days_invalid(self):
+        gaps = (Gap(id="a", category="cat", ttl_days=0),)
+        errors = validate_gaps(gaps)
+        assert len(errors) == 1
+        assert "ttl_days" in errors[0]
+
+    def test_validate_reports_all_errors(self):
+        gaps = (
+            Gap(id="a", category="cat", priority=0, ttl_days=0),
+            Gap(id="a", category="cat", status=GapStatus.VERIFIED),
+        )
+        errors = validate_gaps(gaps)
+        assert len(errors) >= 3
+
+    def test_validate_empty_gaps(self):
+        assert validate_gaps(()) == []

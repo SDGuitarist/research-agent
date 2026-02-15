@@ -151,3 +151,74 @@ def load_schema(path: Path | str) -> SchemaResult:
 
     gaps = tuple(_parse_gap(g, i) for i, g in enumerate(raw_gaps))
     return SchemaResult(gaps=gaps, source=source)
+
+
+def validate_gaps(gaps: tuple[Gap, ...]) -> list[str]:
+    """Validate a collection of gaps for logical consistency.
+
+    Returns a list of error strings. Empty list means all valid.
+    Does NOT raise — caller decides whether errors are fatal.
+
+    Checks:
+    1. Unique IDs — no duplicate gap IDs
+    2. Status/timestamp coherence:
+       - verified → last_verified must be non-None
+       - unknown → last_verified must be None
+    3. Reference integrity — all IDs in blocks/blocked_by exist in the schema
+    4. No self-references — a gap cannot block itself
+    5. Priority range — must be 1-5
+    6. TTL range — if set, must be >= 1
+    """
+    errors: list[str] = []
+    all_ids: set[str] = set()
+    seen_ids: set[str] = set()
+
+    # Collect all valid IDs first for reference checks
+    for gap in gaps:
+        all_ids.add(gap.id)
+
+    for gap in gaps:
+        # 1. Duplicate IDs
+        if gap.id in seen_ids:
+            errors.append(f"Duplicate gap ID: '{gap.id}'")
+        seen_ids.add(gap.id)
+
+        # 2. Status/timestamp coherence
+        if gap.status is GapStatus.VERIFIED and gap.last_verified is None:
+            errors.append(
+                f"Gap '{gap.id}': status is 'verified' but last_verified is None"
+            )
+        if gap.status is GapStatus.UNKNOWN and gap.last_verified is not None:
+            errors.append(
+                f"Gap '{gap.id}': status is 'unknown' but last_verified is set"
+            )
+
+        # 3. Reference integrity + 4. Self-references
+        for ref in gap.blocks:
+            if ref == gap.id:
+                errors.append(f"Gap '{gap.id}' references itself in 'blocks'")
+            elif ref not in all_ids:
+                errors.append(
+                    f"Gap '{gap.id}' blocks unknown gap '{ref}'"
+                )
+        for ref in gap.blocked_by:
+            if ref == gap.id:
+                errors.append(f"Gap '{gap.id}' references itself in 'blocked_by'")
+            elif ref not in all_ids:
+                errors.append(
+                    f"Gap '{gap.id}' blocked_by unknown gap '{ref}'"
+                )
+
+        # 5. Priority range
+        if gap.priority < 1 or gap.priority > 5:
+            errors.append(
+                f"Gap '{gap.id}': priority {gap.priority} outside range 1-5"
+            )
+
+        # 6. TTL range
+        if gap.ttl_days is not None and gap.ttl_days < 1:
+            errors.append(
+                f"Gap '{gap.id}': ttl_days {gap.ttl_days} must be >= 1"
+            )
+
+    return errors
