@@ -47,8 +47,6 @@ class ResearchAgent:
         self,
         api_key: str | None = None,
         max_sources: int | None = None,
-        summarize_model: str = "claude-sonnet-4-20250514",
-        synthesize_model: str = "claude-sonnet-4-20250514",
         mode: ResearchMode | None = None,
     ):
         self.client = Anthropic(api_key=api_key)
@@ -57,9 +55,6 @@ class ResearchAgent:
         self._step_num = 0
         self._step_total = 0
         self.mode = mode or ResearchMode.standard()
-        self.max_sources = max_sources if max_sources is not None else self.mode.max_sources
-        self.summarize_model = summarize_model
-        self.synthesize_model = synthesize_model
 
     def _next_step(self, message: str) -> None:
         """Print next step header with auto-incrementing counter."""
@@ -108,7 +103,7 @@ class ResearchAgent:
         if self.mode.decompose:
             self._next_step("Analyzing query...")
             decomposition = await asyncio.to_thread(
-                decompose_query, self.client, query
+                decompose_query, self.client, query, model=self.mode.model
             )
             if decomposition.is_complex:
                 sub_queries = decomposition.sub_queries
@@ -247,13 +242,13 @@ class ResearchAgent:
         if not contents:
             raise ResearchError("Could not extract content from any pages")
 
-        logger.info(f"Summarizing content with {self.summarize_model}...")
+        logger.info(f"Summarizing content with {self.mode.model}...")
         if not quiet:
-            self._next_step(f"Summarizing content with {self.summarize_model}...")
+            self._next_step(f"Summarizing content with {self.mode.model}...")
         summaries = await summarize_all(
             self.async_client,
             contents,
-            model=self.summarize_model,
+            model=self.mode.model,
             structured=structured,
             max_chunks=max_chunks,
         )
@@ -288,10 +283,11 @@ class ResearchAgent:
                 refined_query=evaluation.refined_query,
                 dropped_sources=evaluation.dropped_sources,
                 client=self.async_client,
+                model=self.mode.model,
             )
 
         # Synthesize report (full or short)
-        logger.info(f"Synthesizing report with {self.synthesize_model}...")
+        logger.info(f"Synthesizing report with {self.mode.model}...")
         limited_sources = evaluation.decision == "short_report"
         surviving = evaluation.surviving_sources
         dropped_count = len(evaluation.dropped_sources)
@@ -300,13 +296,13 @@ class ResearchAgent:
         # Quick mode: single-pass synthesis (no skeptic)
         if self.mode.name == "quick":
             label = "short report" if limited_sources else "report"
-            self._next_step(f"Synthesizing {label} with {self.synthesize_model}...")
+            self._next_step(f"Synthesizing {label} with {self.mode.model}...")
             print()  # blank line before streaming
 
             business_context = load_full_context()
             return synthesize_report(
                 self.client, query, surviving,
-                model=self.synthesize_model,
+                model=self.mode.model,
                 max_tokens=self.mode.max_tokens,
                 mode_instructions=self.mode.synthesis_instructions,
                 limited_sources=limited_sources,
@@ -322,7 +318,7 @@ class ResearchAgent:
         print()  # blank line before streaming
         draft = await asyncio.to_thread(
             synthesize_draft, self.client, query, surviving,
-            model=self.synthesize_model,
+            model=self.mode.model,
         )
 
         self._next_step("Running skeptic review...")
@@ -333,7 +329,7 @@ class ResearchAgent:
                 findings = await asyncio.to_thread(
                     run_deep_skeptic_pass,
                     self.client, draft, synthesis_context,
-                    model=self.synthesize_model,
+                    model=self.mode.model,
                 )
                 total_critical = sum(f.critical_count for f in findings)
                 total_concern = sum(f.concern_count for f in findings)
@@ -342,7 +338,7 @@ class ResearchAgent:
                 finding = await asyncio.to_thread(
                     run_skeptic_combined,
                     self.client, draft, synthesis_context,
-                    model=self.synthesize_model,
+                    model=self.mode.model,
                 )
                 findings = [finding]
                 print(f"      Combined skeptic pass complete ({finding.critical_count} critical, {finding.concern_count} concerns)")
@@ -351,13 +347,13 @@ class ResearchAgent:
             print(f"      Skeptic review failed, continuing with standard synthesis")
             findings = []
 
-        self._next_step(f"Synthesizing final report with {self.synthesize_model}...")
+        self._next_step(f"Synthesizing final report with {self.mode.model}...")
         print()  # blank line before streaming
 
         return await asyncio.to_thread(
             synthesize_final,
             self.client, query, draft, findings, surviving,
-            model=self.synthesize_model,
+            model=self.mode.model,
             max_tokens=self.mode.max_tokens,
             business_context=synthesis_context,
             limited_sources=limited_sources,
@@ -394,7 +390,7 @@ class ResearchAgent:
         # Refine query using snippets
         snippets = [r.snippet for r in pass1_results if r.snippet]
         refined_query = await asyncio.to_thread(
-            refine_query, self.client, query, snippets
+            refine_query, self.client, query, snippets, model=self.mode.model
         )
         if refined_query == query:
             print(f"      Query refinement skipped (using original query)")
@@ -461,7 +457,7 @@ class ResearchAgent:
 
         summary_texts = [s.summary for s in summaries]
         refined_query = await asyncio.to_thread(
-            refine_query, self.client, query, summary_texts
+            refine_query, self.client, query, summary_texts, model=self.mode.model
         )
         if refined_query == query:
             print(f"      Query refinement skipped (using original query)")

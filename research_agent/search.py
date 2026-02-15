@@ -23,9 +23,6 @@ from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
 
-# Model for query refinement (using Sonnet for reliability)
-REFINEMENT_MODEL = "claude-sonnet-4-20250514"
-
 # Cached TavilyClient instance (avoids re-instantiation per search call)
 _tavily_client: object | None = None
 _tavily_client_key: str | None = None
@@ -176,6 +173,7 @@ def refine_query(
     client: Anthropic,
     original_query: str,
     summaries: list[str],
+    model: str = "claude-sonnet-4-20250514",
 ) -> str:
     """
     Generate a refined follow-up search query based on initial findings.
@@ -203,7 +201,7 @@ def refine_query(
 
     try:
         response = client.messages.create(
-            model=REFINEMENT_MODEL,
+            model=model,
             max_tokens=50,
             timeout=ANTHROPIC_TIMEOUT,
             system=(

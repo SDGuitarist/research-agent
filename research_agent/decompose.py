@@ -12,9 +12,6 @@ from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
 
-# Model for decomposition (same as refinement for consistency)
-DECOMPOSITION_MODEL = "claude-sonnet-4-20250514"
-
 # Sub-query limits
 MAX_SUB_QUERIES = 3
 MIN_SUB_QUERY_WORDS = 2
@@ -104,6 +101,7 @@ def decompose_query(
     client: Anthropic,
     query: str,
     context_path: Path | None = None,
+    model: str = "claude-sonnet-4-20250514",
 ) -> DecompositionResult:
     """
     Analyze a query and decompose it into focused sub-queries if complex.
@@ -137,7 +135,7 @@ def decompose_query(
 
     try:
         response = client.messages.create(
-            model=DECOMPOSITION_MODEL,
+            model=model,
             max_tokens=300,
             timeout=ANTHROPIC_TIMEOUT,
             system=(

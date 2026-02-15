@@ -11,7 +11,6 @@ from .errors import SkepticError
 
 logger = logging.getLogger(__name__)
 
-SKEPTIC_MODEL = "claude-sonnet-4-20250514"
 SKEPTIC_TIMEOUT = 60.0
 
 
@@ -60,7 +59,7 @@ def _call_skeptic(
     system_prompt: str,
     user_prompt: str,
     lens: str,
-    model: str = SKEPTIC_MODEL,
+    model: str = "claude-sonnet-4-20250514",
     max_tokens: int = 1500,
 ) -> SkepticFinding:
     """Make a skeptic API call and parse the response.
@@ -126,7 +125,7 @@ def run_skeptic_evidence(
     draft: str,
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
-    model: str = SKEPTIC_MODEL,
+    model: str = "claude-sonnet-4-20250514",
 ) -> SkepticFinding:
     """Skeptic 1: Evidence Alignment.
 
@@ -180,7 +179,7 @@ def run_skeptic_timing(
     draft: str,
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
-    model: str = SKEPTIC_MODEL,
+    model: str = "claude-sonnet-4-20250514",
 ) -> SkepticFinding:
     """Skeptic 2: Timing & Stakes.
 
@@ -232,7 +231,7 @@ def run_skeptic_frame(
     draft: str,
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
-    model: str = SKEPTIC_MODEL,
+    model: str = "claude-sonnet-4-20250514",
 ) -> SkepticFinding:
     """Skeptic 3: Break the Trolley.
 
@@ -283,7 +282,7 @@ def run_skeptic_combined(
     client: Anthropic,
     draft: str,
     synthesis_context: str | None = None,
-    model: str = SKEPTIC_MODEL,
+    model: str = "claude-sonnet-4-20250514",
 ) -> SkepticFinding:
     """Single-pass skeptic for standard mode.
 
@@ -337,7 +336,7 @@ def run_deep_skeptic_pass(
     client: Anthropic,
     draft: str,
     synthesis_context: str | None = None,
-    model: str = SKEPTIC_MODEL,
+    model: str = "claude-sonnet-4-20250514",
 ) -> list[SkepticFinding]:
     """Run all three skeptic agents sequentially (deep mode).
 

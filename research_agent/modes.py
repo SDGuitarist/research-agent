@@ -21,6 +21,7 @@ class ResearchMode:
     relevance_cutoff: int = 3  # Minimum score (1-5) for a source to be kept
     decompose: bool = True  # Whether to attempt query decomposition
     cost_estimate: str = ""  # Estimated cost per query (e.g., "~$0.20")
+    model: str = "claude-sonnet-4-20250514"  # Claude model for all API calls
 
     def __post_init__(self) -> None:
         """Validate mode configuration."""

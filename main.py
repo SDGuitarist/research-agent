@@ -16,6 +16,7 @@ from research_agent.errors import ResearchError
 from research_agent.modes import ResearchMode
 
 RESEARCH_LOG_PATH = Path("research_log.md")
+REPORTS_DIR = Path("reports")
 
 
 def sanitize_filename(query: str, max_length: int = 50) -> str:
@@ -65,14 +66,11 @@ def append_research_log(query: str, mode: ResearchMode, report: str) -> None:
 
 def get_auto_save_path(query: str) -> Path:
     """Generate auto-save path for standard and deep mode reports."""
-    reports_dir = REPORTS_DIR
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S%f")  # Microseconds prevent collisions
     safe_query = sanitize_filename(query)
     filename = f"{safe_query}_{timestamp}.md"
-    return reports_dir / filename
+    return REPORTS_DIR / filename
 
-
-REPORTS_DIR = Path("reports")
 
 # Regex patterns for extracting date from report filenames
 # Old format: 2026-02-03_183703056652_query_name.md (timestamp first)
@@ -132,7 +130,7 @@ def show_costs() -> None:
               f"({m.max_sources} sources, ~{m.word_target} words){default}")
 
 
-def main():
+def main() -> None:
     # Load environment variables from .env file
     load_dotenv()
 
