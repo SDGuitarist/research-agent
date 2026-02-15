@@ -1,6 +1,7 @@
 """Cascade fallback fetching: Jina Reader → Tavily Extract → snippet."""
 
 import asyncio
+import ipaddress
 import logging
 import os
 from urllib.parse import urlparse
@@ -16,6 +17,7 @@ from tavily.errors import (
 )
 
 from .extract import ExtractedContent
+from .fetch import ALLOWED_SCHEMES, BLOCKED_HOSTS
 from .search import SearchResult, _get_tavily_client
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,35 @@ EXTRACT_DOMAINS = frozenset({
 })
 
 
+def _is_internal_url(url: str) -> bool:
+    """Check if URL targets internal infrastructure (no DNS resolution).
+
+    Prevents leaking internal URL patterns to third-party cascade services
+    (Jina Reader, Tavily Extract). Uses fast checks only — DNS resolution
+    happens in fetch.py's _SSRFSafeBackend at connection time.
+    """
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme.lower() not in ALLOWED_SCHEMES:
+            return True
+        host = (parsed.hostname or "").lower()
+        if not host:
+            return True
+        if host in BLOCKED_HOSTS:
+            return True
+        try:
+            ip = ipaddress.ip_address(host)
+            return (
+                ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_multicast or ip.is_reserved or ip.is_unspecified
+            )
+        except ValueError:
+            pass  # Not an IP literal, probably a hostname
+        return False
+    except ValueError:
+        return True
+
+
 async def cascade_recover(
     failed_urls: list[str],
     all_results: list[SearchResult],
@@ -47,12 +78,20 @@ async def cascade_recover(
     Layer 1: Jina Reader (free, async HTTP)
     Layer 2: Tavily Extract (1 credit/5 URLs, high-value domains only)
     Layer 3: Snippet fallback (use search snippet as thin content)
+
+    Internal/private URLs are excluded to prevent leaking URL patterns
+    to third-party services.
     """
     if not failed_urls:
         return []
 
+    # Exclude SSRF-blocked URLs — don't leak internal URL patterns to third parties
+    safe_urls = [u for u in failed_urls if not _is_internal_url(u)]
+    if not safe_urls:
+        return []
+
     recovered = []
-    remaining = set(failed_urls)
+    remaining = set(safe_urls)
 
     # Layer 1: Jina Reader
     jina_results = await _fetch_via_jina(list(remaining))

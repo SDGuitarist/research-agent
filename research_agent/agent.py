@@ -268,33 +268,6 @@ class ResearchAgent:
 
         return new_results
 
-    @staticmethod
-    async def _recover_failed_urls(
-        urls_to_fetch: list[str],
-        extracted: list[ExtractedContent],
-        all_results: list[SearchResult],
-    ) -> list[ExtractedContent]:
-        """Run cascade fallback on URLs that failed fetch+extract."""
-        extracted_urls = {e.url for e in extracted}
-        failed = [u for u in urls_to_fetch if u not in extracted_urls]
-        if not failed:
-            return []
-        recovered = await cascade_recover(failed, all_results)
-        if recovered:
-            cascade_count = sum(
-                1 for r in recovered if not r.text.startswith("[Source:")
-            )
-            snippet_count = sum(
-                1 for r in recovered if r.text.startswith("[Source:")
-            )
-            parts = []
-            if cascade_count:
-                parts.append(f"{cascade_count} via cascade")
-            if snippet_count:
-                parts.append(f"{snippet_count} snippet fallbacks")
-            print(f"      Cascade recovered: {', '.join(parts)}")
-        return recovered
-
     async def _fetch_extract_summarize(
         self,
         results: list[SearchResult],
@@ -318,11 +291,40 @@ class ResearchAgent:
 
         if not quiet:
             self._next_step("Extracting content...")
-        extracted = await asyncio.to_thread(extract_all, pages)
 
-        cascade_contents = await self._recover_failed_urls(
-            urls_to_fetch, extracted, results
-        )
+        # Determine URLs that failed fetching (distinct from extraction failures)
+        fetched_page_urls = {p.url for p in pages}
+        fetch_failed = [u for u in urls_to_fetch if u not in fetched_page_urls]
+
+        # Run extraction and cascade for fetch-failed URLs concurrently
+        if fetch_failed:
+            extracted, cascade_from_fetch = await asyncio.gather(
+                asyncio.to_thread(extract_all, pages),
+                cascade_recover(fetch_failed, results),
+            )
+        else:
+            extracted = await asyncio.to_thread(extract_all, pages)
+            cascade_from_fetch = []
+
+        # Second pass: cascade for URLs that fetched OK but extraction failed
+        extracted_urls = {e.url for e in extracted}
+        extract_failed = [u for u in fetched_page_urls if u not in extracted_urls]
+        if extract_failed:
+            cascade_from_extract = await cascade_recover(extract_failed, results)
+        else:
+            cascade_from_extract = []
+
+        cascade_contents = list(cascade_from_fetch) + list(cascade_from_extract)
+        if cascade_contents:
+            full_count = sum(1 for r in cascade_contents if not r.text.startswith("[Source:"))
+            snippet_count = sum(1 for r in cascade_contents if r.text.startswith("[Source:"))
+            parts = []
+            if full_count:
+                parts.append(f"{full_count} via cascade")
+            if snippet_count:
+                parts.append(f"{snippet_count} snippet fallbacks")
+            print(f"      Cascade recovered: {', '.join(parts)}")
+
         all_contents = prefetched + extracted + cascade_contents
         seen_content_urls: set[str] = set()
         contents = []
@@ -428,18 +430,16 @@ class ResearchAgent:
 
         try:
             if is_deep:
-                findings = await asyncio.to_thread(
-                    run_deep_skeptic_pass,
-                    self.client, draft, synthesis_context,
+                findings = await run_deep_skeptic_pass(
+                    self.async_client, draft, synthesis_context,
                     model=self.mode.model,
                 )
                 total_critical = sum(f.critical_count for f in findings)
                 total_concern = sum(f.concern_count for f in findings)
                 print(f"      3 skeptic passes complete ({total_critical} critical, {total_concern} concerns)")
             else:
-                finding = await asyncio.to_thread(
-                    run_skeptic_combined,
-                    self.client, draft, synthesis_context,
+                finding = await run_skeptic_combined(
+                    self.async_client, draft, synthesis_context,
                     model=self.mode.model,
                 )
                 findings = [finding]

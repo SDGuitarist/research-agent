@@ -1,11 +1,10 @@
 """Skeptic sub-agents for adversarial verification of draft analysis."""
 
+import asyncio
 import logging
-import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-from anthropic import Anthropic, RateLimitError, APIError, APITimeoutError
+from anthropic import AsyncAnthropic, RateLimitError, APIError, APITimeoutError
 
 from .sanitize import sanitize_content
 from .errors import SkepticError
@@ -55,8 +54,8 @@ def _build_prior_block(prior_findings: list[SkepticFinding] | None) -> str:
 SKEPTIC_MAX_RETRIES = 1
 
 
-def _call_skeptic(
-    client: Anthropic,
+async def _call_skeptic(
+    client: AsyncAnthropic,
     system_prompt: str,
     user_prompt: str,
     lens: str,
@@ -69,7 +68,7 @@ def _call_skeptic(
     """
     for attempt in range(SKEPTIC_MAX_RETRIES + 1):
         try:
-            response = client.messages.create(
+            response = await client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
                 timeout=SKEPTIC_TIMEOUT,
@@ -96,13 +95,13 @@ def _call_skeptic(
         except RateLimitError as e:
             if attempt < SKEPTIC_MAX_RETRIES:
                 logger.warning(f"Skeptic ({lens}) rate limited, retrying in 2s...")
-                time.sleep(2.0)
+                await asyncio.sleep(2.0)
                 continue
             raise SkepticError(f"Skeptic ({lens}) rate limited: {e}")
         except APITimeoutError as e:
             if attempt < SKEPTIC_MAX_RETRIES:
                 logger.warning(f"Skeptic ({lens}) timed out, retrying in 2s...")
-                time.sleep(2.0)
+                await asyncio.sleep(2.0)
                 continue
             raise SkepticError(f"Skeptic ({lens}) timed out: {e}")
         except APIError as e:
@@ -121,8 +120,8 @@ _ADVERSARIAL_SYSTEM = (
 )
 
 
-def run_skeptic_evidence(
-    client: Anthropic,
+async def run_skeptic_evidence(
+    client: AsyncAnthropic,
     draft: str,
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
@@ -172,11 +171,11 @@ Output format:
 List findings from most to least severe. Include at least 3 findings.
 </task>"""
 
-    return _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "evidence_alignment", model)
+    return await _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "evidence_alignment", model)
 
 
-def run_skeptic_timing(
-    client: Anthropic,
+async def run_skeptic_timing(
+    client: AsyncAnthropic,
     draft: str,
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
@@ -224,11 +223,11 @@ Output format:
 List findings from most to least severe. Include at least 3 findings.
 </task>"""
 
-    return _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "timing_stakes", model)
+    return await _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "timing_stakes", model)
 
 
-def run_skeptic_frame(
-    client: Anthropic,
+async def run_skeptic_frame(
+    client: AsyncAnthropic,
     draft: str,
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
@@ -276,11 +275,11 @@ Output format:
 List findings from most to least severe. Include at least 3 findings.
 </task>"""
 
-    return _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "strategic_frame", model)
+    return await _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "strategic_frame", model)
 
 
-def run_skeptic_combined(
-    client: Anthropic,
+async def run_skeptic_combined(
+    client: AsyncAnthropic,
     draft: str,
     synthesis_context: str | None = None,
     model: str = "claude-sonnet-4-20250514",
@@ -328,38 +327,33 @@ Output format:
 List all findings from most to least severe. Include at least 3 findings total.
 </task>"""
 
-    return _call_skeptic(
+    return await _call_skeptic(
         client, _ADVERSARIAL_SYSTEM, prompt, "combined", model, max_tokens=2000
     )
 
 
-def run_deep_skeptic_pass(
-    client: Anthropic,
+async def run_deep_skeptic_pass(
+    client: AsyncAnthropic,
     draft: str,
     synthesis_context: str | None = None,
     model: str = "claude-sonnet-4-20250514",
 ) -> list[SkepticFinding]:
     """Run three skeptic agents with evidence+timing in parallel (deep mode).
 
-    Evidence and timing agents are independent — run them concurrently.
-    Frame agent depends on both, so it runs after they complete.
+    Evidence and timing agents are independent — run them concurrently
+    via asyncio.gather. Frame agent depends on both, so it runs after.
     Returns list of 3 SkepticFinding objects.
     """
     # Evidence and timing are independent — run concurrently
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        evidence_future = executor.submit(
-            run_skeptic_evidence, client, draft, synthesis_context, model=model,
-        )
-        timing_future = executor.submit(
-            run_skeptic_timing, client, draft, synthesis_context, model=model,
-        )
-        evidence = evidence_future.result()
-        timing = timing_future.result()
+    evidence, timing = await asyncio.gather(
+        run_skeptic_evidence(client, draft, synthesis_context, model=model),
+        run_skeptic_timing(client, draft, synthesis_context, model=model),
+    )
 
     findings = [evidence, timing]
 
     # Frame depends on both prior findings
-    findings.append(run_skeptic_frame(
+    findings.append(await run_skeptic_frame(
         client, draft, synthesis_context, prior_findings=findings, model=model,
     ))
 
