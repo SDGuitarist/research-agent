@@ -19,6 +19,7 @@
 | 14 | CLI QoL: --cost, --list, --open, filename swap, progress timing | Cost values belong in dataclass (single source of truth); `nargs="?"` needs validation guard |
 | 15 | Source-level relevance aggregation | Score the unit you decide on (sources, not chunks); diagnose with real data before fixing |
 | 16 | Skeptic pass: draft→skeptic→final pipeline | Multi-pass synthesis catches unsupported claims; `lstrip` strips characters not prefixes — use `removeprefix` |
+| 17 | Gap-aware research loop (4 sub-cycles: foundation, schema, state, integration) | Foundation modules first, integration last; failure mode analysis before multi-module features; four-state result types over None; atomic writes for all persistent state; per-gap TTL not global; no staleness cascade through dependencies |
 | 17+ | Real-world research runs (Lodge at Torrey Pines) | Short queries beat complex ones; LinkedIn is the biggest blind spot; agentic browsers complement the pipeline; "insufficient data" can be the answer; near-identical entity names fool the relevance scorer |
 
 ---
