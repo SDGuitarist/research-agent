@@ -5,6 +5,7 @@ tavily-python>=0.3.0
 trafilatura>=1.12.0
 readability-lxml>=0.8.0
 python-dotenv>=1.0.0
+PyYAML>=6.0
 
 # Testing
 pytest>=8.0.0
