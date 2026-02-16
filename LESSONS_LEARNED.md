@@ -2112,6 +2112,66 @@ The relevance scorer evaluates topical relevance but cannot distinguish between 
 
 ---
 
+## 20. Pip-Installable Package (Cycle 18)
+
+### Validation Ownership: Don't Duplicate What Another Module Defines
+
+The plan specified a `_VALID_MODES` frozenset in `__init__.py` to validate mode names before calling `ResearchMode.from_name()`. But `from_name()` already defines the valid modes — `_VALID_MODES` was duplicated knowledge. Adding a new mode to `modes.py` would silently fail validation in `__init__.py`.
+
+```python
+# Bad: duplicated knowledge
+_VALID_MODES = frozenset({"quick", "standard", "deep"})  # in __init__.py
+# modes.py also defines these in from_name()
+
+# Good: delegate to the owner, translate the exception
+try:
+    research_mode = ResearchMode.from_name(mode)
+except ValueError:
+    raise ResearchError(f"Invalid mode: {mode!r}. ...")
+```
+
+**Pattern:** When module A validates data that module B owns, A is duplicating B's knowledge. Delegate to B and translate the exception to your public error type.
+
+### Additive Migrations: Wrap, Don't Refactor
+
+Converting scripts to packages in a single cycle works when you follow the additive pattern:
+- Wrap existing internals with thin public functions (`run_research()` wraps `agent.research_async()`)
+- Move code, don't rewrite it (CLI extraction was a cut-paste into `cli.py`)
+- New files only (`results.py`, `cli.py`, `pyproject.toml`) — existing modules get minimal additions
+
+The entire cycle changed only 6 lines in `agent.py` (source tracking attrs) and 0 lines in any other internal module. Zero regression risk by construction.
+
+### Private Attrs as Internal Contracts
+
+`run_research()` reads `agent._last_source_count` — a private attribute. The Python reviewer flagged this. The alternative (changing `research_async()` to return a `_ResearchOutcome`) would break the additive constraint. Private attr access is acceptable when:
+- Caller is in the same package
+- The contract is documented and tested
+- The alternative adds more complexity than it removes
+
+### Public APIs: Return Typed Objects, Not Dicts
+
+Early `list_modes()` returned `list[dict]`. Pattern recognition found every other public function in the codebase returns typed objects. The `ModeInfo` frozen dataclass costs 8 lines and provides IDE autocomplete, type checking, and immutability. **If your codebase has a pattern, follow it.**
+
+### Library Functions Should Not Have Side Effects
+
+`run_research()` does NOT call `load_dotenv()`. Library functions should not have global side effects — the caller owns their environment. The CLI entry point continues to call `load_dotenv()`. Similarly, `run_research()` validates env vars up front (fail-fast) instead of letting the pipeline discover missing keys 30 seconds in.
+
+### Validation Questions Feed Forward Between Sessions
+
+Asking 3 questions after each work session ("What changed?", "What deviations?", "Least confident + what test catches it?") catches design risks early. In Cycle 18, Session 1's Q3 answer directly shaped Session 2's prompt to include explicit tests for the private attr contract.
+
+**Q3 is highest value** — it forces identification of the weakest point. Design sessions (dataclasses, public API) yield more from these questions than mechanical sessions (CLI extraction).
+
+### Cycle 18 Assessment
+
+The cycle was straightforward because the additive pattern worked exactly as designed. Four sessions, each ~50-100 lines, with the only post-review fix being the `_VALID_MODES` duplication. The plan's deep research phase (10 agents) surfaced the `open -t` security fix and the TAVILY_API_KEY early-validation pattern, both of which would have been missed in a lighter planning pass.
+
+**What worked:** Plan faithfulness — the implementation closely followed the plan. Only one deviation (removing `_VALID_MODES` in favor of delegation). The brainstorm→plan→work→review→compound loop executed cleanly.
+
+**What to carry forward:** This cycle validates that packaging is a good forcing function for API design. The act of defining "what does the public see?" naturally surfaces questions about validation ownership, side effects, and return types that would be invisible in a script-only project.
+
+---
+
 ## Summary
 
 | Category | Key Takeaway |
@@ -2208,3 +2268,11 @@ The relevance scorer evaluates topical relevance but cannot distinguish between 
 | **Operations** | The agent finds public record; humans find ground truth—treat reports as the public-facing layer, not the complete picture |
 | **Operations** | "Insufficient data" can be the answer—when searching for something that should be publicly advertised, finding nothing is a meaningful finding |
 | **Relevance** | Near-identical entity names fool the relevance scorer—"Lodge at Torrey Pines" (resort) vs "Torrey Pines Lodge" (state reserve) both pass as relevant |
+| **Validation** | When module A validates data module B owns, delegate to B and translate the exception—don't duplicate valid-value sets |
+| **Packaging** | Additive migrations (wrap, don't refactor) keep script-to-package conversions safe—zero changes to internal modules |
+| **API Design** | Return typed objects from public APIs, not raw dicts—follows codebase pattern and provides IDE autocomplete + type safety |
+| **API Design** | Library functions should not call `load_dotenv()` or have global side effects—the caller owns their environment |
+| **API Design** | Validate env vars up front in public API wrappers—fail fast instead of 30s into the pipeline |
+| **Architecture** | Private attr access between files in the same package is acceptable when the alternative breaks additive constraints |
+| **Process** | Post-session validation Q3 ("least confident + what test catches it?") is the highest-value question—feeds forward into next session |
+| **Process** | Validation questions yield most on design sessions, least on mechanical sessions—budget accordingly |
