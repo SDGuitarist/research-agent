@@ -109,7 +109,7 @@ except RuntimeError as e:
 
 ### Dependency: httpcore
 
-`fetch.py` imports `httpcore` directly (line 12) but it's only declared transitively via `httpx`. Add `httpcore>=1.0.0` to `pyproject.toml` dependencies.
+`fetch.py` imports `httpcore` directly (line 12) but it's only declared transitively via `httpx`. Add `httpcore>=1.0.5` to `pyproject.toml` dependencies.
 
 ### Python version
 
@@ -411,13 +411,14 @@ def list_modes() -> list[ModeInfo]:
 - `run_research("   ")` raises `ResearchError` (whitespace-only)
 - `run_research()` without `ANTHROPIC_API_KEY` raises `ResearchError`
 - `run_research()` without `TAVILY_API_KEY` raises `ResearchError`
+- `run_research()` from inside async context raises `ResearchError` with "async context" message
 - `run_research_async()` same validation tests (async versions)
 - `list_modes()` returns 3 `ModeInfo` objects
 - `list_modes()` names are quick, standard, deep
 - `list_modes()` all fields are populated (no empty strings or zeros)
 - `__version__` is "0.18.0"
 - `__all__` contains all expected names
-- Version sync test: `__version__` matches `pyproject.toml` version
+- Version sync test: `__version__` matches `pyproject.toml` version (skip on Python <3.11: `@pytest.mark.skipif(sys.version_info < (3, 11), reason="tomllib requires 3.11+")`)
 
 <details>
 <summary>Research Insights: Version sync test</summary>
@@ -525,14 +526,13 @@ build-backend = "setuptools.build_meta"
 name = "research-agent"
 version = "0.18.0"
 description = "CLI research agent that searches the web and generates structured markdown reports"
-readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 
 dependencies = [
     "anthropic>=0.40.0",
     "httpx>=0.27.0",
-    "httpcore>=1.0.0",
+    "httpcore>=1.0.5",
     "ddgs>=9.0.0",
     "tavily-python>=0.3.0",
     "trafilatura>=1.12.0",
