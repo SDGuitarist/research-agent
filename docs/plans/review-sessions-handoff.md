@@ -54,10 +54,8 @@ with the narrowest set that covers realistic failure modes.
 
 **Goal:** Replace fixed inter-batch sleeps with reactive backoff (only sleep after a 429).
 
-**Status:** Not started. The current code already uses `RATE_LIMIT_BACKOFF` reactively (sleep
-only after 429 in both files). The original review plan's reference to `BATCH_DELAY` is stale
-— that constant doesn't exist. **Verify the current behavior is already correct and mark done,
-or fix if there's still a fixed delay.**
+**Status:** DONE. Verified — both files use reactive backoff only (sleep after 429 via
+`asyncio.Event`). No unconditional inter-batch delays exist. No code changes needed.
 
 **Files:** `research_agent/relevance.py`, `research_agent/summarize.py`
 
