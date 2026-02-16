@@ -111,15 +111,11 @@ and is called by both `_research_with_refinement` (line 521) and `_research_deep
 
 **Goal:** Parallelism improvements for deep mode.
 
-**Status:** Partially done.
-
-**What's already done:**
-- [x] DNS resolution is async (via `_SSRFSafeBackend` using `loop.getaddrinfo`)
-- [x] `extract_all` already uses `ThreadPoolExecutor` (extract.py:130)
-- [x] Skeptic evidence + timing already parallelized via `asyncio.gather` (skeptic.py:348)
-
-**What to check:**
-- All 3 items from the original plan are implemented. **Verify and mark done.**
+**Status:** DONE. All 3 items verified in place:
+- [x] DNS resolution is async (via `_SSRFSafeBackend` using `loop.getaddrinfo` in fetch.py)
+- [x] `extract_all` uses `ThreadPoolExecutor` (extract.py:126)
+- [x] Skeptic evidence + timing parallelized via `asyncio.gather` (skeptic.py:348)
+No code changes needed.
 
 **Commit:** `chore: review session 7 — verify performance improvements already in place`
 
