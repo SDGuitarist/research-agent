@@ -114,27 +114,10 @@ No code changes needed.
 
 **Goal:** Add URL deduplication before summarization; fix domain matching.
 
-**Status:** Domain bug already fixed (cascade.py:211 uses `host == d or host.endswith("." + d)`). URL dedup not done.
-
-**Files:** `research_agent/agent.py`
-
-**What to do:**
-- [ ] Domain bug — already fixed at cascade.py:211, verify and skip
-- [ ] URL dedup — in `_research_with_refinement` and `_research_deep` (or the new
-  `_fetch_and_summarize` if Session 5 ran first), add deduplication of `ExtractedContent`
-  by URL before passing to `summarize_all`. Something like:
-  ```python
-  seen_urls: set[str] = set()
-  unique = []
-  for content in extracted:
-      if content.url not in seen_urls:
-          seen_urls.add(content.url)
-          unique.append(content)
-  extracted = unique
-  ```
-- Run full test suite
-
-**Commit:** `fix: review session 8 — add URL deduplication before summarization`
+**Status:** DONE. Both items already implemented:
+- [x] Domain bug — fixed at cascade.py:211 with `host == d or host.endswith("." + d)`
+- [x] URL dedup — in `_fetch_extract_summarize` at agent.py:329-336, deduplicates by URL
+  before passing to `summarize_all`. No code changes needed.
 
 ---
 
