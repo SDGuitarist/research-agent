@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 triage_reason: "Accepted — runtime crash if called before gap check"
 priority: p1
 issue_id: "003"
