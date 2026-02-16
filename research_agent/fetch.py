@@ -159,6 +159,10 @@ class _SSRFSafeBackend(httpcore.AsyncNetworkBackend):
         await self._inner.sleep(seconds)
 
 
+# Per-run DNS validation cache — cleared at the start of each fetch_urls() call
+_dns_cache: dict[str, bool] = {}
+
+
 async def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
     """
     Resolve hostname via async DNS and validate all resolved IPs are safe.
@@ -166,7 +170,14 @@ async def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
     Used as a pre-flight check to reject obviously unsafe URLs before
     opening a connection. The _SSRFSafeBackend provides defense-in-depth
     by re-validating at TCP connect time.
+
+    Results are cached per-run to avoid redundant DNS lookups for the
+    same domain across multiple URLs.
     """
+    cache_key = f"{hostname}:{port}"
+    if cache_key in _dns_cache:
+        return _dns_cache[cache_key]
+
     try:
         loop = asyncio.get_running_loop()
         addrinfo = await loop.getaddrinfo(
@@ -174,6 +185,7 @@ async def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
         )
 
         if not addrinfo:
+            _dns_cache[cache_key] = False
             return False
 
         # Check each resolved IP
@@ -181,11 +193,14 @@ async def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
             ip_str = sockaddr[0]
             if _is_private_ip(ip_str):
                 logger.warning(f"Blocked private IP {ip_str} for hostname {hostname}")
+                _dns_cache[cache_key] = False
                 return False
 
+        _dns_cache[cache_key] = True
         return True
     except (socket.gaierror, socket.herror, OSError):
         # DNS resolution failed
+        _dns_cache[cache_key] = False
         return False
 
 
@@ -342,6 +357,7 @@ async def fetch_urls(
     Returns:
         List of successfully fetched pages
     """
+    _dns_cache.clear()
     semaphore = asyncio.Semaphore(max_concurrent)
 
     transport = httpx.AsyncHTTPTransport(

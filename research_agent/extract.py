@@ -61,26 +61,22 @@ def extract_content(page: FetchedPage) -> ExtractedContent | None:
 
 
 def _extract_with_trafilatura(page: FetchedPage) -> ExtractedContent | None:
-    """Extract content using trafilatura."""
+    """Extract content using trafilatura's bare_extraction (single parse)."""
     try:
-        text = trafilatura.extract(
+        result = trafilatura.bare_extraction(
             page.html,
             include_comments=False,
             include_tables=True,
             no_fallback=False,
         )
 
-        if not text:
+        if not result or not result.get("text"):
             return None
-
-        # Get metadata for title
-        metadata = trafilatura.extract_metadata(page.html)
-        title = metadata.title if metadata and metadata.title else ""
 
         return ExtractedContent(
             url=page.url,
-            title=title,
-            text=text,
+            title=result.get("title") or "",
+            text=result["text"],
         )
 
     except (AttributeError, TypeError, ValueError):

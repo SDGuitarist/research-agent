@@ -274,7 +274,11 @@ Examples:
             output_path.write_text(report)
             print(f"\n\nReport saved to: {output_path}")
             if args.open:
-                subprocess.run(["open", str(output_path)])
+                if output_path.suffix != ".md":
+                    print("Warning: --open only supports .md files.",
+                          file=sys.stderr)
+                else:
+                    subprocess.run(["open", str(output_path)])
         elif args.open:
             print("Warning: --open ignored — no file saved. Use -o to specify output path.",
                   file=sys.stderr)
