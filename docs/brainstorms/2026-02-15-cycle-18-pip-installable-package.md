@@ -42,7 +42,7 @@ The approach is additive — no internal refactoring required. We wrap existing 
 | 5 | CLI command name | `research-agent` | Matches repo name. Hyphens standard for CLI tools. |
 | 6 | Install target | Local first (`pip install -e .`) | PyPI deferred. Structure supports both. |
 | 7 | CLI approach | Extract to `cli.py`, wire as entry point | Zero rework on existing CLI logic. `main.py` becomes a thin shim. |
-| 8 | Version | `0.17.0` | Ties to cycle history. Bump strategy decided during planning. |
+| 8 | Version | `0.18.0` | Ties to Cycle 18. Hardcoded in `__init__.py`. Dynamic versioning deferred to PyPI publish. |
 
 ---
 
@@ -106,8 +106,10 @@ The plan phase should finalize ordering, but this sequence respects dependencies
 
 ---
 
-## Open Questions for Planning
+## Resolved Questions
 
-1. Should `main.py` remain as a shim (`from research_agent.cli import main; main()`) or be deleted entirely?
-2. Should `__version__` be defined in `__init__.py` or read from `pyproject.toml` dynamically?
-3. Does `run_research` need an `api_key` parameter, or should it always read from env?
+1. **`main.py` → keep as shim.** Two lines: `from research_agent.cli import main; main()`. Preserves backward compat for `python main.py` users and existing CLAUDE.md docs. Zero cost.
+2. **`__version__` → hardcoded in `__init__.py`.** `__version__ = "0.18.0"`. Dynamic versioning (importlib.metadata) is complexity for a problem we don't have. Switch to dynamic when publishing to PyPI.
+3. **`run_research` → no `api_key` parameter.** Agent reads keys from env vars. Adding a parameter creates hardcoding risk. Env vars work for local, MCP, and REST alike. Existing errors already tell callers if keys are missing.
+
+**Version bump:** `0.18.0` (not `0.17.0`) — ties to Cycle 18.
