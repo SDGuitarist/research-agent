@@ -46,7 +46,7 @@ python3 main.py --list                # List saved reports
 ## Testing
 
 ```bash
-python3 -m pytest tests/ -v    # 385 tests, all must pass
+python3 -m pytest tests/ -v    # 558 tests, all must pass
 ```
 
 Mock where the name is imported FROM, not where it's used.
