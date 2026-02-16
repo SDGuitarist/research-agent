@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p3
 issue_id: "033"
 tags: [code-review, quality, dead-code]
