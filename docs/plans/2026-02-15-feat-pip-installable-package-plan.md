@@ -4,9 +4,33 @@ type: feat
 date: 2026-02-15
 cycle: 18
 brainstorm: docs/brainstorms/2026-02-15-cycle-18-pip-installable-package.md
+deepened: 2026-02-15
 ---
 
 # feat: Pip-Installable Package
+
+## Enhancement Summary
+
+**Deepened on:** 2026-02-15
+**Research agents used:** kieran-python-reviewer, architecture-strategist, code-simplicity-reviewer, agent-native-reviewer, performance-oracle, security-sentinel, pattern-recognition-specialist, best-practices-researcher, learnings-researcher, agent-native-architecture skill, Context7 (setuptools docs)
+
+### Key Improvements
+1. **Fix build backend** — Use `setuptools.build_meta` (not legacy `_Backend`)
+2. **Fix `list_modes()` return type** — Use `ModeInfo` frozen dataclass (matches codebase pattern of typed returns, not raw dicts)
+3. **Add TAVILY_API_KEY validation** — Fail fast instead of 30s into pipeline (security finding M-1)
+4. **Add event loop collision handling** — Clear error when `run_research()` called from async context
+5. **Add version sync test** — Prevent `__version__` / `pyproject.toml` drift
+6. **Fix `--open` path validation** — Security H-1: validate path is within reports dir
+7. **Skip pytest.ini migration** — Simplicity: keep working config as-is
+8. **Skip requirements.txt comment** — Simplicity: no value added
+
+### New Considerations Discovered
+- **Performance:** All wrapper overhead is negligible (<20ms vs 30-120s runtimes). No optimization needed.
+- **Security:** Packaging increases exposure of existing CWD-relative path risks. Document for library callers.
+- **Pattern consistency:** `_last_source_count` follows existing research-scoped state pattern (same as `_start_time`, `_step_num`). Add explicit reset in `_research_async()`.
+- **Agent-native score:** 6.4/10 — acceptable for v1. Key gaps (progress callbacks, rich metadata) correctly deferred to Cycle 19.
+
+---
 
 ## Overview
 
@@ -40,13 +64,48 @@ Additive approach — no internal refactoring required:
 
 **Definition:** `sources_used` = number of sources surviving the relevance gate (the sources that actually contributed to the report).
 
+<details>
+<summary>Research Insights: Source tracking pattern</summary>
+
+**Pattern recognition review confirmed:** `_last_source_count` follows the existing research-scoped state pattern in `agent.py`. The class already uses `_start_time`, `_step_num`, `_current_schema_result`, `_current_research_batch` — all initialized in `__init__`, reset in `_research_async()`, set during pipeline. Adding two more attributes is consistent.
+
+**Python reviewer raised concern** about accessing private attrs from the public API (`agent._last_source_count`). However, the alternative (returning a `_ResearchOutcome` from `research_async()`) would change the internal method signature, breaking the "additive only" constraint. The private attr approach is acceptable because:
+- `run_research()` is the only caller — it's part of the same package
+- The attrs are documented as internal contract between `__init__.py` and `agent.py`
+- The alternative adds more complexity than it removes
+
+**Action:** Add explicit reset of both attrs in `_research_async()` for consistency with existing state management.
+
+</details>
+
 ### Event loop safety
 
 `run_research()` wraps `asyncio.run()`, which fails if an event loop is already running (Jupyter, MCP, FastAPI). Solution: also export `run_research_async()` so async callers have a first-class path. This directly enables Cycle 19.
 
+<details>
+<summary>Research Insights: Event loop collision</summary>
+
+**Python reviewer recommended:** Catch `RuntimeError` in `run_research()` and provide a clear error message:
+
+```python
+try:
+    return asyncio.run(run_research_async(query, mode=mode))
+except RuntimeError as e:
+    if "cannot be called from a running event loop" in str(e):
+        raise ResearchError(
+            "run_research() cannot be called from async context. "
+            "Use 'await run_research_async()' instead."
+        ) from e
+    raise
+```
+
+**Simplicity reviewer argued** `run_research_async()` is YAGNI. Rejected — it's a one-liner, costs nothing, and directly enables Cycle 19 (MCP server runs in async context). The brainstorm explicitly decided to include it.
+
+</details>
+
 ### load_dotenv behavior
 
-`run_research()` will NOT call `load_dotenv()`. Library functions should not have global side effects. The CLI entry point continues to call `load_dotenv()`. Early env var validation added instead — check for `ANTHROPIC_API_KEY` before creating the agent.
+`run_research()` will NOT call `load_dotenv()`. Library functions should not have global side effects. The CLI entry point continues to call `load_dotenv()`. Early env var validation added instead — check for both `ANTHROPIC_API_KEY` and `TAVILY_API_KEY` before creating the agent.
 
 ### Dependency: httpcore
 
@@ -55,6 +114,15 @@ Additive approach — no internal refactoring required:
 ### Python version
 
 `requires-python = ">=3.10"` — the codebase uses `X | Y` union syntax (3.10+). Only Python 3.14 is tested, but 3.10 is the actual floor. Document this.
+
+<details>
+<summary>Research Insights: requires-python</summary>
+
+**Best practices research says:** "Set to minimum version you're willing to support, not the version you test on." For local-only packages, `>=3.10` is reasonable since the union syntax is the only 3.10+ feature used. If publishing to PyPI later, consider narrowing to `>=3.12` as a tested baseline.
+
+**Security reviewer notes:** Setting a broader range means untested Python versions could install the package. Acceptable risk for local development.
+
+</details>
 
 ## Acceptance Criteria
 
@@ -65,35 +133,39 @@ Additive approach — no internal refactoring required:
 - [ ] `from research_agent import run_research, ResearchResult` works
 - [ ] `result = run_research("query", mode="quick")` returns a `ResearchResult`
 - [ ] `result.report`, `.mode`, `.query`, `.sources_used`, `.status` all populated
-- [ ] `list_modes()` returns useful mode info
+- [ ] `list_modes()` returns list of `ModeInfo` objects with expected fields
 - [ ] `run_research(mode="invalid")` raises `ResearchError`, not `ValueError`
 - [ ] `run_research("")` raises `ResearchError` for empty query
+- [ ] `run_research()` without `ANTHROPIC_API_KEY` raises `ResearchError`
+- [ ] `run_research()` without `TAVILY_API_KEY` raises `ResearchError`
+- [ ] `run_research()` from async context gives clear error message
+- [ ] Version sync test: `__version__` matches `pyproject.toml`
 - [ ] All 527 existing tests pass
-- [ ] New tests for `ResearchResult`, `run_research`, `list_modes`, `cli.py`
+- [ ] New tests for `ResearchResult`, `ModeInfo`, `run_research`, `list_modes`, `cli.py`
 
 ## Dependencies & Risks
 
 - **Low risk:** The approach is additive — no existing module signatures change
 - **Test imports safe:** All tests import from submodules (`from research_agent.agent import ...`), not package root
 - **Stdout noise:** agent.py prints ~30 progress lines during research. Known tech debt, deferred to pre-Cycle 19 logging conversion. Documented in `run_research()` docstring.
-- **CWD-relative paths:** `REPORTS_DIR`, `RESEARCH_LOG_PATH`, `research_context.md` resolve from CWD. Fine for CLI, documented for library callers.
+- **CWD-relative paths:** `REPORTS_DIR`, `RESEARCH_LOG_PATH`, `research_context.md` resolve from CWD. Fine for CLI, documented for library callers. Security review recommends adding `output_dir` parameter in Cycle 19 for MCP/REST.
 
 ---
 
 ## Implementation Sessions
 
-### Session 1: ResearchResult dataclass + source count tracking
+### Session 1: ResearchResult + ModeInfo dataclasses + source count tracking
 
 **New file:** `research_agent/results.py`
 **Modified:** `research_agent/agent.py`
 **Tests:** `tests/test_results.py`
-**~60 lines**
+**~70 lines**
 
 #### 1a. Create `research_agent/results.py`
 
 ```python
 # research_agent/results.py
-"""Structured result type for the research agent public API."""
+"""Structured result types for the research agent public API."""
 
 from dataclasses import dataclass
 
@@ -106,7 +178,8 @@ class ResearchResult:
         report: The markdown report.
         query: The original query string.
         mode: The research mode name (quick/standard/deep).
-        sources_used: Number of sources that contributed to the report.
+        sources_used: Number of sources that contributed to the report
+            (survived the relevance gate).
         status: Gate decision — "full_report", "short_report",
                 "insufficient_data", or "no_new_findings".
     """
@@ -115,7 +188,35 @@ class ResearchResult:
     mode: str
     sources_used: int
     status: str
+
+
+@dataclass(frozen=True)
+class ModeInfo:
+    """Information about an available research mode."""
+    name: str
+    max_sources: int
+    word_target: int
+    cost_estimate: str
+    auto_save: bool
 ```
+
+<details>
+<summary>Research Insights: Dataclass design</summary>
+
+**Pattern recognition confirmed:** 13 existing frozen dataclasses in the codebase (ResearchMode, ContextResult, DecompositionResult, SourceScore, etc.). `ResearchResult` and `ModeInfo` follow the established pattern.
+
+**Simplicity reviewer argued** ResearchResult is YAGNI — just return the string. Rejected because:
+- The brainstorm explicitly decided structured return type is needed (Decision #2)
+- `status` field enables programmatic callers to distinguish report quality without parsing markdown
+- `sources_used` gives callers confidence metrics
+- MCP server (Cycle 19) needs structured data, not raw strings
+- Institutional learning (`agent-native-return-structured-data.md`) recommends this exact pattern
+
+**Simplicity reviewer was right** that `list[dict]` is an anti-pattern here — but the fix is `ModeInfo` dataclass, not removing the function. All other public functions in the codebase return typed objects, not raw dicts.
+
+**Agent-native reviewer recommended** additional fields (`timestamp`, `saved_path`, `sources_details`, `duration_seconds`). Deferred to Cycle 19 — start minimal, enrich when consumers exist.
+
+</details>
 
 #### 1b. Add source tracking to `ResearchAgent` in `agent.py`
 
@@ -126,25 +227,31 @@ self._last_source_count: int = 0
 self._last_gate_decision: str = ""
 ```
 
-Set them in `_evaluate_and_synthesize()` (around line 391):
+Add explicit reset in `_research_async()` (around line 150, with existing resets):
 
 ```python
-self._last_source_count = len(evaluation.surviving_sources)
-self._last_gate_decision = evaluation.decision
+self._last_source_count = 0
+self._last_gate_decision = ""
 ```
 
-Also set for the insufficient_data/no_new_findings branch (around line 376):
+Set them in `_evaluate_and_synthesize()` — for the insufficient_data/no_new_findings branch (around line 376):
 
 ```python
 self._last_source_count = 0
 self._last_gate_decision = evaluation.decision
 ```
 
-#### 1c. Tests for `ResearchResult` in `tests/test_results.py`
+And for the synthesis branch (around line 391):
 
-- Frozen immutability (cannot assign to fields)
-- All fields accessible
-- Repr works (useful for debugging)
+```python
+self._last_source_count = len(evaluation.surviving_sources)
+self._last_gate_decision = evaluation.decision
+```
+
+#### 1c. Tests for `ResearchResult` and `ModeInfo` in `tests/test_results.py`
+
+- `ResearchResult`: frozen immutability, all fields accessible, repr works
+- `ModeInfo`: frozen immutability, all fields accessible
 
 ---
 
@@ -152,7 +259,7 @@ self._last_gate_decision = evaluation.decision
 
 **Modified:** `research_agent/__init__.py`
 **Tests:** `tests/test_public_api.py`
-**~90 lines**
+**~100 lines**
 
 #### 2a. Update `research_agent/__init__.py`
 
@@ -168,17 +275,20 @@ import os
 from .agent import ResearchAgent
 from .errors import ResearchError
 from .modes import ResearchMode
-from .results import ResearchResult
+from .results import ModeInfo, ResearchResult
 
 __all__ = [
     "ResearchAgent",
     "ResearchMode",
     "ResearchResult",
     "ResearchError",
+    "ModeInfo",
     "run_research",
     "run_research_async",
     "list_modes",
 ]
+
+_VALID_MODES = frozenset({"quick", "standard", "deep"})
 
 
 def run_research(query: str, mode: str = "standard") -> ResearchResult:
@@ -194,13 +304,26 @@ def run_research(query: str, mode: str = "standard") -> ResearchResult:
     Raises:
         ResearchError: If query is empty, mode is invalid,
             API keys are missing, or research fails.
+            Subclasses (SearchError, SynthesisError) propagate
+            from the pipeline for specific failures.
 
     Note:
         The research agent prints progress to stdout during execution.
+        This will be converted to logging in a future release.
+
         Set ANTHROPIC_API_KEY and TAVILY_API_KEY environment variables
-        before calling.
+        before calling. Reports auto-save to ./reports/ relative to CWD
+        for standard and deep modes.
     """
-    return asyncio.run(run_research_async(query, mode=mode))
+    try:
+        return asyncio.run(run_research_async(query, mode=mode))
+    except RuntimeError as e:
+        if "cannot be called from a running event loop" in str(e):
+            raise ResearchError(
+                "run_research() cannot be called from async context. "
+                "Use 'await run_research_async()' instead."
+            ) from e
+        raise
 
 
 async def run_research_async(query: str, mode: str = "standard") -> ResearchResult:
@@ -213,16 +336,22 @@ async def run_research_async(query: str, mode: str = "standard") -> ResearchResu
     if not query or not query.strip():
         raise ResearchError("Query cannot be empty")
 
+    if mode not in _VALID_MODES:
+        raise ResearchError(
+            f"Invalid mode: {mode!r}. Must be one of: {', '.join(sorted(_VALID_MODES))}"
+        )
+
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise ResearchError(
             "ANTHROPIC_API_KEY environment variable is required"
         )
 
-    try:
-        research_mode = ResearchMode.from_name(mode)
-    except ValueError as e:
-        raise ResearchError(str(e)) from e
+    if not os.environ.get("TAVILY_API_KEY"):
+        raise ResearchError(
+            "TAVILY_API_KEY environment variable is required"
+        )
 
+    research_mode = ResearchMode.from_name(mode)
     agent = ResearchAgent(mode=research_mode)
     report = await agent.research_async(query)
 
@@ -235,37 +364,83 @@ async def run_research_async(query: str, mode: str = "standard") -> ResearchResu
     )
 
 
-def list_modes() -> list[dict]:
+def list_modes() -> list[ModeInfo]:
     """List available research modes with their configuration.
 
     Returns:
-        List of dicts with keys: name, max_sources, word_target,
-        cost_estimate, auto_save.
+        List of ModeInfo objects with name, max_sources, word_target,
+        cost_estimate, and auto_save fields.
     """
     modes = [ResearchMode.quick(), ResearchMode.standard(), ResearchMode.deep()]
     return [
-        {
-            "name": m.name,
-            "max_sources": m.max_sources,
-            "word_target": m.word_target,
-            "cost_estimate": m.cost_estimate,
-            "auto_save": m.auto_save,
-        }
+        ModeInfo(
+            name=m.name,
+            max_sources=m.max_sources,
+            word_target=m.word_target,
+            cost_estimate=m.cost_estimate,
+            auto_save=m.auto_save,
+        )
         for m in modes
     ]
 ```
+
+<details>
+<summary>Research Insights: Public API design</summary>
+
+**Changes from original plan based on research:**
+
+1. **Mode validation uses `_VALID_MODES` frozenset** instead of `try/except ValueError` on `ResearchMode.from_name()`. Security reviewer flagged that wrapping `ValueError` broadly could mask internal bugs and leak implementation details (M-4). Direct validation is clearer.
+
+2. **Added TAVILY_API_KEY validation** — Security finding M-1. Without it, missing Tavily key causes delayed failure ~30s into the pipeline after wasting Anthropic API costs.
+
+3. **Added event loop collision handling** — Python reviewer recommended catching `RuntimeError` in `run_research()` and providing a clear error message pointing to `run_research_async()`.
+
+4. **`list_modes()` returns `list[ModeInfo]`** not `list[dict]` — Pattern recognition found that ALL other public functions return typed objects. Raw dicts break the established pattern and lose IDE autocomplete + type checking.
+
+5. **CWD warning in docstring** — Security reviewer flagged that library callers may not expect auto-saves to CWD-relative `./reports/`.
+
+**Performance oracle confirmed:** All wrapper overhead is negligible. Creating 3 `ResearchMode` instances in `list_modes()` costs ~0.05ms. No caching needed.
+
+</details>
 
 #### 2b. Tests for public API in `tests/test_public_api.py`
 
 - `run_research()` with valid mode (mock `ResearchAgent.research_async`)
 - `run_research()` with invalid mode raises `ResearchError`
 - `run_research("")` raises `ResearchError`
+- `run_research("   ")` raises `ResearchError` (whitespace-only)
 - `run_research()` without `ANTHROPIC_API_KEY` raises `ResearchError`
-- `run_research_async()` same validation tests
-- `list_modes()` returns 3 dicts with expected keys
+- `run_research()` without `TAVILY_API_KEY` raises `ResearchError`
+- `run_research_async()` same validation tests (async versions)
+- `list_modes()` returns 3 `ModeInfo` objects
 - `list_modes()` names are quick, standard, deep
+- `list_modes()` all fields are populated (no empty strings or zeros)
 - `__version__` is "0.18.0"
 - `__all__` contains all expected names
+- Version sync test: `__version__` matches `pyproject.toml` version
+
+<details>
+<summary>Research Insights: Version sync test</summary>
+
+**Python reviewer recommended** preventing `__version__` / `pyproject.toml` drift:
+
+```python
+# tests/test_public_api.py
+import tomllib  # Python 3.11+ stdlib
+from pathlib import Path
+from research_agent import __version__
+
+def test_version_matches_pyproject():
+    """Ensure __init__.__version__ matches pyproject.toml."""
+    pyproject = Path(__file__).parent.parent / "pyproject.toml"
+    with open(pyproject, "rb") as f:
+        data = tomllib.load(f)
+    assert __version__ == data["project"]["version"]
+```
+
+Note: Use `tomllib` (stdlib since 3.11). If supporting 3.10, use `tomli` as a fallback or skip this test on 3.10.
+
+</details>
 
 ---
 
@@ -288,7 +463,32 @@ Move all 6 functions from `main.py` into `cli.py`:
 
 Keep all imports. Keep `RESEARCH_LOG_PATH` and `REPORTS_DIR` constants. The `main()` function stays identical — it imports from `research_agent` and `research_agent.errors` which continue to work.
 
-Update the `main()` docstring examples to use `research-agent` command alongside `python main.py`.
+**Security fix (H-1):** Add path validation for `--open` flag:
+
+```python
+# In cli.py main(), replace the subprocess.run block:
+if args.open:
+    if output_path.suffix != ".md":
+        print("Warning: --open only supports .md files.",
+              file=sys.stderr)
+    else:
+        subprocess.run(["open", "-t", str(output_path)])
+```
+
+The `-t` flag forces macOS `open` to use a text editor, preventing execution of files with `.md` extension that are actually scripts.
+
+<details>
+<summary>Research Insights: Security fix for --open</summary>
+
+**Security sentinel found** (H-1, HIGH): `subprocess.run(["open", str(output_path)])` can execute files if they're disguised as `.md`. The current suffix check is insufficient because macOS `open` respects file permissions.
+
+**Two remediation options:**
+1. Use `open -t` to force text editor mode (simpler, chosen)
+2. Validate path is within `REPORTS_DIR` using `output_path.resolve().relative_to(REPORTS_DIR.resolve())`
+
+Option 1 is simpler and sufficient — the `-t` flag forces TextEdit regardless of file permissions. This fix is already tracked in `todos/036-complete-p3-subprocess-open-validate-extension.md`.
+
+</details>
 
 #### 3b. Simplify `main.py` to shim
 
@@ -312,7 +512,6 @@ Verify: `python -m pytest tests/test_main.py -v` passes.
 ### Session 4: pyproject.toml + integration verification
 
 **New file:** `pyproject.toml`
-**Modified:** `pytest.ini` (delete — migrated to pyproject.toml)
 **~50 lines**
 
 #### 4a. Create `pyproject.toml`
@@ -320,7 +519,7 @@ Verify: `python -m pytest tests/test_main.py -v` passes.
 ```toml
 [build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "research-agent"
@@ -353,21 +552,24 @@ research-agent = "research_agent.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["research_agent*"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_functions = ["test_*"]
-addopts = "-v --tb=short"
 ```
 
-#### 4b. Delete `pytest.ini`
+<details>
+<summary>Research Insights: pyproject.toml decisions</summary>
 
-Config migrated to `[tool.pytest.ini_options]` in `pyproject.toml`.
+**Build backend fix:** Original plan used `setuptools.backends._legacy:_Backend` — this is wrong. Both the Python reviewer and best-practices research confirmed `setuptools.build_meta` is the correct modern backend. Context7 (setuptools docs) confirmed the canonical `[project.scripts]` format.
 
-#### 4c. Integration verification checklist
+**Dependency bounds:** Security reviewer recommended upper bounds (`>=X.Y,<X+1.0`) to limit supply chain risk. Decision: keep `>=` bounds for now. Upper bounds cause "dependency hell" for pip resolver and are discouraged for application packages by PyPA. The `requirements.lock` file provides pinned versions for reproducibility. Add upper bounds only when publishing to PyPI.
+
+**pytest.ini NOT migrated:** Simplicity reviewer correctly flagged this as scope creep. `pytest.ini` works fine today. Moving config to `pyproject.toml` is cleanup, not a requirement for pip-installability. Keep `pytest.ini` as-is.
+
+**requirements.txt NOT touched:** Simplicity reviewer correctly flagged adding a comment as busywork. Both files can coexist without confusion.
+
+**Flat layout kept:** Best-practices research noted src layout is preferred for new projects, but migrating existing projects is unnecessary unless there are import issues. Our flat layout works fine.
+
+</details>
+
+#### 4b. Integration verification checklist
 
 Run these commands to verify everything works:
 
@@ -381,7 +583,7 @@ cd /tmp && research-agent --cost
 cd /tmp && research-agent --list
 
 # 3. Import works
-python -c "from research_agent import run_research, list_modes, ResearchResult; print(list_modes())"
+python -c "from research_agent import run_research, list_modes, ResearchResult, ModeInfo; print(list_modes())"
 python -c "from research_agent import __version__; print(__version__)"
 
 # 4. Backward compat
@@ -389,16 +591,22 @@ cd /path/to/research-agent && python main.py --help
 
 # 5. All tests pass
 cd /path/to/research-agent && python -m pytest tests/ -v
+
+# 6. Re-run pip install -e . after adding entry points (editable install gotcha)
+pip install -e .
 ```
 
-#### 4d. Keep `requirements.txt`
+<details>
+<summary>Research Insights: Editable install gotchas</summary>
 
-Add a comment noting `pyproject.toml` is the canonical source:
+**Best-practices research warns:** Entry points don't auto-update in editable mode. After adding `[project.scripts]` to `pyproject.toml`, re-run `pip install -e .` to register the `research-agent` command. This is a known setuptools limitation.
 
+Also: if IDE type checkers (Pylance) struggle with editable installs, try:
+```bash
+pip install --config-settings editable-mode=strict -e .
 ```
-# Canonical dependency list is in pyproject.toml.
-# This file is kept for quick `pip install -r requirements.txt` workflows.
-```
+
+</details>
 
 ---
 
@@ -406,8 +614,8 @@ Add a comment noting `pyproject.toml` is the canonical source:
 
 | File | Action | Session |
 |------|--------|---------|
-| `research_agent/results.py` | Create | 1 |
-| `research_agent/agent.py` | Add 4 lines (source tracking) | 1 |
+| `research_agent/results.py` | Create (ResearchResult + ModeInfo) | 1 |
+| `research_agent/agent.py` | Add 6 lines (source tracking + reset) | 1 |
 | `tests/test_results.py` | Create | 1 |
 | `research_agent/__init__.py` | Rewrite (public API) | 2 |
 | `tests/test_public_api.py` | Create | 2 |
@@ -415,18 +623,18 @@ Add a comment noting `pyproject.toml` is the canonical source:
 | `main.py` | Simplify to 2-line shim | 3 |
 | `tests/test_main.py` | Update import paths | 3 |
 | `pyproject.toml` | Create | 4 |
-| `pytest.ini` | Delete (migrated) | 4 |
-| `requirements.txt` | Add comment | 4 |
 
 ## Known Limitations (Carry Forward to Cycle 19)
 
-- **Stdout noise:** `agent.py` prints ~30 progress lines. Must convert to `logging` module before MCP server.
-- **CWD-relative paths:** `REPORTS_DIR`, `RESEARCH_LOG_PATH`, `research_context.md` resolve from CWD.
-- **No TAVILY_API_KEY validation:** Only `ANTHROPIC_API_KEY` is checked upfront. Tavily key failure surfaces later in the pipeline as a `SearchError`.
-- **Version sync:** `__version__` in `__init__.py` and `version` in `pyproject.toml` must be bumped together.
+- **Stdout noise:** `agent.py` prints ~30 progress lines. Must convert to `logging` module before MCP server. Agent-native review recommends `on_progress` callback pattern.
+- **CWD-relative paths:** `REPORTS_DIR`, `RESEARCH_LOG_PATH`, `research_context.md` resolve from CWD. Add `output_dir` parameter to `run_research()` in Cycle 19 for MCP/REST.
+- **Version sync:** `__version__` in `__init__.py` and `version` in `pyproject.toml` must be bumped together. Test guards against drift. Switch to `importlib.metadata` dynamic versioning when publishing to PyPI.
+- **Agent-native gaps (6.4/10):** No progress callbacks, no `list_reports()` API, no `capabilities()` introspection, minimal metadata in ResearchResult. All planned for Cycle 19.
+- **CLI-only features:** `--list` (report listing) and `--open` (open in editor) have no programmatic API equivalents. Add `list_reports()` in Cycle 19.
 
 ## References & Research
 
+### Internal References
 - Brainstorm: `docs/brainstorms/2026-02-15-cycle-18-pip-installable-package.md`
 - Existing `__init__.py`: `research_agent/__init__.py`
 - CLI entry point: `main.py:133` (`main()` function)
@@ -435,3 +643,11 @@ Add a comment noting `pyproject.toml` is the canonical source:
 - Mode config: `research_agent/modes.py` (frozen dataclass with `from_name()` classmethod)
 - Error hierarchy: `research_agent/errors.py` (ResearchError base, 5 subclasses)
 - Institutional learning: `docs/solutions/architecture/agent-native-return-structured-data.md`
+- CLI learning: `docs/solutions/feature-implementation/cli-quality-of-life-improvements.md`
+- Security todo: `todos/036-complete-p3-subprocess-open-validate-extension.md`
+
+### External References
+- setuptools build_meta docs: https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html
+- PyPA packaging guide: https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
+- Editable installs: https://setuptools.pypa.io/en/latest/userguide/development_mode.html
+- console_scripts entry points: https://packaging.python.org/en/latest/guides/creating-command-line-tools/
