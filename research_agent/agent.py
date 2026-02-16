@@ -64,6 +64,8 @@ class ResearchAgent:
         self.schema_path = Path(schema_path) if schema_path else None
         self._current_schema_result: SchemaResult | None = None
         self._current_research_batch: tuple[Gap, ...] | None = None
+        self._last_source_count: int = 0
+        self._last_gate_decision: str = ""
 
     def _already_covered_response(self, schema_result: SchemaResult) -> str:
         """Generate a response when all gaps are verified and fresh."""
@@ -149,6 +151,8 @@ class ResearchAgent:
         self._step_num = 0
         self._current_schema_result = None
         self._current_research_batch = None
+        self._last_source_count = 0
+        self._last_gate_decision = ""
         clear_context_cache()
         is_deep = self.mode.name == "deep"
 
@@ -374,6 +378,8 @@ class ResearchAgent:
 
         # Branch based on relevance gate decision
         if evaluation.decision in ("insufficient_data", "no_new_findings"):
+            self._last_source_count = 0
+            self._last_gate_decision = evaluation.decision
             if evaluation.decision == "no_new_findings" and self.schema_path and self._current_research_batch:
                 self._update_gap_states("no_new_findings")
             self._next_step("Generating insufficient data response...")
@@ -386,6 +392,8 @@ class ResearchAgent:
             )
 
         # Synthesize report (full or short)
+        self._last_source_count = len(evaluation.surviving_sources)
+        self._last_gate_decision = evaluation.decision
         logger.info(f"Synthesizing report with {self.mode.model}...")
         limited_sources = evaluation.decision == "short_report"
         surviving = evaluation.surviving_sources
