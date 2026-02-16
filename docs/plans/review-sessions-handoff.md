@@ -83,25 +83,14 @@ and is called by both `_research_with_refinement` (line 521) and `_research_deep
 
 **Goal:** Clean up scattered config and dead code.
 
-**Status:** Partially done. `ContextLoadError`/`ContextAuthError` already removed (todo 033).
-`FetchError`/`ExtractionError` don't exist (already clean). Model string is already on
-`ResearchMode.model` and threaded through `agent.py`. Some items remain.
-
-**Files:** `research_agent/modes.py`, `main.py`, `CLAUDE.md`
-
-**What to check and do:**
-- [x] `FetchError`/`ExtractionError` — already don't exist, skip
-- [x] Model unification — `ResearchMode.model` exists, `agent.py` threads `self.mode.model`
-  to all calls. However, **13 functions still have `model: str = "claude-sonnet-4-20250514"`
-  as a default parameter**. These defaults are redundant since `agent.py` always passes
-  `model=self.mode.model`. Decide: keep the defaults as fallbacks, or remove them to enforce
-  passing model explicitly. Recommend keeping — they make functions callable standalone.
-- [ ] `EXTRACT_DOMAINS` — review plan says move from hardcoded frozenset to config. Check if
-  this is worth doing or if the current hardcoded set is fine. If fine, skip.
-- [ ] `main.py` — check if `REPORTS_DIR` is above functions that reference it (it should be)
-- [ ] `main.py:main()` — add `-> None` return type if missing
-- [ ] `CLAUDE.md` — verify architecture diagram includes `context.py` and `skeptic.py` (it
-  should after todo 020 updated it)
+**Status:** DONE. All items verified:
+- [x] `FetchError`/`ExtractionError` — don't exist, clean
+- [x] Model unification — defaults kept as standalone fallbacks
+- [x] `EXTRACT_DOMAINS` — stable API domains, hardcoded frozenset is fine, skip
+- [x] `REPORTS_DIR` — defined at main.py:19, above all references
+- [x] `main() -> None` — already annotated at main.py:133
+- [x] `CLAUDE.md` — includes `context.py` and `skeptic.py` in diagram
+No code changes needed.
 
 **Commit:** `fix: review session 6 — architecture consistency cleanup`
 
