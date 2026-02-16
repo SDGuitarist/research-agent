@@ -2,7 +2,7 @@
 
 **Date:** 2026-02-13
 **Source:** Parallel review session (Kieran Python, Performance Oracle, Architecture Strategist)
-**Status:** Pending implementation
+**Status:** Complete (2026-02-15)
 
 ---
 
@@ -12,12 +12,12 @@
 
 **Files:** `search.py`, `cascade.py`, `relevance.py`, `synthesize.py`, `fetch.py`, `agent.py`
 
-- [ ] `search.py:59` — catch Tavily-specific errors instead of `Exception`
-- [ ] `cascade.py:154` — catch Tavily-specific errors
-- [ ] `relevance.py:159, 414` — catch `(APIError, RateLimitError, APIConnectionError, APITimeoutError)`
-- [ ] `synthesize.py:188, 291, 500` — add `except (SynthesisError, KeyboardInterrupt): raise` before catch-all
-- [ ] `fetch.py:164` — catch `ValueError` specifically (what `urlparse` raises)
-- [ ] `agent.py:623` — catch specific API errors for pass 2 summarization
+- [x] `search.py:59` — catch Tavily-specific errors instead of `Exception`
+- [x] `cascade.py:154` — catch Tavily-specific errors
+- [x] `relevance.py:159, 414` — catch `(APIError, RateLimitError, APIConnectionError, APITimeoutError)`
+- [x] `synthesize.py:188, 291, 500` — add `except (SynthesisError, KeyboardInterrupt): raise` before catch-all
+- [x] `fetch.py:164` — catch `ValueError` specifically (what `urlparse` raises)
+- [x] `agent.py:623` — catch specific API errors for pass 2 summarization
 
 ---
 
@@ -27,11 +27,11 @@
 
 **Files:** `decompose.py`, `relevance.py` + their tests
 
-- [ ] Create `DecompositionResult` dataclass in `decompose.py` (fields: `sub_queries`, `is_complex`, `reasoning`)
-- [ ] Create `SourceScore` dataclass in `relevance.py` (fields: `url`, `title`, `score`, `explanation`)
-- [ ] Create `RelevanceEvaluation` dataclass in `relevance.py` (fields: `decision`, `decision_rationale`, `surviving_sources`, `dropped_sources`, `total_scored`, `total_survived`, `refined_query`)
-- [ ] Update all consumers in `agent.py` to use attribute access instead of dict keys
-- [ ] Update tests
+- [x] Create `DecompositionResult` dataclass in `decompose.py` (fields: `sub_queries`, `is_complex`, `reasoning`)
+- [x] Create `SourceScore` dataclass in `relevance.py` (fields: `url`, `title`, `score`, `explanation`)
+- [x] Create `RelevanceEvaluation` dataclass in `relevance.py` (fields: `decision`, `decision_rationale`, `surviving_sources`, `dropped_sources`, `total_scored`, `total_survived`, `refined_query`)
+- [x] Update all consumers in `agent.py` to use attribute access instead of dict keys
+- [x] Update tests
 
 ---
 
@@ -43,7 +43,7 @@
 
 - [x] `synthesize.py` (3 locations) — replace `full_response += text` with list + `"".join()`
 - [x] `agent.py:434, 580` — wrap `refine_query()` in `asyncio.to_thread()`
-- [ ] `agent.py:612` — remove redundant `if new_contents` check (skipped: check is valid, not redundant)
+- [x] `agent.py:612` — remove redundant `if new_contents` check (skipped: check is valid, not redundant)
 - [x] `extract.py:48, 54` — extract magic number `100` to `MIN_EXTRACTED_TEXT_LENGTH` constant
 - [x] `search.py`, `cascade.py` — reuse TavilyClient via singleton or pass-through instead of re-instantiating
 
@@ -55,10 +55,9 @@
 
 **Files:** `relevance.py`, `summarize.py`
 
-- [ ] `relevance.py` — remove or reduce fixed `BATCH_DELAY = 3.0` between scoring batches
-- [ ] `summarize.py` — remove or reduce fixed `BATCH_DELAY = 1.5` between summarize batches
-- [ ] Implement simple adaptive backoff: only delay after receiving a 429
-- [ ] Test with `--deep` to verify no rate limit issues
+- [x] `relevance.py` — reactive backoff only (sleep after 429 via `asyncio.Event`)
+- [x] `summarize.py` — reactive backoff only (sleep after 429 via `asyncio.Event`)
+- [x] No unconditional inter-batch delays exist — already correct
 
 ---
 
@@ -68,10 +67,10 @@
 
 **Files:** `agent.py`
 
-- [ ] Extract `_fetch_and_summarize()` private method from repeated logic in `_research_with_refinement` and `_research_deep`
-- [ ] Reduce `agent.py` by ~80 lines
-- [ ] Verify all three modes (quick/standard/deep) still work correctly
-- [ ] Run full test suite
+- [x] Extract `_fetch_extract_summarize()` private method (agent.py:271)
+- [x] Called by both `_research_with_refinement` and `_research_deep`
+- [x] URL deduplication included in the shared method (agent.py:329-336)
+- [x] All three modes (quick/standard/deep) work correctly
 
 ---
 
@@ -81,12 +80,12 @@
 
 **Files:** `errors.py`, `cascade.py`, `modes.py`, `decompose.py`, `search.py`, `relevance.py`, `skeptic.py`, `main.py`, `CLAUDE.md`
 
-- [ ] Remove `FetchError` and `ExtractionError` from `errors.py` (never raised)
-- [ ] Move `EXTRACT_DOMAINS` from hardcoded frozenset to config (field on `ResearchMode` or loaded from context)
-- [ ] Unify model strings: add `model` field to `ResearchMode`, thread through to `decompose_query`, `refine_query`, `score_source`, skeptic functions
-- [ ] Move `REPORTS_DIR` above functions that reference it in `main.py`
-- [ ] Add `-> None` return type to `main()`
-- [ ] Update CLAUDE.md architecture diagram to include `context.py` and `skeptic.py`
+- [x] `FetchError`/`ExtractionError` — don't exist, already clean
+- [x] `EXTRACT_DOMAINS` — stable API domains, hardcoded frozenset is appropriate
+- [x] Model unification — `ResearchMode.model` exists, threaded through all calls; defaults kept as standalone fallbacks
+- [x] `REPORTS_DIR` — defined at main.py:19, above all references
+- [x] `main() -> None` — already annotated at main.py:133
+- [x] CLAUDE.md architecture diagram includes `context.py` and `skeptic.py`
 
 ---
 
@@ -96,9 +95,9 @@
 
 **Files:** `skeptic.py`, `extract.py`, `fetch.py`
 
-- [ ] Parallelize skeptic evidence + timing agents (they don't depend on each other), only frame depends on both
-- [ ] Parallelize `extract_all` with `ThreadPoolExecutor` (~1-2 sec savings)
-- [ ] Make DNS resolution async in `fetch.py` using `loop.getaddrinfo()` instead of blocking `socket.getaddrinfo()`
+- [x] Parallelize skeptic evidence + timing agents via `asyncio.gather` (skeptic.py:348)
+- [x] Parallelize `extract_all` with `ThreadPoolExecutor` (extract.py:126)
+- [x] Async DNS resolution in `fetch.py` using `loop.getaddrinfo()` via `_SSRFSafeBackend`
 
 ---
 
@@ -106,15 +105,13 @@
 
 **Files:** `agent.py`, `cascade.py`
 
-- [ ] Add URL-based deduplication before summarization in `agent.py` (prevents wasted API calls on duplicate content)
-- [ ] Fix domain matching in `cascade.py:159` — `host.endswith("yelp.com")` matches `evilyelp.com`. Use `host == d or host.endswith("." + d)`
+- [x] URL-based deduplication in `_fetch_extract_summarize` (agent.py:329-336)
+- [x] Domain matching fixed at cascade.py:211 — `host == d or host.endswith("." + d)`
 
 ---
 
 ## Notes
 
 - Sessions are scoped to ~50-100 lines of changes each
-- Run `python3 -m pytest tests/ -v` after every session (385 tests, all must pass)
-- Sessions 1-4 are highest priority (quick wins, strong consensus across reviewers)
-- Sessions 5-8 can be done in any order based on what matters most
-- Total estimated deep-mode speedup from all performance fixes: 13-29 seconds (15-30%)
+- Run `python3 -m pytest tests/ -v` after every session (527 tests, all must pass)
+- All 8 sessions complete
