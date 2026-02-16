@@ -31,8 +31,8 @@ Start each new conversation with:
 
 **Goal:** Replace the 3 remaining bare `except Exception` with specific exceptions.
 
-**Status:** Partially done. `search.py`, `cascade.py`, `relevance.py`, `fetch.py`, `agent.py`
-are clean. Only `synthesize.py` remains.
+**Status:** DONE. All 3 bare `except Exception` in synthesize.py replaced with
+`(APIConnectionError, httpx.ReadError, httpx.RemoteProtocolError, ValueError)`.
 
 **Files:** `research_agent/synthesize.py`
 

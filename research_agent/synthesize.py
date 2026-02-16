@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from anthropic import Anthropic, RateLimitError, APIError, APITimeoutError
+import httpx
+
+from anthropic import Anthropic, RateLimitError, APIError, APIConnectionError, APITimeoutError
 
 from .summarize import Summary
 from .errors import SynthesisError
@@ -230,7 +232,7 @@ Write the report now:"""
         raise SynthesisError(f"API error: {e}")
     except (SynthesisError, KeyboardInterrupt):
         raise
-    except Exception as e:
+    except (APIConnectionError, httpx.ReadError, httpx.RemoteProtocolError, ValueError) as e:
         raise SynthesisError(f"Synthesis failed: {e}")
 
 
@@ -333,7 +335,7 @@ Write sections 1-8 now:"""
         raise SynthesisError(f"Draft synthesis API error: {e}")
     except (SynthesisError, KeyboardInterrupt):
         raise
-    except Exception as e:
+    except (APIConnectionError, httpx.ReadError, httpx.RemoteProtocolError, ValueError) as e:
         raise SynthesisError(f"Draft synthesis failed: {e}")
 
 
@@ -548,7 +550,7 @@ Continue the report now:"""
         raise SynthesisError(f"Final synthesis API error: {e}")
     except (SynthesisError, KeyboardInterrupt):
         raise
-    except Exception as e:
+    except (APIConnectionError, httpx.ReadError, httpx.RemoteProtocolError, ValueError) as e:
         raise SynthesisError(f"Final synthesis failed: {e}")
 
 
