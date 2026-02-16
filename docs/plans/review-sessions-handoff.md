@@ -73,19 +73,9 @@ with the narrowest set that covers realistic failure modes.
 
 **Goal:** Extract the shared fetch→extract→cascade→summarize sequence into a private method.
 
-**Status:** Not started.
-
-**Files:** `research_agent/agent.py`, `tests/test_agent.py`
-
-**What to do:**
-- Read `_research_with_refinement` (line 470+) and `_research_deep` (line 529+)
-- Identify the duplicated fetch/extract/cascade/summarize sequence
-- Extract into `_fetch_and_summarize(self, urls, query, ...) -> list[Summary]`
-- Both methods call the new helper instead of duplicating the pipeline
-- Target: ~80 lines removed from agent.py
-- Run full test suite — agent.py has 39 tests
-
-**Commit:** `refactor: review session 5 — extract _fetch_and_summarize in agent.py`
+**Status:** DONE. Already implemented — `_fetch_extract_summarize` exists at agent.py:271
+and is called by both `_research_with_refinement` (line 521) and `_research_deep` (lines
+554, 580). URL deduplication is also included (lines 329-336). No code changes needed.
 
 ---
 
