@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 triage_reason: "Accepted — redundant disk reads and YAML parses per run"
 priority: p2
 issue_id: "011"

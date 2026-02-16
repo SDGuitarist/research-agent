@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 triage_reason: "Accepted — temporal coupling creates fragile state management"
 priority: p2
 issue_id: "009"

@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 triage_reason: "Accepted — symlink validation missing on atomic write target"
 priority: p2
 issue_id: "012"

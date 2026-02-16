@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 triage_reason: "Accepted — ~15 lines of identical pruning logic in two places"
 priority: p2
 issue_id: "006"

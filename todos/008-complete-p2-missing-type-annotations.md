@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 triage_reason: "Accepted — untyped instance state and missing param annotation"
 priority: p2
 issue_id: "008"

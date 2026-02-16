@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 triage_reason: "Accepted — mutable dict on frozen dataclass breaks immutability"
 priority: p2
 issue_id: "005"
