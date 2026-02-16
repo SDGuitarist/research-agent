@@ -21,8 +21,6 @@ __all__ = [
     "list_modes",
 ]
 
-_VALID_MODES = frozenset({"quick", "standard", "deep"})
-
 
 def run_research(query: str, mode: str = "standard") -> ResearchResult:
     """Run a research query and return a structured result.
@@ -69,9 +67,11 @@ async def run_research_async(query: str, mode: str = "standard") -> ResearchResu
     if not query or not query.strip():
         raise ResearchError("Query cannot be empty")
 
-    if mode not in _VALID_MODES:
+    try:
+        research_mode = ResearchMode.from_name(mode)
+    except ValueError:
         raise ResearchError(
-            f"Invalid mode: {mode!r}. Must be one of: {', '.join(sorted(_VALID_MODES))}"
+            f"Invalid mode: {mode!r}. Must be one of: deep, quick, standard"
         )
 
     if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -83,8 +83,6 @@ async def run_research_async(query: str, mode: str = "standard") -> ResearchResu
         raise ResearchError(
             "TAVILY_API_KEY environment variable is required"
         )
-
-    research_mode = ResearchMode.from_name(mode)
     agent = ResearchAgent(mode=research_mode)
     report = await agent.research_async(query)
 
