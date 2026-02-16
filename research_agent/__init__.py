@@ -1,4 +1,117 @@
-from .agent import ResearchAgent
-from .modes import ResearchMode
+"""Research agent — search the web and generate structured reports."""
 
-__all__ = ["ResearchAgent", "ResearchMode"]
+__version__ = "0.18.0"
+
+import asyncio
+import os
+
+from .agent import ResearchAgent
+from .errors import ResearchError
+from .modes import ResearchMode
+from .results import ModeInfo, ResearchResult
+
+__all__ = [
+    "ResearchAgent",
+    "ResearchMode",
+    "ResearchResult",
+    "ResearchError",
+    "ModeInfo",
+    "run_research",
+    "run_research_async",
+    "list_modes",
+]
+
+_VALID_MODES = frozenset({"quick", "standard", "deep"})
+
+
+def run_research(query: str, mode: str = "standard") -> ResearchResult:
+    """Run a research query and return a structured result.
+
+    Args:
+        query: The research question.
+        mode: Research mode — "quick", "standard", or "deep".
+
+    Returns:
+        ResearchResult with report, query, mode, sources_used, status.
+
+    Raises:
+        ResearchError: If query is empty, mode is invalid,
+            API keys are missing, or research fails.
+            Subclasses (SearchError, SynthesisError) propagate
+            from the pipeline for specific failures.
+
+    Note:
+        The research agent prints progress to stdout during execution.
+        This will be converted to logging in a future release.
+
+        Set ANTHROPIC_API_KEY and TAVILY_API_KEY environment variables
+        before calling. Reports auto-save to ./reports/ relative to CWD
+        for standard and deep modes.
+    """
+    try:
+        return asyncio.run(run_research_async(query, mode=mode))
+    except RuntimeError as e:
+        if "cannot be called from a running event loop" in str(e):
+            raise ResearchError(
+                "run_research() cannot be called from async context. "
+                "Use 'await run_research_async()' instead."
+            ) from e
+        raise
+
+
+async def run_research_async(query: str, mode: str = "standard") -> ResearchResult:
+    """Async version of run_research for use in async contexts.
+
+    Same interface as run_research(). Use this when calling from
+    an async context (MCP servers, FastAPI, Jupyter, etc.)
+    where asyncio.run() would fail.
+    """
+    if not query or not query.strip():
+        raise ResearchError("Query cannot be empty")
+
+    if mode not in _VALID_MODES:
+        raise ResearchError(
+            f"Invalid mode: {mode!r}. Must be one of: {', '.join(sorted(_VALID_MODES))}"
+        )
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise ResearchError(
+            "ANTHROPIC_API_KEY environment variable is required"
+        )
+
+    if not os.environ.get("TAVILY_API_KEY"):
+        raise ResearchError(
+            "TAVILY_API_KEY environment variable is required"
+        )
+
+    research_mode = ResearchMode.from_name(mode)
+    agent = ResearchAgent(mode=research_mode)
+    report = await agent.research_async(query)
+
+    return ResearchResult(
+        report=report,
+        query=query,
+        mode=research_mode.name,
+        sources_used=agent._last_source_count,
+        status=agent._last_gate_decision or "error",
+    )
+
+
+def list_modes() -> list[ModeInfo]:
+    """List available research modes with their configuration.
+
+    Returns:
+        List of ModeInfo objects with name, max_sources, word_target,
+        cost_estimate, and auto_save fields.
+    """
+    modes = [ResearchMode.quick(), ResearchMode.standard(), ResearchMode.deep()]
+    return [
+        ModeInfo(
+            name=m.name,
+            max_sources=m.max_sources,
+            word_target=m.word_target,
+            cost_estimate=m.cost_estimate,
+            auto_save=m.auto_save,
+        )
+        for m in modes
+    ]
