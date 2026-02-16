@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 triage_reason: "Accepted — redundant sanitization of same input"
 priority: p3
 issue_id: "019"

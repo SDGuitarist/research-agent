@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 triage_reason: "Accepted — disclaimer template duplicated in two functions"
 priority: p3
 issue_id: "018"

@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 triage_reason: "Accepted — string priority causes TypeError during comparison"
 priority: p3
 issue_id: "017"

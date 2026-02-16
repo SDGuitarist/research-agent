@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 triage_reason: "Accepted — inconsistent with tuple convention for Gap sequences"
 priority: p3
 issue_id: "015"
