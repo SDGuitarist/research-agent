@@ -1,9 +1,7 @@
 """Tests for the exception hierarchy in research_agent.errors."""
 
 from research_agent.errors import (
-    ContextAuthError,
     ContextError,
-    ContextLoadError,
     ResearchError,
     SchemaError,
     SearchError,
@@ -24,22 +22,6 @@ class TestAllExceptionsSubclassResearchError:
 
     def test_state_error(self):
         assert issubclass(StateError, ResearchError)
-
-
-class TestContextErrorHierarchy:
-    """ContextLoadError and ContextAuthError subclass ContextError."""
-
-    def test_context_load_error_is_context_error(self):
-        assert issubclass(ContextLoadError, ContextError)
-
-    def test_context_auth_error_is_context_error(self):
-        assert issubclass(ContextAuthError, ContextError)
-
-    def test_context_load_error_is_research_error(self):
-        assert issubclass(ContextLoadError, ResearchError)
-
-    def test_context_auth_error_is_research_error(self):
-        assert issubclass(ContextAuthError, ResearchError)
 
 
 class TestSchemaErrorCarriesMultipleErrors:
@@ -66,14 +48,6 @@ class TestExceptionsCarryMessage:
     def test_context_error_message(self):
         err = ContextError("context failed")
         assert str(err) == "context failed"
-
-    def test_context_load_error_message(self):
-        err = ContextLoadError("network timeout")
-        assert str(err) == "network timeout"
-
-    def test_context_auth_error_message(self):
-        err = ContextAuthError("token expired")
-        assert str(err) == "token expired"
 
     def test_schema_error_message(self):
         err = SchemaError("bad yaml")

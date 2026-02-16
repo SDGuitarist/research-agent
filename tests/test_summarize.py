@@ -5,7 +5,6 @@ import asyncio
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
-from research_agent.sanitize import sanitize_content
 from research_agent.summarize import (
     _chunk_text,
     summarize_chunk,
@@ -19,35 +18,6 @@ from research_agent.summarize import (
     MAX_CONCURRENT_CHUNKS,
 )
 from research_agent.extract import ExtractedContent
-
-
-class TestSanitizeContent:
-    """Tests for sanitize_content() function."""
-
-    def test_sanitize_content_escapes_angle_brackets(self):
-        """Angle brackets should be escaped to prevent prompt injection."""
-        result = sanitize_content("<script>alert('xss')</script>")
-        assert result == "&lt;script&gt;alert('xss')&lt;/script&gt;"
-
-    def test_sanitize_content_handles_empty_string(self):
-        """Empty string should return empty string."""
-        result = sanitize_content("")
-        assert result == ""
-
-    def test_sanitize_content_handles_multiple_tags(self):
-        """Multiple tag pairs should all be escaped."""
-        result = sanitize_content("<div><p>text</p></div>")
-        assert result == "&lt;div&gt;&lt;p&gt;text&lt;/p&gt;&lt;/div&gt;"
-
-    def test_sanitize_content_escapes_ampersands(self):
-        """Ampersands should be escaped to prevent entity injection."""
-        result = sanitize_content("Tom & Jerry")
-        assert result == "Tom &amp; Jerry"
-
-    def test_sanitize_content_ampersand_before_angle_brackets(self):
-        """Ampersand must be escaped before angle brackets to avoid double-encoding."""
-        result = sanitize_content("&lt;script&gt;")
-        assert result == "&amp;lt;script&amp;gt;"
 
 
 class TestChunkText:

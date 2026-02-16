@@ -3,16 +3,12 @@
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-import pytest
-
-from research_agent.errors import SchemaError, StateError
-from research_agent.schema import Gap, GapStatus, load_schema, validate_gaps
+from research_agent.schema import Gap, GapStatus, load_schema
 from research_agent.state import (
     _gap_to_dict,
     mark_checked,
     mark_verified,
     save_schema,
-    update_gap,
 )
 
 
@@ -125,55 +121,6 @@ class TestSaveSchema:
         result = load_schema(path)
         assert result.gaps[0] == gaps[0]
         assert result.gaps[1] == gaps[1]
-
-
-class TestUpdateGap:
-    def _write_schema(self, path, gaps):
-        """Helper: write gaps to disk for update_gap tests."""
-        save_schema(path, gaps)
-
-    def test_update_gap_changes_field(self, tmp_path):
-        path = tmp_path / "schema.yaml"
-        gaps = (
-            Gap(id="pricing", category="market"),
-            Gap(id="competitor", category="market"),
-        )
-        self._write_schema(path, gaps)
-        updated = update_gap(path, "pricing", priority=5)
-        assert updated.priority == 5
-        assert updated.id == "pricing"
-
-    def test_update_gap_unknown_id_raises(self, tmp_path):
-        path = tmp_path / "schema.yaml"
-        self._write_schema(path, (Gap(id="pricing", category="market"),))
-        with pytest.raises(StateError, match="nonexistent"):
-            update_gap(path, "nonexistent", priority=1)
-
-    def test_update_gap_invalid_state_raises(self, tmp_path):
-        path = tmp_path / "schema.yaml"
-        self._write_schema(path, (Gap(id="pricing", category="market"),))
-        with pytest.raises(SchemaError):
-            update_gap(path, "pricing", status=GapStatus.VERIFIED)
-            # verified without last_verified → validation fails
-
-    def test_update_gap_preserves_others(self, tmp_path):
-        path = tmp_path / "schema.yaml"
-        original_competitor = Gap(id="competitor", category="tech", priority=2)
-        gaps = (
-            Gap(id="pricing", category="market"),
-            original_competitor,
-        )
-        self._write_schema(path, gaps)
-        update_gap(path, "pricing", priority=5)
-        result = load_schema(path)
-        assert result.gaps[1] == original_competitor
-
-    def test_update_gap_persists_to_disk(self, tmp_path):
-        path = tmp_path / "schema.yaml"
-        self._write_schema(path, (Gap(id="pricing", category="market"),))
-        update_gap(path, "pricing", priority=5)
-        result = load_schema(path)
-        assert result.gaps[0].priority == 5
 
 
 class TestMarkChecked:

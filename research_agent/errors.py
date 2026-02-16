@@ -29,16 +29,6 @@ class ContextError(ResearchError):
     pass
 
 
-class ContextLoadError(ContextError):
-    """Transient context loading failure (network, file I/O) — retryable."""
-    pass
-
-
-class ContextAuthError(ContextError):
-    """Context auth expired — user action required."""
-    pass
-
-
 class SchemaError(ResearchError):
     """YAML parse or validation failure.
 

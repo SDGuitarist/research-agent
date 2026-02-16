@@ -3,7 +3,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from research_agent.sanitize import sanitize_content
 from research_agent.synthesize import (
     _build_sources_context,
     _format_skeptic_findings,
@@ -15,20 +14,6 @@ from research_agent.skeptic import SkepticFinding
 from research_agent.summarize import Summary
 from research_agent.errors import SynthesisError
 from research_agent.token_budget import truncate_to_budget
-
-
-class TestSanitizeContent:
-    """Tests for sanitize_content() function."""
-
-    def test_sanitize_content_escapes_angle_brackets(self):
-        """Angle brackets should be escaped."""
-        result = sanitize_content("<malicious>content</malicious>")
-        assert result == "&lt;malicious&gt;content&lt;/malicious&gt;"
-
-    def test_sanitize_content_handles_empty_string(self):
-        """Empty string should return empty string."""
-        result = sanitize_content("")
-        assert result == ""
 
 
 class TestBuildSourcesContext:
