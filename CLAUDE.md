@@ -51,12 +51,31 @@ python3 -m pytest tests/ -v    # 558 tests, all must pass
 
 Mock where the name is imported FROM, not where it's used.
 
+## Setup
+
+```bash
+pip install -e ".[test]"   # install package + test deps in editable mode
+```
+
 ## Environment
 
 - Python 3.14
 - `.env` must contain: `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`
 - `research_context.md` — business context for personalized decomposition
 - All models use `claude-sonnet-4-20250514`
+
+## Code Style
+
+- No formatter configured — match surrounding code style
+- Imports: stdlib → third-party → local, separated by blank lines
+- Type hints on public function signatures; skip for locals and tests
+
+## Git Conventions
+
+- Commit style: `type(scope): description` — e.g. `feat(18-3): extract CLI to cli.py`
+- Types: `feat`, `fix`, `docs`, `refactor`, `test`
+- Small commits (~50–100 lines, one concern each)
+- Always commit before multi-file edits (checkpoint against mid-edit loss)
 
 ## Key Conventions
 
