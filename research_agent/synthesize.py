@@ -49,6 +49,14 @@ def _apply_budget_pruning(
                 business_context = truncate_to_budget(
                     business_context, budget.allocations.get("business_context", 0)
                 )
+            elif name in components:
+                alloc = budget.allocations.get(name, 0)
+                if alloc > 0:
+                    components[name] = truncate_to_budget(
+                        components[name], alloc
+                    )
+                else:
+                    components[name] = ""
     return sources_text, business_context
 
 # Instruction for balanced coverage of comparison queries
@@ -401,9 +409,14 @@ def synthesize_final(
         budget_components["business_context"] = business_context
     if draft:
         budget_components["previous_baseline"] = safe_draft
+    if critique_guidance:
+        budget_components["critique_guidance"] = sanitize_content(critique_guidance)
     sources_text, business_context = _apply_budget_pruning(
         budget_components, 100_000, max_tokens, sources_text, business_context,
     )
+    # Read back potentially truncated critique_guidance
+    if critique_guidance and "critique_guidance" in budget_components:
+        critique_guidance = budget_components["critique_guidance"]
 
     # Business context block
     context_block = ""

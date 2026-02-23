@@ -24,11 +24,12 @@ def count_tokens(text: str, model: str = "claude-sonnet-4-20250514") -> int:
 # Priority order for pruning (lowest priority number pruned first)
 COMPONENT_PRIORITY: dict[str, int] = {
     "staleness_metadata": 1,  # Cut first
-    "previous_baseline": 2,
-    "gap_schema": 3,
-    "business_context": 4,
-    "sources": 5,  # Cut last — sources are the research
-    "instructions": 6,  # Never cut — these control output quality
+    "critique_guidance": 2,   # Helpful but expendable
+    "previous_baseline": 3,
+    "gap_schema": 4,
+    "business_context": 5,
+    "sources": 6,  # Cut last — sources are the research
+    "instructions": 7,  # Never cut — these control output quality
 }
 
 # Threshold at or above which components are never pruned

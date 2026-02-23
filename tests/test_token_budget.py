@@ -218,5 +218,6 @@ class TestComponentPriority:
     def test_priority_ordering(self):
         """Staleness has lowest priority, instructions has highest."""
         assert COMPONENT_PRIORITY["staleness_metadata"] < COMPONENT_PRIORITY["sources"]
+        assert COMPONENT_PRIORITY["critique_guidance"] < COMPONENT_PRIORITY["sources"]
         assert COMPONENT_PRIORITY["sources"] < COMPONENT_PRIORITY["instructions"]
-        assert COMPONENT_PRIORITY["instructions"] == 6
+        assert COMPONENT_PRIORITY["instructions"] == 7

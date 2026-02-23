@@ -12,6 +12,7 @@ from anthropic import AsyncAnthropic, APIError, RateLimitError, APIConnectionErr
 from .summarize import Summary
 from .modes import ResearchMode
 from .sanitize import sanitize_content
+from .token_budget import truncate_to_budget
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,7 @@ async def score_source(
     adjustments_block = ""
     if critique_guidance:
         safe_adjustments = sanitize_content(critique_guidance)
+        safe_adjustments = truncate_to_budget(safe_adjustments, 500)
         adjustments_block = f"\n\n<scoring_guidance>\n{safe_adjustments}\n</scoring_guidance>"
 
     user_prompt = f"""ORIGINAL QUERY: {safe_query}

@@ -215,7 +215,10 @@ def _summarize_patterns(critiques: list[dict]) -> str:
         parts.append(f"Weakest dimensions: {', '.join(dim_strs)}.")
 
     if top_weaknesses:
-        freq_strs = [f'"{w}" ({count}/{n} runs)' for w, count in top_weaknesses]
+        freq_strs = [
+            f'"{sanitize_content(w)}" ({count}/{n} runs)'
+            for w, count in top_weaknesses
+        ]
         parts.append(f"Recurring weaknesses: {'; '.join(freq_strs)}.")
 
     if not weak_dims and not top_weaknesses:
