@@ -56,22 +56,19 @@ class CritiqueResult:
     query_domain: str
 
     @property
+    def _scores(self) -> tuple[int, ...]:
+        return tuple(getattr(self, d) for d in DIMENSIONS)
+
+    @property
     def overall_pass(self) -> bool:
         """True if mean >= 3.0 AND no dimension below 2."""
-        scores = (
-            self.source_diversity, self.claim_support,
-            self.coverage, self.geographic_balance, self.actionability,
-        )
+        scores = self._scores
         mean = sum(scores) / len(scores)
         return mean >= 3.0 and all(s >= 2 for s in scores)
 
     @property
     def mean_score(self) -> float:
-        scores = (
-            self.source_diversity, self.claim_support,
-            self.coverage, self.geographic_balance, self.actionability,
-        )
-        return sum(scores) / len(scores)
+        return sum(self._scores) / len(self._scores)
 
 
 def _parse_critique_response(text: str) -> dict:
