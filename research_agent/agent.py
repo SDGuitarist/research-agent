@@ -73,7 +73,6 @@ class ResearchAgent:
         self._last_source_count: int = 0
         self._last_gate_decision: str = ""
         self._last_critique: CritiqueResult | None = None
-        self._critique_context: str | None = None
 
     @property
     def last_critique(self) -> CritiqueResult | None:
@@ -198,10 +197,10 @@ class ResearchAgent:
         self._last_source_count = 0
         self._last_gate_decision = ""
         clear_context_cache()
-        self._critique_context = None
+        critique_context: str | None = None
         critique_ctx = await asyncio.to_thread(load_critique_history, META_DIR)
         if critique_ctx:
-            self._critique_context = critique_ctx.content
+            critique_context = critique_ctx.content
             logger.info("Loaded critique history for adaptive prompts")
         is_deep = self.mode.name == "deep"
 
@@ -222,7 +221,7 @@ class ResearchAgent:
             self._next_step("Analyzing query...")
             decomposition = await asyncio.to_thread(
                 decompose_query, self.client, query, model=self.mode.model,
-                critique_guidance=self._critique_context,
+                critique_guidance=critique_context,
             )
             if decomposition.is_complex:
                 sub_queries = decomposition.sub_queries
@@ -261,9 +260,9 @@ class ResearchAgent:
         print(f"      Mode: {self.mode.name} ({self.mode.max_sources} sources, {self.mode.search_passes} passes)")
 
         if is_deep:
-            return await self._research_deep(query, decomposition)
+            return await self._research_deep(query, decomposition, critique_context)
         else:
-            return await self._research_with_refinement(query, decomposition)
+            return await self._research_with_refinement(query, decomposition, critique_context)
 
     @staticmethod
     def _split_prefetched(
@@ -415,6 +414,7 @@ class ResearchAgent:
         query: str,
         summaries: list,
         refined_query: str,
+        critique_context: str | None = None,
     ) -> str:
         """Evaluate source relevance and synthesize report."""
         self._next_step("Evaluating source relevance...")
@@ -424,7 +424,7 @@ class ResearchAgent:
             mode=self.mode,
             client=self.async_client,
             refined_query=refined_query,
-            critique_guidance=self._critique_context,
+            critique_guidance=critique_context,
         )
 
         # Branch based on relevance gate decision
@@ -521,7 +521,7 @@ class ResearchAgent:
             dropped_count=dropped_count,
             total_count=total_count,
             is_deep=is_deep,
-            critique_guidance=self._critique_context,
+            critique_guidance=critique_context,
         )
         await asyncio.to_thread(
             self._run_critique,
@@ -536,7 +536,8 @@ class ResearchAgent:
         return result
 
     async def _research_with_refinement(
-        self, query: str, decomposition: DecompositionResult | None = None
+        self, query: str, decomposition: DecompositionResult | None = None,
+        critique_context: str | None = None,
     ) -> str:
         """Quick/standard mode: refine query using snippets before fetching."""
         # Search pass 1
@@ -592,10 +593,12 @@ class ResearchAgent:
             query=query,
             summaries=summaries,
             refined_query=refined_query,
+            critique_context=critique_context,
         )
 
     async def _research_deep(
-        self, query: str, decomposition: DecompositionResult | None = None
+        self, query: str, decomposition: DecompositionResult | None = None,
+        critique_context: str | None = None,
     ) -> str:
         """Deep mode: two-pass search with full fetch/summarize between passes."""
         # Search pass 1
@@ -664,4 +667,5 @@ class ResearchAgent:
             query=query,
             summaries=summaries,
             refined_query=refined_query,
+            critique_context=critique_context,
         )
