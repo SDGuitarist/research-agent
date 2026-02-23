@@ -102,7 +102,7 @@ def decompose_query(
     query: str,
     context_path: Path | None = None,
     model: str = "claude-sonnet-4-20250514",
-    critique_context: str | None = None,
+    critique_guidance: str | None = None,
 ) -> DecompositionResult:
     """
     Analyze a query and decompose it into focused sub-queries if complex.
@@ -136,8 +136,8 @@ def decompose_query(
 """
 
     critique_block = ""
-    if critique_context:
-        safe_critique = sanitize_content(critique_context)
+    if critique_guidance:
+        safe_critique = sanitize_content(critique_guidance)
         critique_block = f"""
 <critique_guidance>
 {safe_critique}

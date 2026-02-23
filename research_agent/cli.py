@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from research_agent import ResearchAgent
+from research_agent.agent import META_DIR
 from research_agent.context import load_critique_history
 from research_agent.critique import critique_report_file, save_critique
 from research_agent.errors import ResearchError
@@ -240,12 +241,11 @@ Examples:
 
     # --critique-history: print aggregated critique patterns and exit
     if args.critique_history:
-        meta_dir = Path("reports/meta")
-        result = load_critique_history(meta_dir)
+        result = load_critique_history(META_DIR)
         if result.content:
             print(result.content)
         else:
-            print("No critique history available (need at least 3 critiques in reports/meta/).")
+            print(f"No critique history available (need at least 3 critiques in {META_DIR}/).")
         sys.exit(0)
 
     # --critique: evaluate a saved report file and exit
@@ -257,8 +257,7 @@ Examples:
         try:
             client = Anthropic()
             result = critique_report_file(client, args.critique)
-            meta_dir = Path("reports/meta")
-            path = save_critique(result, meta_dir)
+            path = save_critique(result, META_DIR)
             status = "pass" if result.overall_pass else "FAIL"
             print(f"Self-critique: mean={result.mean_score:.1f}, {status}")
             print(f"  Weaknesses: {result.weaknesses}")

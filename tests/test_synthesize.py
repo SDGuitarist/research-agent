@@ -630,11 +630,11 @@ class TestSynthesizeBudgetEnforcement:
         assert call_args.args[1] == 50  # budget allocation for business_context
 
 
-class TestLessonsAppliedParam:
-    """Tests for lessons_applied parameter in synthesize_final."""
+class TestCritiqueGuidanceParam:
+    """Tests for critique_guidance parameter in synthesize_final."""
 
-    def test_none_produces_no_lessons_block(self):
-        """lessons_applied=None should not add lessons block."""
+    def test_none_produces_no_guidance_block(self):
+        """critique_guidance=None should not add critique guidance block."""
         client = _make_streaming_client("## Competitive Implications\nContent")
         with patch("builtins.print"):
             result = synthesize_final(
@@ -643,14 +643,14 @@ class TestLessonsAppliedParam:
                 draft="## Executive Summary\nDraft",
                 skeptic_findings=[],
                 summaries=SAMPLE_SUMMARIES,
-                lessons_applied=None,
+                critique_guidance=None,
             )
         call_args = client.messages.stream.call_args
         prompt = call_args[1]["messages"][0]["content"]
-        assert "<lessons_applied>" not in prompt
+        assert "<critique_guidance>" not in prompt
 
-    def test_provided_adds_lessons_block(self):
-        """lessons_applied should inject lessons block into prompt."""
+    def test_provided_adds_guidance_block(self):
+        """critique_guidance should inject critique_guidance block into prompt."""
         client = _make_streaming_client("## Competitive Implications\nContent")
         with patch("builtins.print"):
             result = synthesize_final(
@@ -659,9 +659,9 @@ class TestLessonsAppliedParam:
                 draft="## Executive Summary\nDraft",
                 skeptic_findings=[],
                 summaries=SAMPLE_SUMMARIES,
-                lessons_applied="Improve source diversity scores",
+                critique_guidance="Improve source diversity scores",
             )
         call_args = client.messages.stream.call_args
         prompt = call_args[1]["messages"][0]["content"]
-        assert "<lessons_applied>" in prompt
+        assert "<critique_guidance>" in prompt
         assert "Improve source diversity scores" in prompt

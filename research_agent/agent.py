@@ -21,7 +21,7 @@ from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_synthesis_context, load_critique_history, clear_context_cache
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
-from .errors import ResearchError, SearchError, SkepticError, StateError, CritiqueError
+from .errors import ResearchError, SearchError, SkepticError, StateError
 from .critique import evaluate_report, save_critique, CritiqueResult
 from .modes import ResearchMode
 from .cycle_config import CycleConfig
@@ -34,6 +34,9 @@ logger = logging.getLogger(__name__)
 
 # Maximum concurrent sub-query searches (semaphore cap)
 MAX_CONCURRENT_SUB_QUERIES = 2
+
+# Default directory for critique metadata files
+META_DIR = Path("reports/meta")
 
 
 class ResearchAgent:
@@ -153,13 +156,12 @@ class ResearchAgent:
                 gate_decision=gate_decision,
                 model=self.mode.model,
             )
-            meta_dir = Path("reports/meta")
-            save_critique(result, meta_dir)
+            save_critique(result, META_DIR)
             self._last_critique = result
             logger.info(
                 "Self-critique: mean=%.1f pass=%s", result.mean_score, result.overall_pass
             )
-        except (CritiqueError, OSError, yaml.YAMLError) as e:
+        except (OSError, yaml.YAMLError) as e:
             logger.warning("Self-critique failed: %s", e)
 
     def _next_step(self, message: str) -> None:
@@ -197,7 +199,7 @@ class ResearchAgent:
         self._last_gate_decision = ""
         clear_context_cache()
         self._critique_context = None
-        critique_ctx = load_critique_history(Path("reports/meta"))
+        critique_ctx = await asyncio.to_thread(load_critique_history, META_DIR)
         if critique_ctx:
             self._critique_context = critique_ctx.content
             logger.info("Loaded critique history for adaptive prompts")
@@ -220,7 +222,7 @@ class ResearchAgent:
             self._next_step("Analyzing query...")
             decomposition = await asyncio.to_thread(
                 decompose_query, self.client, query, model=self.mode.model,
-                critique_context=self._critique_context,
+                critique_guidance=self._critique_context,
             )
             if decomposition.is_complex:
                 sub_queries = decomposition.sub_queries
@@ -422,7 +424,7 @@ class ResearchAgent:
             mode=self.mode,
             client=self.async_client,
             refined_query=refined_query,
-            scoring_adjustments=self._critique_context,
+            critique_guidance=self._critique_context,
         )
 
         # Branch based on relevance gate decision
@@ -519,9 +521,10 @@ class ResearchAgent:
             dropped_count=dropped_count,
             total_count=total_count,
             is_deep=is_deep,
-            lessons_applied=self._critique_context,
+            critique_guidance=self._critique_context,
         )
-        self._run_critique(
+        await asyncio.to_thread(
+            self._run_critique,
             query=query,
             surviving_count=len(surviving),
             dropped_count=dropped_count,

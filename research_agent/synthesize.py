@@ -362,7 +362,7 @@ def synthesize_final(
     dropped_count: int = 0,
     total_count: int = 0,
     is_deep: bool = False,
-    lessons_applied: str | None = None,
+    critique_guidance: str | None = None,
 ) -> str:
     """Produce sections 9-12/13 informed by skeptic analysis.
 
@@ -480,11 +480,11 @@ def synthesize_final(
     # Lessons applied block (from critique history)
     lessons_block = ""
     lessons_instruction = ""
-    if lessons_applied:
-        safe_lessons = sanitize_content(lessons_applied)
-        lessons_block = f"\n<lessons_applied>\n{safe_lessons}\n</lessons_applied>\n"
+    if critique_guidance:
+        safe_lessons = sanitize_content(critique_guidance)
+        lessons_block = f"\n<critique_guidance>\n{safe_lessons}\n</critique_guidance>\n"
         lessons_instruction = (
-            "The <lessons_applied> section contains guidance from past self-critiques. "
+            "The <critique_guidance> section contains guidance from past self-critiques. "
             "Apply these lessons to improve this report. Add a brief '## Lessons Applied' "
             "section before Sources summarizing how past feedback was incorporated."
         )

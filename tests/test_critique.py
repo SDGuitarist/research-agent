@@ -11,7 +11,6 @@ from research_agent.critique import (
     save_critique,
     _parse_critique_response,
 )
-from research_agent.errors import CritiqueError
 
 
 # --- CritiqueResult gate logic ---
@@ -218,12 +217,12 @@ class TestAgentCritiqueIntegration:
             assert agent._last_critique is fake_result
 
     def test_critique_error_caught_gracefully(self):
-        """Pipeline should complete even if critique throws."""
+        """Pipeline should complete even if critique throws OSError."""
         from research_agent.agent import ResearchAgent
         from research_agent.modes import ResearchMode
 
         agent = ResearchAgent(mode=ResearchMode.standard())
-        with patch("research_agent.agent.evaluate_report", side_effect=CritiqueError("boom")):
+        with patch("research_agent.agent.evaluate_report", side_effect=OSError("disk full")):
             # Should not raise
             agent._run_critique("q", 5, 2, [], "full_report")
             assert agent._last_critique is None

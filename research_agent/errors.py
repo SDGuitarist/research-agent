@@ -45,6 +45,3 @@ class StateError(ResearchError):
     pass
 
 
-class CritiqueError(ResearchError):
-    """Raised when self-critique fails."""
-    pass
