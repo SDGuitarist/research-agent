@@ -59,6 +59,7 @@ class ResearchAgent:
         mode: ResearchMode | None = None,
         cycle_config: CycleConfig | None = None,
         schema_path: Path | str | None = None,
+        skip_critique: bool = False,
     ):
         self.client = Anthropic(api_key=api_key)
         self.async_client = AsyncAnthropic(api_key=api_key)
@@ -67,6 +68,7 @@ class ResearchAgent:
         self._step_total = 0
         self.mode = mode or ResearchMode.standard()
         self.cycle_config = cycle_config or CycleConfig()
+        self.skip_critique = skip_critique
         self.schema_path = Path(schema_path) if schema_path else None
         self._current_schema_result: SchemaResult | None = None
         self._current_research_batch: tuple[Gap, ...] | None = None
@@ -141,8 +143,8 @@ class ResearchAgent:
         gate_decision: str,
     ) -> None:
         """Run self-critique after report synthesis. Never crashes pipeline."""
-        if self.mode.name == "quick":
-            return  # Quick mode has no skeptic data — skip critique
+        if self.mode.name == "quick" or self.skip_critique:
+            return  # Quick mode has no skeptic data; --no-critique opts out
 
         try:
             result = evaluate_report(

@@ -226,6 +226,11 @@ Examples:
         action="store_true",
         help="Print summarized self-critique patterns and exit",
     )
+    parser.add_argument(
+        "--no-critique",
+        action="store_true",
+        help="Skip post-report self-critique (saves one API call)",
+    )
 
     args = parser.parse_args()
 
@@ -297,6 +302,7 @@ Examples:
         agent = ResearchAgent(
             mode=mode,
             max_sources=args.max_sources if not mode_flag_used else None,
+            skip_critique=args.no_critique,
         )
 
         report = agent.research(args.query)

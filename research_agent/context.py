@@ -173,23 +173,25 @@ def _validate_critique_yaml(data: dict) -> bool:
     return True
 
 
-def _summarize_patterns(critiques: list[dict]) -> str:
-    """Aggregate critique scores into a concise guidance summary.
+def _summarize_patterns(passing_critiques: list[dict]) -> str:
+    """Aggregate passing critique scores into a concise guidance summary.
 
-    Returns a sanitized text suitable for injection into prompts.
-    Only includes critiques where overall_pass is True.
+    Args:
+        passing_critiques: Pre-filtered list of critiques where overall_pass is True.
+
+    Returns a sanitized text suitable for injection into prompts,
+    or empty string if fewer than _MIN_CRITIQUES_FOR_GUIDANCE.
     """
-    passing = [c for c in critiques if c.get("overall_pass") is True]
-    if len(passing) < _MIN_CRITIQUES_FOR_GUIDANCE:
+    if len(passing_critiques) < _MIN_CRITIQUES_FOR_GUIDANCE:
         return ""
 
     # Compute dimension averages
     dim_totals: dict[str, float] = {d: 0.0 for d in _CRITIQUE_DIMENSIONS}
-    for c in passing:
+    for c in passing_critiques:
         for dim in _CRITIQUE_DIMENSIONS:
             dim_totals[dim] += c[dim]
 
-    n = len(passing)
+    n = len(passing_critiques)
     dim_avgs = {d: round(dim_totals[d] / n, 1) for d in _CRITIQUE_DIMENSIONS}
 
     # Find weakest dimensions (below 3.5 average)
@@ -200,7 +202,7 @@ def _summarize_patterns(critiques: list[dict]) -> str:
 
     # Count most frequent weaknesses
     weakness_counter: Counter = Counter()
-    for c in passing:
+    for c in passing_critiques:
         w = c.get("weaknesses", "")
         if w:
             weakness_counter[w] += 1
@@ -242,8 +244,8 @@ def load_critique_history(
 
     Returns:
         ContextResult:
-            - NOT_CONFIGURED if fewer than 3 valid critiques found.
-            - LOADED with summary text if enough history exists.
+            - NOT_CONFIGURED if fewer than 3 valid passing critiques found.
+            - LOADED with summary text if enough passing history exists.
     """
     source = str(meta_dir)
 
@@ -278,10 +280,11 @@ def load_critique_history(
 
         valid_critiques.append(data)
 
-    if len(valid_critiques) < _MIN_CRITIQUES_FOR_GUIDANCE:
+    passing = [c for c in valid_critiques if c.get("overall_pass") is True]
+    if len(passing) < _MIN_CRITIQUES_FOR_GUIDANCE:
         return ContextResult.not_configured(source=source)
 
-    summary = _summarize_patterns(valid_critiques)
+    summary = _summarize_patterns(passing)
     if not summary:
         return ContextResult.not_configured(source=source)
 

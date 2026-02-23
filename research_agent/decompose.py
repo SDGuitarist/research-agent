@@ -114,6 +114,8 @@ def decompose_query(
         client: Anthropic client (sync)
         query: The research query
         context_path: Optional path to business context file
+        model: Claude model to use for decomposition
+        critique_guidance: Optional adaptive guidance from past self-critiques
 
     Returns:
         DecompositionResult with fields:
