@@ -152,3 +152,28 @@ about"** answer — that is the previous phase flagging a risk for you.
 
 If the previous phase document has no `## Three Questions` section, note its
 absence and proceed normally.
+
+## Session-Closing Handoff (Mandatory)
+
+Before ending ANY session — whether the phase is complete or context is running
+low — you MUST update `HANDOFF.md` (project root, create if missing) with:
+
+1. **What was done** this session (commits, files changed, decisions made)
+2. **Three questions** answered (per the phase-specific format above)
+3. **Next phase** — which phase comes next in the loop
+4. **Next-session prompt** — a copy-paste block the user can paste into a fresh
+   window to resume exactly where they left off
+
+Format the prompt block like this:
+
+    ### Prompt for Next Session
+
+    ```
+    Read [specific file]. [Specific action]. Relevant files: [list].
+    ```
+
+If context is running low before the phase is complete, write a **mid-phase
+handoff** with the same format but note what's done and what remains.
+
+Do NOT wait for the user to ask. Do NOT skip this because "the session is
+almost over." This is the last thing you do before stopping.
