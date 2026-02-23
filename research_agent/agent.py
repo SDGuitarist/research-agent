@@ -200,10 +200,11 @@ class ResearchAgent:
         self._last_gate_decision = ""
         clear_context_cache()
         critique_context: str | None = None
-        critique_ctx = await asyncio.to_thread(load_critique_history, META_DIR)
-        if critique_ctx:
-            critique_context = critique_ctx.content
-            logger.info("Loaded critique history for adaptive prompts")
+        if self.mode.name != "quick":
+            critique_ctx = await asyncio.to_thread(load_critique_history, META_DIR)
+            if critique_ctx:
+                critique_context = critique_ctx.content
+                logger.info("Loaded critique history for adaptive prompts")
         is_deep = self.mode.name == "deep"
 
         # Calculate total steps:
