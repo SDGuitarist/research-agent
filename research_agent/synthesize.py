@@ -410,7 +410,8 @@ def synthesize_final(
     if draft:
         budget_components["previous_baseline"] = safe_draft
     if critique_guidance:
-        budget_components["critique_guidance"] = sanitize_content(critique_guidance)
+        # critique_guidance is pre-sanitized by load_critique_history
+        budget_components["critique_guidance"] = critique_guidance
     sources_text, business_context = _apply_budget_pruning(
         budget_components, 100_000, max_tokens, sources_text, business_context,
     )
@@ -494,8 +495,8 @@ def synthesize_final(
     lessons_block = ""
     lessons_instruction = ""
     if critique_guidance:
-        safe_lessons = sanitize_content(critique_guidance)
-        lessons_block = f"\n<critique_guidance>\n{safe_lessons}\n</critique_guidance>\n"
+        # critique_guidance is pre-sanitized by load_critique_history
+        lessons_block = f"\n<critique_guidance>\n{critique_guidance}\n</critique_guidance>\n"
         lessons_instruction = (
             "The <critique_guidance> section contains guidance from past self-critiques. "
             "Apply these lessons to improve this report. Add a brief '## Lessons Applied' "

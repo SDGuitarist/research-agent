@@ -139,6 +139,7 @@ def decompose_query(
 
     critique_block = ""
     if critique_guidance:
+        # critique_guidance is pre-sanitized by load_critique_history
         critique_block = f"""
 <critique_guidance>
 {critique_guidance}

@@ -111,7 +111,7 @@ async def score_source(
     Score a single source's relevance to the research query.
 
     Args:
-        query: The original research query
+        query: Pre-sanitized research query (caller must sanitize before passing)
         summary: A Summary object containing url, title, and summary text
         client: Async Anthropic client for API calls
         rate_limit_event: Optional event to signal when a 429 is encountered
@@ -119,7 +119,7 @@ async def score_source(
     Returns:
         SourceScore with url, title, score (1-5), explanation
     """
-    # query is pre-sanitized by caller (score_and_filter_sources)
+    # query is pre-sanitized by caller (evaluate_sources)
     safe_title = sanitize_content(summary.title or "Untitled")
     safe_summary = sanitize_content(summary.summary)
 
