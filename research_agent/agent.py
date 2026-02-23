@@ -19,7 +19,8 @@ from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_synthesis_context, clear_context_cache
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
-from .errors import ResearchError, SearchError, SkepticError, StateError
+from .errors import ResearchError, SearchError, SkepticError, StateError, CritiqueError
+from .critique import evaluate_report, save_critique, CritiqueResult
 from .modes import ResearchMode
 from .cycle_config import CycleConfig
 
@@ -66,6 +67,7 @@ class ResearchAgent:
         self._current_research_batch: tuple[Gap, ...] | None = None
         self._last_source_count: int = 0
         self._last_gate_decision: str = ""
+        self._last_critique: CritiqueResult | None = None
 
     def _already_covered_response(self, schema_result: SchemaResult) -> str:
         """Generate a response when all gaps are verified and fresh."""
@@ -119,6 +121,38 @@ class ResearchAgent:
             logger.info("Updated %d gap states in %s", len(batch_ids), self.schema_path)
         except StateError as e:
             logger.warning("Failed to save gap state: %s", e)
+
+    def _run_critique(
+        self,
+        query: str,
+        surviving_count: int,
+        dropped_count: int,
+        skeptic_findings: list | None,
+        gate_decision: str,
+    ) -> None:
+        """Run self-critique after report synthesis. Never crashes pipeline."""
+        if self.mode.name == "quick":
+            return  # Quick mode has no skeptic data — skip critique
+
+        try:
+            result = evaluate_report(
+                client=self.client,
+                query=query,
+                mode_name=self.mode.name,
+                surviving_sources=surviving_count,
+                dropped_sources=dropped_count,
+                skeptic_findings=skeptic_findings,
+                gate_decision=gate_decision,
+                model=self.mode.model,
+            )
+            meta_dir = Path("reports/meta")
+            save_critique(result, meta_dir)
+            self._last_critique = result
+            logger.info(
+                "Self-critique: mean=%.1f pass=%s", result.mean_score, result.overall_pass
+            )
+        except (CritiqueError, Exception) as e:
+            logger.warning(f"Self-critique failed: {e}")
 
     def _next_step(self, message: str) -> None:
         """Print next step header with auto-incrementing counter."""
@@ -470,6 +504,13 @@ class ResearchAgent:
             dropped_count=dropped_count,
             total_count=total_count,
             is_deep=is_deep,
+        )
+        self._run_critique(
+            query=query,
+            surviving_count=len(surviving),
+            dropped_count=dropped_count,
+            skeptic_findings=findings,
+            gate_decision=evaluation.decision,
         )
         if self.schema_path and self._current_research_batch:
             self._update_gap_states(evaluation.decision)

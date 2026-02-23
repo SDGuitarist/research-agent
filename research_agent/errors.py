@@ -43,3 +43,8 @@ class SchemaError(ResearchError):
 class StateError(ResearchError):
     """State file read/write/corruption failure."""
     pass
+
+
+class CritiqueError(ResearchError):
+    """Raised when self-critique fails."""
+    pass

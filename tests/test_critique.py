@@ -3,7 +3,7 @@
 import yaml
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 
 from research_agent.critique import (
     CritiqueResult,
@@ -11,6 +11,7 @@ from research_agent.critique import (
     save_critique,
     _parse_critique_response,
 )
+from research_agent.errors import CritiqueError
 
 
 # --- CritiqueResult gate logic ---
@@ -187,3 +188,42 @@ class TestSaveCritique:
         path = save_critique(cr, nested)
         assert path.exists()
         assert nested.exists()
+
+
+# --- Agent integration: _run_critique ---
+
+class TestAgentCritiqueIntegration:
+    def test_quick_mode_skips_critique(self):
+        """Quick mode should not call evaluate_report."""
+        from research_agent.agent import ResearchAgent
+        from research_agent.modes import ResearchMode
+
+        agent = ResearchAgent(mode=ResearchMode.quick())
+        with patch("research_agent.agent.evaluate_report") as mock_eval:
+            agent._run_critique("q", 3, 1, None, "full_report")
+            mock_eval.assert_not_called()
+
+    def test_standard_mode_calls_critique(self):
+        """Standard mode should call evaluate_report and save_critique."""
+        from research_agent.agent import ResearchAgent
+        from research_agent.modes import ResearchMode
+
+        agent = ResearchAgent(mode=ResearchMode.standard())
+        fake_result = CritiqueResult(3, 3, 3, 3, 3, "", "", "test")
+        with patch("research_agent.agent.evaluate_report", return_value=fake_result) as mock_eval, \
+             patch("research_agent.agent.save_critique") as mock_save:
+            agent._run_critique("q", 5, 2, [], "full_report")
+            mock_eval.assert_called_once()
+            mock_save.assert_called_once()
+            assert agent._last_critique is fake_result
+
+    def test_critique_error_caught_gracefully(self):
+        """Pipeline should complete even if critique throws."""
+        from research_agent.agent import ResearchAgent
+        from research_agent.modes import ResearchMode
+
+        agent = ResearchAgent(mode=ResearchMode.standard())
+        with patch("research_agent.agent.evaluate_report", side_effect=CritiqueError("boom")):
+            # Should not raise
+            agent._run_critique("q", 5, 2, [], "full_report")
+            assert agent._last_critique is None
