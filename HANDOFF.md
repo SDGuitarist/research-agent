@@ -1,45 +1,38 @@
-# Handoff: Self-Enhancing Agent — Compound Phase Complete
+# Handoff: P3 Triage — Brainstorm Complete
 
 ## Current State
 
-**Branch:** `main` (pushed)
-**Phase:** Compound (complete)
+**Branch:** `main`
+**Phase:** Brainstorm (complete)
 **Tests:** 607 passing
 
 ## What's Done
 
-All P1s and P2 code fixes from the self-enhancing agent code review are fixed and compounded:
+Triaged all 11 P3 findings (#24-34) and 3 skipped P2s (#19, #20, #22) from the self-enhancing agent review.
 
-| Batch | Findings | Summary |
-|-------|----------|---------|
-| 1 | P1 #1-4 | Fix `except Exception`, add `--critique`/`--critique-history` CLI, print critique summary |
-| 2 | P2 #5-9 | Extract `META_DIR`, remove dead `CritiqueError`, `asyncio.to_thread` wrapping, unify param names, XML tags |
-| 3 | P2 #10-11 | Sanitize weakness strings, register critique in token budget |
-| 4 | P2 #12 | Replace mutable `_critique_context` with parameter threading (#13 skipped — no longer dead) |
-| 5 | P2 #14-15 | Add `critique` field to `ResearchResult`, replace thin tests with pipeline integration tests |
-| 6 | P2 #16-18 | Fix filtering docstring confusion, add missing param docs, add `--no-critique` CLI flag |
-| 7 | P2 #21,23 | Remove YAGNI `domain` param, deduplicate `DIMENSIONS` constant |
-| Compound | — | Documented 10 reusable patterns + prevention checklist in `docs/solutions/architecture/self-enhancing-agent-review-patterns.md` |
+**Decision:** 5 fixes go now, 3 defer, 3 skip, 3 are process-only.
 
-## What's Left
-
-**Skipped P2s (process, not code):**
-- #19: Missing plan document in `docs/plans/` — document the gap
-- #20: Commit size convention violated — process improvement for future
-- #22: Critique saved before report persisted — acceptable for CLI, note for future
-
-**P3s (#24-34):** Nice-to-haves (f-string in loggers, duplicate scores tuple, double sanitization, timestamp collision, bool bypass, quick mode loads history, redundant sanitize calls, critique threshold not configurable, survivorship bias, test quality, minor tidiness)
+| Category | Findings | Action |
+|----------|----------|--------|
+| Do Now | #25, #26, #28, #29, #30 | 1 work session (~60 lines) |
+| Do Later | #27, #31, #32 | Future cycle |
+| Skip | #24, #33, #34 | Not worth the churn |
+| Process | #19, #20, #22 | Already noted |
 
 ## Three Questions
 
-1. **Hardest pattern to extract from the fixes?** Second-order prompt injection (Pattern 5). The attack chain crosses web content -> AI output -> YAML -> future prompt — hard to see from any single module.
+1. **Hardest decision in this session?** Whether to include #24 (f-string loggers). Rejected — high churn, negligible benefit.
 
-2. **What did I consider documenting but left out, and why?** CLI parity and individual test quality guidance. Both are general UX/testing principles, not specific patterns from this review.
+2. **What did you reject, and why?** Batching #31 (configurable threshold) with quick fixes. It needs design work, not just a mechanical change.
 
-3. **What might future sessions miss that this solution doesn't cover?** The P3 findings (#24-34) are all deferred. Some are real improvements (f-string loggers, configurable critique threshold). They should be triaged, not forgotten.
+3. **Least confident about going into the next phase?** Whether #26 (double sanitization) is truly redundant or defense-in-depth. Need to trace the data flow in the plan phase.
+
+## Next Phase
+
+**Plan** — Read the brainstorm and write a plan for the 5 "Do Now" fixes.
 
 ### Prompt for Next Session
 
 ```
-The self-enhancing agent review cycle is complete (brainstorm -> plan -> work -> review -> fix -> compound). P3 findings #24-34 are deferred in HANDOFF.md. Start a new brainstorm for the next feature or triage P3s if desired.
+Read docs/brainstorms/2026-02-23-p3-triage-brainstorm.md. Write a plan for the 5 "Do Now" fixes (#25, #26, #28, #29, #30). Relevant files: research_agent/critique.py, research_agent/context.py, research_agent/agent.py, research_agent/relevance.py, research_agent/decompose.py. Save to docs/plans/. Do only the plan phase — stop after writing the plan.
 ```
