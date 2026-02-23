@@ -1,38 +1,50 @@
-# Handoff: P3 Triage — Brainstorm Complete
+# Handoff: P3 "Do Now" Fixes — Fix Phase Complete
 
 ## Current State
 
 **Branch:** `main`
-**Phase:** Brainstorm (complete)
-**Tests:** 607 passing
+**Phase:** Fix (complete) → Compound next
+**Tests:** 608 passing
+
+## Prior Phase Risk
+
+> "What might this review have missed? Integration-level prompt injection testing."
+
+Accepted — this fix session addresses documentation and double-sanitization bugs found by static analysis. Integration testing remains a future concern, not in scope for these fixes.
 
 ## What's Done
 
-Triaged all 11 P3 findings (#24-34) and 3 skipped P2s (#19, #20, #22) from the self-enhancing agent review.
+### This Session (Fix)
 
-**Decision:** 5 fixes go now, 3 defer, 3 skip, 3 are process-only.
+1. **fix(sanitize): document pre-sanitization contracts and remove double-sanitize in synthesize** — `fa4daaf`
+   - Fixed comment in `relevance.py:122`: `score_and_filter_sources` → `evaluate_sources`
+   - Added pre-sanitization comment in `decompose.py:141` for `critique_guidance`
+   - Updated `score_source` docstring: "original research query" → "pre-sanitized research query"
+   - Removed double `sanitize_content()` calls in `synthesize.py` (lines 413, 497) — fixes latent `&amp;amp;` encoding bug
 
-| Category | Findings | Action |
-|----------|----------|--------|
-| Do Now | #25, #26, #28, #29, #30 | 1 work session (~60 lines) |
-| Do Later | #27, #31, #32 | Future cycle |
-| Skip | #24, #33, #34 | Not worth the churn |
-| Process | #19, #20, #22 | Already noted |
+2. **docs(plan+review): commit P3 do-now fixes plan and review for traceability** — `73d3f20`
+   - Committed untracked plan document (`docs/plans/2026-02-23-p3-do-now-fixes-plan.md`)
+   - Committed all 9 review agent findings + summary (`docs/reviews/p3-do-now-fixes/`)
+
+### Previous Sessions (Work + Review)
+
+- 4 commits: `8ecfdb3`, `e647405`, `9dde2c4`, `8420227`
+- 9-agent review with 2 P2 findings → both now resolved
 
 ## Three Questions
 
-1. **Hardest decision in this session?** Whether to include #24 (f-string loggers). Rejected — high churn, negligible benefit.
+1. **Hardest fix in this batch?** Removing double-sanitization in `synthesize.py`. Had to trace the full data flow from `_summarize_patterns` → `load_critique_history` → `agent.py` → `synthesize.py` to confirm `critique_guidance` arrives pre-sanitized. The fix itself is trivial (remove two function calls), but confidence required understanding three modules.
 
-2. **What did you reject, and why?** Batching #31 (configurable threshold) with quick fixes. It needs design work, not just a mechanical change.
+2. **What did you consider fixing differently, and why didn't you?** Considered also renaming `safe_adjustments` to `adjustments` in `relevance.py:136` (P3 finding #3). Left it alone — it's a different concern and P3 severity. Mixing P2 and P3 fixes in one commit blurs traceability.
 
-3. **Least confident about going into the next phase?** Whether #26 (double sanitization) is truly redundant or defense-in-depth. Need to trace the data flow in the plan phase.
+3. **Least confident about going into the next batch or compound phase?** Whether the "pre-sanitized by" comments are sufficient documentation for future developers, or whether a more formal contract (e.g., a type wrapper like `SanitizedStr`) would be needed long-term. Comments can drift; types can't.
 
 ## Next Phase
 
-**Plan** — Read the brainstorm and write a plan for the 5 "Do Now" fixes.
+**Compound** — Document learnings in `docs/solutions/`.
 
 ### Prompt for Next Session
 
 ```
-Read docs/brainstorms/2026-02-23-p3-triage-brainstorm.md. Write a plan for the 5 "Do Now" fixes (#25, #26, #28, #29, #30). Relevant files: research_agent/critique.py, research_agent/context.py, research_agent/agent.py, research_agent/relevance.py, research_agent/decompose.py. Save to docs/plans/. Do only the plan phase — stop after writing the plan.
+Read HANDOFF.md. Run Compound phase: document the sanitization contract pattern as a solution in docs/solutions/. Key learning: sanitize_content is non-idempotent (& → &amp; → &amp;amp;), so the correct pattern is sanitize-once-at-boundary, not defense-in-depth. Relevant files: research_agent/sanitize.py, research_agent/context.py, research_agent/synthesize.py.
 ```
