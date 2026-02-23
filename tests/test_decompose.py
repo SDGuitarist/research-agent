@@ -337,3 +337,35 @@ class TestDecomposeQuery:
 
         assert result.is_complex is False
         assert result.sub_queries == ("test query",)
+
+
+class TestCritiqueContextParam:
+    """Tests for critique_context parameter in decompose_query."""
+
+    def test_none_produces_same_prompt(self):
+        """critique_context=None should not add critique block."""
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = MagicMock(
+            content=[MagicMock(text="TYPE: SIMPLE\nREASONING: simple query\nSUB_QUERIES:\n")]
+        )
+
+        decompose_query(mock_client, "test query", critique_context=None)
+        call_args = mock_client.messages.create.call_args
+        prompt = call_args[1]["messages"][0]["content"]
+        assert "<critique_guidance>" not in prompt
+
+    def test_provided_adds_critique_block(self):
+        """critique_context should inject critique_guidance block."""
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = MagicMock(
+            content=[MagicMock(text="TYPE: SIMPLE\nREASONING: ok\nSUB_QUERIES:\n")]
+        )
+
+        decompose_query(
+            mock_client, "test query",
+            critique_context="Improve source diversity",
+        )
+        call_args = mock_client.messages.create.call_args
+        prompt = call_args[1]["messages"][0]["content"]
+        assert "<critique_guidance>" in prompt
+        assert "Improve source diversity" in prompt

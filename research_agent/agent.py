@@ -16,7 +16,7 @@ from .summarize import summarize_all
 from .synthesize import synthesize_report, synthesize_draft, synthesize_final
 from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation
 from .decompose import decompose_query, DecompositionResult
-from .context import load_full_context, load_synthesis_context, clear_context_cache
+from .context import load_full_context, load_synthesis_context, load_critique_history, clear_context_cache
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .errors import ResearchError, SearchError, SkepticError, StateError, CritiqueError
@@ -68,6 +68,7 @@ class ResearchAgent:
         self._last_source_count: int = 0
         self._last_gate_decision: str = ""
         self._last_critique: CritiqueResult | None = None
+        self._critique_context: str | None = None
 
     def _already_covered_response(self, schema_result: SchemaResult) -> str:
         """Generate a response when all gaps are verified and fresh."""
@@ -188,6 +189,11 @@ class ResearchAgent:
         self._last_source_count = 0
         self._last_gate_decision = ""
         clear_context_cache()
+        self._critique_context = None
+        critique_ctx = load_critique_history(Path("reports/meta"))
+        if critique_ctx:
+            self._critique_context = critique_ctx.content
+            logger.info("Loaded critique history for adaptive prompts")
         is_deep = self.mode.name == "deep"
 
         # Calculate total steps:
@@ -206,7 +212,8 @@ class ResearchAgent:
         if self.mode.decompose:
             self._next_step("Analyzing query...")
             decomposition = await asyncio.to_thread(
-                decompose_query, self.client, query, model=self.mode.model
+                decompose_query, self.client, query, model=self.mode.model,
+                critique_context=self._critique_context,
             )
             if decomposition.is_complex:
                 sub_queries = decomposition.sub_queries
@@ -408,6 +415,7 @@ class ResearchAgent:
             mode=self.mode,
             client=self.async_client,
             refined_query=refined_query,
+            scoring_adjustments=self._critique_context,
         )
 
         # Branch based on relevance gate decision
@@ -504,6 +512,7 @@ class ResearchAgent:
             dropped_count=dropped_count,
             total_count=total_count,
             is_deep=is_deep,
+            lessons_applied=self._critique_context,
         )
         self._run_critique(
             query=query,

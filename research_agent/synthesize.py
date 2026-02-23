@@ -362,6 +362,7 @@ def synthesize_final(
     dropped_count: int = 0,
     total_count: int = 0,
     is_deep: bool = False,
+    lessons_applied: str | None = None,
 ) -> str:
     """Produce sections 9-12/13 informed by skeptic analysis.
 
@@ -476,6 +477,18 @@ def synthesize_final(
             "## Sources — All referenced URLs with [Source N] notation."
         )
 
+    # Lessons applied block (from critique history)
+    lessons_block = ""
+    lessons_instruction = ""
+    if lessons_applied:
+        safe_lessons = sanitize_content(lessons_applied)
+        lessons_block = f"\n<lessons_applied>\n{safe_lessons}\n</lessons_applied>\n"
+        lessons_instruction = (
+            "The <lessons_applied> section contains guidance from past self-critiques. "
+            "Apply these lessons to improve this report. Add a brief '## Lessons Applied' "
+            "section before Sources summarizing how past feedback was incorporated."
+        )
+
     prompt = f"""Continue the research report below by writing the remaining analytical sections.
 
 <query>{safe_query}</query>
@@ -483,7 +496,7 @@ def synthesize_final(
 <draft_analysis>
 {safe_draft}
 </draft_analysis>
-{context_block}{skeptic_block}
+{context_block}{skeptic_block}{lessons_block}
 <sources>
 {sources_text}
 </sources>
@@ -498,6 +511,8 @@ Write the following sections to complete the report. Use ## headings for each se
 {skeptic_instruction}
 
 {limited_instruction}
+
+{lessons_instruction}
 
 Cite sources using [Source N] notation. Ground recommendations in evidence from the draft analysis.
 </instructions>

@@ -628,3 +628,40 @@ class TestSynthesizeBudgetEnforcement:
         mock_truncate.assert_called_once()
         call_args = mock_truncate.call_args
         assert call_args.args[1] == 50  # budget allocation for business_context
+
+
+class TestLessonsAppliedParam:
+    """Tests for lessons_applied parameter in synthesize_final."""
+
+    def test_none_produces_no_lessons_block(self):
+        """lessons_applied=None should not add lessons block."""
+        client = _make_streaming_client("## Competitive Implications\nContent")
+        with patch("builtins.print"):
+            result = synthesize_final(
+                client=client,
+                query="test",
+                draft="## Executive Summary\nDraft",
+                skeptic_findings=[],
+                summaries=SAMPLE_SUMMARIES,
+                lessons_applied=None,
+            )
+        call_args = client.messages.stream.call_args
+        prompt = call_args[1]["messages"][0]["content"]
+        assert "<lessons_applied>" not in prompt
+
+    def test_provided_adds_lessons_block(self):
+        """lessons_applied should inject lessons block into prompt."""
+        client = _make_streaming_client("## Competitive Implications\nContent")
+        with patch("builtins.print"):
+            result = synthesize_final(
+                client=client,
+                query="test",
+                draft="## Executive Summary\nDraft",
+                skeptic_findings=[],
+                summaries=SAMPLE_SUMMARIES,
+                lessons_applied="Improve source diversity scores",
+            )
+        call_args = client.messages.stream.call_args
+        prompt = call_args[1]["messages"][0]["content"]
+        assert "<lessons_applied>" in prompt
+        assert "Improve source diversity scores" in prompt
