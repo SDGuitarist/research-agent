@@ -7,6 +7,8 @@ import logging
 import time
 from pathlib import Path
 
+import yaml
+
 from anthropic import Anthropic, AsyncAnthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
 from .search import search, refine_query, SearchResult
@@ -69,6 +71,11 @@ class ResearchAgent:
         self._last_gate_decision: str = ""
         self._last_critique: CritiqueResult | None = None
         self._critique_context: str | None = None
+
+    @property
+    def last_critique(self) -> CritiqueResult | None:
+        """Most recent self-critique result, or None if not run."""
+        return self._last_critique
 
     def _already_covered_response(self, schema_result: SchemaResult) -> str:
         """Generate a response when all gaps are verified and fresh."""
@@ -152,8 +159,8 @@ class ResearchAgent:
             logger.info(
                 "Self-critique: mean=%.1f pass=%s", result.mean_score, result.overall_pass
             )
-        except (CritiqueError, Exception) as e:
-            logger.warning(f"Self-critique failed: {e}")
+        except (CritiqueError, OSError, yaml.YAMLError) as e:
+            logger.warning("Self-critique failed: %s", e)
 
     def _next_step(self, message: str) -> None:
         """Print next step header with auto-incrementing counter."""

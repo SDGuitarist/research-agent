@@ -12,6 +12,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from research_agent import ResearchAgent
+from research_agent.context import load_critique_history
+from research_agent.critique import critique_report_file, save_critique
 from research_agent.errors import ResearchError
 from research_agent.modes import ResearchMode
 
@@ -212,6 +214,17 @@ Examples:
         action="store_true",
         help="Open saved report after generation (macOS)",
     )
+    parser.add_argument(
+        "--critique",
+        type=Path,
+        metavar="REPORT",
+        help="Critique a saved report file and exit",
+    )
+    parser.add_argument(
+        "--critique-history",
+        action="store_true",
+        help="Print summarized self-critique patterns and exit",
+    )
 
     args = parser.parse_args()
 
@@ -223,6 +236,37 @@ Examples:
     # --cost: show costs and exit (no API keys needed)
     if args.cost:
         show_costs()
+        sys.exit(0)
+
+    # --critique-history: print aggregated critique patterns and exit
+    if args.critique_history:
+        meta_dir = Path("reports/meta")
+        result = load_critique_history(meta_dir)
+        if result.content:
+            print(result.content)
+        else:
+            print("No critique history available (need at least 3 critiques in reports/meta/).")
+        sys.exit(0)
+
+    # --critique: evaluate a saved report file and exit
+    if args.critique:
+        if not args.critique.exists():
+            print(f"Error: report not found: {args.critique}", file=sys.stderr)
+            sys.exit(1)
+        from anthropic import Anthropic
+        try:
+            client = Anthropic()
+            result = critique_report_file(client, args.critique)
+            meta_dir = Path("reports/meta")
+            path = save_critique(result, meta_dir)
+            status = "pass" if result.overall_pass else "FAIL"
+            print(f"Self-critique: mean={result.mean_score:.1f}, {status}")
+            print(f"  Weaknesses: {result.weaknesses}")
+            print(f"  Suggestions: {result.suggestions}")
+            print(f"  Saved to: {path}")
+        except OSError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
         sys.exit(0)
 
     # Require query for research
@@ -257,6 +301,12 @@ Examples:
         )
 
         report = agent.research(args.query)
+
+        # Print critique summary if available
+        critique = agent.last_critique
+        if critique is not None:
+            status = "pass" if critique.overall_pass else "FAIL"
+            print(f"\nSelf-critique: mean={critique.mean_score:.1f}, {status}")
 
         # Append to research log
         append_research_log(args.query, mode, report)
