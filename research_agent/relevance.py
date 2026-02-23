@@ -119,8 +119,7 @@ async def score_source(
     Returns:
         SourceScore with url, title, score (1-5), explanation
     """
-    # Sanitize content for prompt injection defense
-    safe_query = sanitize_content(query)
+    # query is pre-sanitized by caller (score_and_filter_sources)
     safe_title = sanitize_content(summary.title or "Untitled")
     safe_summary = sanitize_content(summary.summary)
 
@@ -134,11 +133,10 @@ async def score_source(
 
     adjustments_block = ""
     if critique_guidance:
-        safe_adjustments = sanitize_content(critique_guidance)
-        safe_adjustments = truncate_to_budget(safe_adjustments, 500)
+        safe_adjustments = truncate_to_budget(critique_guidance, 500)
         adjustments_block = f"\n\n<scoring_guidance>\n{safe_adjustments}\n</scoring_guidance>"
 
-    user_prompt = f"""ORIGINAL QUERY: {safe_query}
+    user_prompt = f"""ORIGINAL QUERY: {query}
 
 SOURCE SUMMARY:
 <source_summary>
@@ -291,6 +289,9 @@ async def evaluate_sources(
     unique_urls = {s.url for s in summaries}
     print(f"\n      Scoring {len(summaries)} chunks from {len(unique_urls)} sources...")
 
+    # Pre-sanitize query once for the whole batch (score_source uses it directly)
+    safe_query = sanitize_content(query)
+
     # Score chunks in batches with adaptive backoff (only delay after a 429)
     scored_results = []
     rate_limit_hit = asyncio.Event()
@@ -299,7 +300,7 @@ async def evaluate_sources(
         if batch_start > 0 and rate_limit_hit.is_set():
             await asyncio.sleep(RATE_LIMIT_BACKOFF)
             rate_limit_hit.clear()
-        tasks = [score_source(query, summary, client, rate_limit_event=rate_limit_hit, model=mode.model, critique_guidance=critique_guidance) for summary in batch]
+        tasks = [score_source(safe_query, summary, client, rate_limit_event=rate_limit_hit, model=mode.model, critique_guidance=critique_guidance) for summary in batch]
         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
         scored_results.extend(batch_results)
 

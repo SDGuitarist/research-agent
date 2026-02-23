@@ -139,10 +139,9 @@ def decompose_query(
 
     critique_block = ""
     if critique_guidance:
-        safe_critique = sanitize_content(critique_guidance)
         critique_block = f"""
 <critique_guidance>
-{safe_critique}
+{critique_guidance}
 </critique_guidance>
 """
 
