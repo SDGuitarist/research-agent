@@ -92,6 +92,7 @@ async def run_research_async(query: str, mode: str = "standard") -> ResearchResu
         mode=research_mode.name,
         sources_used=agent._last_source_count,
         status=agent._last_gate_decision or "error",
+        critique=agent.last_critique,
     )
 
 

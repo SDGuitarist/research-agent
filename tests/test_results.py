@@ -2,6 +2,7 @@
 
 import pytest
 
+from research_agent.critique import CritiqueResult
 from research_agent.results import ModeInfo, ResearchResult
 
 
@@ -19,6 +20,20 @@ class TestResearchResult:
         assert result.mode == "quick"
         assert result.sources_used == 4
         assert result.status == "full_report"
+        assert result.critique is None
+
+    def test_critique_field_populated(self):
+        cr = CritiqueResult(4, 3, 5, 2, 4, "weak", "try harder", "music")
+        result = ResearchResult(
+            report="# Report",
+            query="test",
+            mode="standard",
+            sources_used=5,
+            status="full_report",
+            critique=cr,
+        )
+        assert result.critique is cr
+        assert result.critique.source_diversity == 4
 
     def test_frozen_immutability(self):
         result = ResearchResult(

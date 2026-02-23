@@ -1,6 +1,12 @@
 """Structured result types for the research agent public API."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .critique import CritiqueResult
 
 
 @dataclass(frozen=True)
@@ -15,12 +21,15 @@ class ResearchResult:
             (survived the relevance gate).
         status: Gate decision — "full_report", "short_report",
                 "insufficient_data", or "no_new_findings".
+        critique: Self-critique result, or None if critique was skipped
+            (quick mode) or failed.
     """
     report: str
     query: str
     mode: str
     sources_used: int
     status: str
+    critique: CritiqueResult | None = field(default=None)
 
 
 @dataclass(frozen=True)

@@ -228,21 +228,109 @@ class TestAgentCritiqueIntegration:
             assert agent._last_critique is None
 
 
-class TestCritiqueContextExtraction:
-    """Tests for extracting critique context from ContextResult."""
+class TestCritiqueContextThreading:
+    """Tests that critique_context flows through the actual agent pipeline."""
 
-    def test_loaded_context_yields_content(self):
-        """Loaded ContextResult should provide critique context string."""
+    @pytest.mark.asyncio
+    async def test_evaluate_and_synthesize_passes_critique_to_evaluate_sources(self):
+        """_evaluate_and_synthesize should pass critique_context as critique_guidance to evaluate_sources."""
+        from research_agent.agent import ResearchAgent
+        from research_agent.modes import ResearchMode
+        from research_agent.relevance import RelevanceEvaluation
+
+        agent = ResearchAgent(mode=ResearchMode.standard())
+        agent._start_time = 0.0
+        agent._step_num = 0
+        agent._step_total = 10
+
+        fake_eval = RelevanceEvaluation(
+            decision="insufficient_data",
+            decision_rationale="no sources",
+            surviving_sources=(),
+            dropped_sources=(),
+            total_scored=0,
+            total_survived=0,
+            refined_query="q",
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=fake_eval) as mock_eval, \
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No data"):
+            await agent._evaluate_and_synthesize(
+                query="test",
+                summaries=[],
+                refined_query="test",
+                critique_context="Improve source diversity",
+            )
+            _, kwargs = mock_eval.call_args
+            assert kwargs["critique_guidance"] == "Improve source diversity"
+
+    @pytest.mark.asyncio
+    async def test_evaluate_and_synthesize_passes_none_without_critique(self):
+        """Without critique_context, evaluate_sources gets critique_guidance=None."""
+        from research_agent.agent import ResearchAgent
+        from research_agent.modes import ResearchMode
+        from research_agent.relevance import RelevanceEvaluation
+
+        agent = ResearchAgent(mode=ResearchMode.standard())
+        agent._start_time = 0.0
+        agent._step_num = 0
+        agent._step_total = 10
+
+        fake_eval = RelevanceEvaluation(
+            decision="insufficient_data",
+            decision_rationale="no sources",
+            surviving_sources=(),
+            dropped_sources=(),
+            total_scored=0,
+            total_survived=0,
+            refined_query="q",
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=fake_eval) as mock_eval, \
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No data"):
+            await agent._evaluate_and_synthesize(
+                query="test",
+                summaries=[],
+                refined_query="test",
+            )
+            _, kwargs = mock_eval.call_args
+            assert kwargs["critique_guidance"] is None
+
+    @pytest.mark.asyncio
+    async def test_synthesize_final_receives_critique_guidance(self):
+        """In standard mode full_report path, synthesize_final should receive critique_guidance."""
+        from research_agent.agent import ResearchAgent
+        from research_agent.modes import ResearchMode
+        from research_agent.relevance import RelevanceEvaluation
         from research_agent.context_result import ContextResult
 
-        ctx = ContextResult.loaded("Improve diversity", source="meta/")
-        critique_context = ctx.content if ctx else None
-        assert critique_context == "Improve diversity"
+        agent = ResearchAgent(mode=ResearchMode.standard())
+        agent._start_time = 0.0
+        agent._step_num = 0
+        agent._step_total = 10
 
-    def test_not_configured_context_yields_none(self):
-        """Not-configured ContextResult should yield None for critique context."""
-        from research_agent.context_result import ContextResult
+        fake_eval = RelevanceEvaluation(
+            decision="full_report",
+            decision_rationale="sufficient sources",
+            surviving_sources=(MagicMock(summary="s1"),),
+            dropped_sources=(),
+            total_scored=1,
+            total_survived=1,
+            refined_query="refined",
+        )
+        fake_finding = MagicMock(critical_count=0, concern_count=0)
 
-        ctx = ContextResult.not_configured(source="meta/")
-        critique_context = ctx.content if ctx else None
-        assert critique_context is None
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=fake_eval), \
+             patch("research_agent.agent.synthesize_draft", return_value="draft"), \
+             patch("research_agent.agent.load_synthesis_context", return_value=ContextResult.not_configured(source="")), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock, return_value=fake_finding), \
+             patch("research_agent.agent.synthesize_final", return_value="# Report") as mock_synth, \
+             patch.object(agent, "_run_critique"):
+            await agent._evaluate_and_synthesize(
+                query="test",
+                summaries=[],
+                refined_query="test",
+                critique_context="Focus on coverage",
+            )
+            _, kwargs = mock_synth.call_args
+            assert kwargs["critique_guidance"] == "Focus on coverage"

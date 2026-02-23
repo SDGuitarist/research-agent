@@ -199,6 +199,7 @@ class TestRunResearchAsyncHappyPath:
         agent_instance.research_async = AsyncMock(return_value="# Report")
         agent_instance._last_source_count = 5
         agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_critique = None
 
         result = await run_research_async("test query", mode="quick")
 
@@ -208,6 +209,24 @@ class TestRunResearchAsyncHappyPath:
         assert result.mode == "quick"
         assert result.sources_used == 5
         assert result.status == "full_report"
+        assert result.critique is None
+
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.ResearchAgent")
+    async def test_includes_critique_in_result(self, mock_agent_cls):
+        from research_agent.critique import CritiqueResult
+        fake_critique = CritiqueResult(4, 3, 4, 3, 4, "weak", "try more", "test")
+
+        agent_instance = mock_agent_cls.return_value
+        agent_instance.research_async = AsyncMock(return_value="# Report")
+        agent_instance._last_source_count = 5
+        agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_critique = fake_critique
+
+        result = await run_research_async("test query", mode="standard")
+
+        assert result.critique is fake_critique
+        assert result.critique.source_diversity == 4
 
 
 # --- event loop collision ---
