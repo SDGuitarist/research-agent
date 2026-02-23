@@ -386,14 +386,6 @@ class TestLoadCritiqueHistory:
         assert result.status == ContextStatus.LOADED
         assert "3 recent self-critiques" in result.content
 
-    def test_domain_filtering(self, tmp_path):
-        for i in range(3):
-            _make_critique(tmp_path, slug=f"m{i}", ts=1000 + i, domain="music")
-        for i in range(3):
-            _make_critique(tmp_path, slug=f"t{i}", ts=2000 + i, domain="tech")
-        result = load_critique_history(tmp_path, domain="music")
-        assert result.status == ContextStatus.LOADED
-
     def test_only_passing_critiques_included(self, tmp_path):
         # 3 failing + 2 passing = not enough passing
         for i in range(3):

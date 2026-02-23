@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from .context_result import ContextResult
+from .critique import DIMENSIONS
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
@@ -136,12 +137,6 @@ def load_synthesis_context(context_path: Path | None = None) -> ContextResult:
 # Minimum valid critiques needed before providing guidance
 _MIN_CRITIQUES_FOR_GUIDANCE = 3
 
-# Dimension names expected in critique YAML
-_CRITIQUE_DIMENSIONS = {
-    "source_diversity", "claim_support", "coverage",
-    "geographic_balance", "actionability",
-}
-
 
 def _validate_critique_yaml(data: dict) -> bool:
     """Check that a parsed YAML dict has the expected critique schema.
@@ -153,7 +148,7 @@ def _validate_critique_yaml(data: dict) -> bool:
         return False
 
     # Check all dimension scores exist and are in range
-    for dim in _CRITIQUE_DIMENSIONS:
+    for dim in DIMENSIONS:
         val = data.get(dim)
         if not isinstance(val, int) or not (1 <= val <= 5):
             return False
@@ -186,13 +181,13 @@ def _summarize_patterns(passing_critiques: list[dict]) -> str:
         return ""
 
     # Compute dimension averages
-    dim_totals: dict[str, float] = {d: 0.0 for d in _CRITIQUE_DIMENSIONS}
+    dim_totals: dict[str, float] = {d: 0.0 for d in DIMENSIONS}
     for c in passing_critiques:
-        for dim in _CRITIQUE_DIMENSIONS:
+        for dim in DIMENSIONS:
             dim_totals[dim] += c[dim]
 
     n = len(passing_critiques)
-    dim_avgs = {d: round(dim_totals[d] / n, 1) for d in _CRITIQUE_DIMENSIONS}
+    dim_avgs = {d: round(dim_totals[d] / n, 1) for d in DIMENSIONS}
 
     # Find weakest dimensions (below 3.5 average)
     weak_dims = sorted(
@@ -232,14 +227,12 @@ def _summarize_patterns(passing_critiques: list[dict]) -> str:
 
 def load_critique_history(
     meta_dir: Path,
-    domain: str | None = None,
     limit: int = 10,
 ) -> ContextResult:
     """Load recent critique YAMLs and return summarized patterns.
 
     Args:
         meta_dir: Directory containing critique-*.yaml files.
-        domain: Optional domain filter (matches query_domain field).
         limit: Maximum number of critique files to read.
 
     Returns:
@@ -272,10 +265,6 @@ def load_critique_history(
 
         if not _validate_critique_yaml(data):
             logger.debug(f"Skipping invalid critique file: {f}")
-            continue
-
-        # Domain filtering (optional)
-        if domain and data.get("query_domain", "") != domain:
             continue
 
         valid_critiques.append(data)
