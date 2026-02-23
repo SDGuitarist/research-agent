@@ -269,7 +269,7 @@ The 34 findings cluster into **5 themes**:
 4. ~~**P2 #6** — Remove dead `CritiqueError`~~ ✅ batch 2
 5. ~~**P2 #7** — Wrap in `asyncio.to_thread`~~ ✅ batch 2
 6. ~~**P2 #8-9** — Unify parameter names + add XML tags~~ ✅ batch 2
-7. **P2 #10-11** — Sanitize weakness strings + register critique in token budget (15 min, security + correctness)
+7. ~~**P2 #10-11** — Sanitize weakness strings + register critique in token budget~~ ✅ batch 3
 8. **P2 #12-13** — Remove mutable `_critique_context` state + dead `_last_critique` (10 min, simplification)
 9. **P2 #14-15** — CritiqueResult in return value + fix test reimplementation (20 min, API + test quality)
 10. **P2 #16-18** — Fix docstring, `--no-critique` flag, remaining cleanup (15 min)
