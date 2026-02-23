@@ -19,7 +19,7 @@ All P1s and P2 code fixes from the self-enhancing agent code review are fixed an
 | 5 | P2 #14-15 | Add `critique` field to `ResearchResult`, replace thin tests with pipeline integration tests |
 | 6 | P2 #16-18 | Fix filtering docstring confusion, add missing param docs, add `--no-critique` CLI flag |
 | 7 | P2 #21,23 | Remove YAGNI `domain` param, deduplicate `DIMENSIONS` constant |
-| Compound | — | Documented 7 reusable patterns in `docs/solutions/architecture/self-enhancing-agent-review-patterns.md` |
+| Compound | — | Documented 10 reusable patterns + prevention checklist in `docs/solutions/architecture/self-enhancing-agent-review-patterns.md` |
 
 ## What's Left
 
