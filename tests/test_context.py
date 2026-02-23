@@ -329,6 +329,15 @@ class TestValidateCritiqueYaml:
         }
         assert _validate_critique_yaml(data) is False
 
+    def test_bool_rejected_as_score(self):
+        data = {
+            "source_diversity": True, "claim_support": 3, "coverage": 3,
+            "geographic_balance": 3, "actionability": 3,
+            "weaknesses": "", "suggestions": "", "query_domain": "",
+            "overall_pass": True,
+        }
+        assert _validate_critique_yaml(data) is False
+
     def test_not_a_dict(self):
         assert _validate_critique_yaml("string") is False
         assert _validate_critique_yaml(None) is False

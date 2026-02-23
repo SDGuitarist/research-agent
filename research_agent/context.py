@@ -150,7 +150,7 @@ def _validate_critique_yaml(data: dict) -> bool:
     # Check all dimension scores exist and are in range
     for dim in DIMENSIONS:
         val = data.get(dim)
-        if not isinstance(val, int) or not (1 <= val <= 5):
+        if isinstance(val, bool) or not isinstance(val, int) or not (1 <= val <= 5):
             return False
 
     # Check text fields are strings and within length limit
