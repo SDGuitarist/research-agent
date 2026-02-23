@@ -271,7 +271,7 @@ The 34 findings cluster into **5 themes**:
 6. ~~**P2 #8-9** — Unify parameter names + add XML tags~~ ✅ batch 2
 7. ~~**P2 #10-11** — Sanitize weakness strings + register critique in token budget~~ ✅ batch 3
 8. ~~**P2 #12-13** — Remove mutable `_critique_context` state + dead `_last_critique`~~ ✅ batch 4 (#12 fixed, #13 skipped — no longer dead code)
-9. **P2 #14-15** — CritiqueResult in return value + fix test reimplementation (20 min, API + test quality)
+9. ~~**P2 #14-15** — CritiqueResult in return value + fix test reimplementation~~ ✅ batch 5
 10. **P2 #16-18** — Fix docstring, `--no-critique` flag, remaining cleanup (15 min)
 11. Remaining P2s (#19-23) and P3s in cleanup passes
 
