@@ -3,7 +3,7 @@
 ## Current State
 
 **Project:** PFE strategic intelligence — mapping live entertainment at luxury hotels
-**Phase:** Research execution (Batches 1–6 of 8 complete)
+**Phase:** Research execution (Batches 1–7 of 8 complete)
 **Branch:** `main`
 **Date:** February 23, 2026
 
@@ -138,6 +138,7 @@
 | `reports/Batch_4_Independent_Comparables.md` | **Batch 4 results** — 6 independent luxury comparables (#28–33), property-by-property, with ownership parallels and PFE executive summary. COMPLETE. |
 | `reports/Batch_5_Oscar_Former_Properties.md` | **Batch 5 results** — 6 Oscar Gonzalez career properties (#34–39), property-by-property with tenure context, career timeline, and PFE executive summary. COMPLETE. |
 | `reports/Batch_6_Brand_Scan.md` | **Batch 6 results** — 7 luxury hotel brands (#40–46), brand-by-brand corporate entertainment analysis, summary comparison, and PFE executive summary. COMPLETE. |
+| `reports/Batch_7_Executive_Voices.md` | **Batch 7 results** — 19 executive quotes organized by source tier, BMI/NRG revenue data, UK hospitality data, trade pub gap analysis, 5 top quotes for Oscar email, 3 alternate email framings. COMPLETE. |
 | `reports/luxury_hotel_restaurant_live_entertainment_2025_2026.md` | **Round 1 report** (partial) — initial findings on national properties before prompt rebuild. Contains usable data on: Broadmoor, Grand Del Mar, Montage Deer Valley, Four Seasons Palm Beach, Rosewood Miramar Beach, Waldorf Astoria NYC, Ritz-Carlton New Orleans. |
 
 ### Reference Files (Not in This Repo — User Provides as Context)
@@ -165,6 +166,25 @@
 
 ---
 
+### 9. Batch 7 Execution — Executive Voices & Trade Publications (COMPLETE)
+- Executed all 10 specified search queries from the master prompt plus 16 additional targeted searches
+- Fetched and extracted full content from 14 articles (BMI.com, Accor press release, Pollstar, Fortune, Skift, Park Record, TownLift, Gazette, Morning Advertiser, Access All Areas, Hotel Management)
+- Produced 19 attributed quotes organized by source tier, BMI/NRG revenue data, UK hospitality data, trade pub gap analysis, and PFE Executive Summary with 5 top quotes for Oscar email + 3 alternate email framings
+- Saved: `reports/Batch_7_Executive_Voices.md`
+
+### Key Findings from Batch 7
+- **Mark Hoplamazian (CEO Hyatt)** explicitly names music alongside lighting and flow as core elements of luxury guest experience — highest-ranking hotel CEO to say this
+- **Mansi Vagt (Global VP Fairmont)** calls music "part of Fairmont's DNA" — she's the brand leader for the brand where Oscar spent 7 years (2016–2023). Center Stage x Abbey Road launched during his tenure
+- **Jim Allen (Chairman Hard Rock)** calls music "the universal language" — chairman of the company where Oscar was F&B Director (2023–2024). Brand does 40,000 live events/year
+- **Joe Ogdie (GM Lodge at Blue Sky, Auberge)** is the single most relevant executive voice — a GM at Oscar's peer level describing exactly how a luxury property adds cultural programming: "We've always been strong in wellness, adventure, and food. But now we're rounding out that lifestyle with something more cultural." His concerts drive incremental lodging revenue via "staycation" bookings
+- **Agnelo Fernandes (CSO Terranea)** calls music "an integral sensory experience" woven across the resort — a SoCal luxury peer with C-suite-level entertainment advocacy
+- **BMI/NRG data CONFIRMED:** 82% more enjoyable experience with live music, 80% stay longer, 60% buy more food/drinks, 5–10% check average increase, ~25% revenue jump on live music nights
+- **UK Live Music Index:** 87% of hospitality venues increasing live music; average £107K annual sales increase per venue; £2.4B total sector potential
+- **Trade pub gap:** Hospitality trade publications (Lodging Magazine, Hotel Business) have ZERO coverage of live entertainment strategy at luxury hotels. No conference sessions at ALIS/AHLA/HITEC. Entertainment is a strategic white space in industry discourse
+- **No F&B Director found publicly discussing entertainment strategy** — they make these decisions but don't write about them. Oscar's perspective must be inferred from career trajectory
+
+---
+
 ## Remaining Batches
 
 | Batch | Status | Properties | What To Search |
@@ -175,8 +195,8 @@
 | ~~Batch 4~~ | **DONE** | #28–33: Independent luxury comparables | ~~Broadmoor, Greenbrier, Houstonian, Arizona Biltmore, Eau Palm Beach, American Club~~ |
 | ~~Batch 5~~ | **DONE** | #34–39: Oscar's former properties | ~~Ritz-Carlton (brand), Four Seasons (brand), SLS Las Vegas, Pelican Hill (historical), Fairmont San Francisco, Hard Rock Hotel NYC~~ |
 | ~~Batch 6~~ | **DONE** | #40–46: Brand-level scan | ~~Four Seasons, Rosewood, Montage, Auberge, Ritz-Carlton, Fairmont, Park Hyatt~~ |
-| **Batch 7** | NEXT | Executive voices + trade pubs | Specific `site:` search strings in prompt. LinkedIn F&B Director posts. |
-| Batch 8 | Pending | Seasonal planning + dark-to-restart | Trade pub searches for programming timelines, properties that discontinued and restarted entertainment |
+| ~~Batch 7~~ | **DONE** | Executive voices + trade pubs | ~~Specific `site:` search strings in prompt. LinkedIn F&B Director posts.~~ |
+| **Batch 8** | NEXT | Seasonal planning + dark-to-restart | Trade pub searches for programming timelines, properties that discontinued and restarted entertainment |
 
 ---
 
@@ -472,6 +492,14 @@ DELIVERABLE B — PFE Executive Summary (reports/Report_1_PFE_Summary.md):
 
 ---
 
+## Three Questions (Batch 7)
+
+1. **Hardest implementation decision in this session?** Whether to include quotes from executives outside the luxury hotel sector (Jordi Solé/UMusic Hotels, Marland Barsby/Rostar UK, Edison Chen/Trip.com). These aren't luxury hotel operators — they're entertainment companies, booking platforms, and OTAs. Decided to include them with clear context labels because: (a) the luxury hotel trade press has a near-total blind spot on entertainment strategy, so there simply aren't enough direct luxury hotel executive quotes to fill the section; (b) UMusic Hotels represents the most extreme validation possible — the world's largest music company building hotels around music; (c) Barsby's "only 15–20% do this well" is the single best data point for PFE's quality differentiation argument. The alternative was a shorter, weaker report with only 5–6 quotes.
+
+2. **What did you consider changing but left alone, and why?** Considered downgrading the BMI/NRG study because it covers bars/restaurants broadly (brewery operators, Italian restaurants) — not luxury hotels specifically. A Five Diamond resort's guest profile is different from a Colorado brewery. Left it as the lead data point because: (a) no luxury-specific equivalent study exists; (b) the behavioral insight (stay longer, spend more, wait for tables) is directionally correct at any price point — if anything, the effect amplifies at luxury price points where average check is 3–5x higher; (c) Oscar's Behind The Lines Hospitality consultancy focused on "revenue strategy" — he'll know how to extrapolate these numbers to his property's economics.
+
+3. **Least confident about going into the next batch?** Whether enough publicly documented "dark-to-restart" cases exist to fill Batch 8's Goal 2. San Ysidro Ranch (zero → nightly jazz in 2024) and Fairmont SF Tonga Room (COVID dark → 2022 reopening) are the two known cases from prior batches. Properties that cut and restore entertainment typically don't issue press releases about it — it just happens operationally. Batch 8 may end up being thin on documented dark-to-restart patterns and stronger on seasonal planning intelligence. Also, the Fairmont Center Stage x Abbey Road Studios 3-year term (Feb 2023 – early 2026) may have expired with no public renewal — Batch 8 should NOT try to verify this, as it risks wasting searches on a dead end.
+
 ## Three Questions (Batch 6)
 
 1. **Hardest implementation decision in this session?** How to classify Montage — is "Music at Montage" a brand standard or not? The evidence shows it's at 2 of 7 properties with identical URL patterns, which could mean "emerging rollout" or "two properties independently adopted the same name." Decided to classify it as "emerging brand template" rather than "brand standard" because 5 of 7 properties lack the branding. However, ALL 7 Montage properties program live music regardless of branding — the template is catching up to practice. This is the most honest framing.
@@ -524,10 +552,53 @@ DELIVERABLE B — PFE Executive Summary (reports/Report_1_PFE_Summary.md):
 
 ## Next Phase
 
-**Batch 7: Executive Voices + Trade Publications** — copy the Batch 7 prompt from the "Batch-Specific Prompts" section above into a fresh window.
+**Batch 8: Seasonal Planning + Dark-to-Restart Patterns** — copy the Batch 8 prompt from the "Batch-Specific Prompts" section above into a fresh window.
 
 ### Prompt for Next Session
 
 ```
-Read reports/Report_1_Prompt_v2.1.md for the master prompt and skim HANDOFF.md for cumulative context (don't re-read full batch reports). Then run the Batch 7 prompt from HANDOFF.md (Executive Voices + Trade Pubs). Save to reports/Batch_7_Executive_Voices.md. After saving, update HANDOFF.md with batch status, key findings, and next phase pointer. Do only Batch 7 — stop after updating HANDOFF.md.
+I'm running a multi-batch research project for Pacific Flow Entertainment (PFE). This is Report 1: Luxury Hotel Music Programming — Current Industry Landscape (2025–2026).
+
+Read these files for full context:
+1. reports/Report_1_Prompt_v2.1.md — master prompt with research context, taxonomy, hit list, output format
+2. HANDOFF.md — cumulative findings from Batches 1–7 (don't re-read full batch reports)
+
+Key context from the reconnaissance dossier (don't search for this — it's verified intelligence):
+- The Lodge at Torrey Pines (AAA Five Diamond, La Jolla, CA) has ZERO live entertainment — dark since Nov 2025
+- New F&B Director Oscar Gonzalez (hired Aug 2025) previously worked at: Ritz-Carlton, Four Seasons (twice), SLS Las Vegas, Pelican Hill, Fairmont San Francisco, Hard Rock Hotel NYC
+- Oscar's department identified PFE's Alex Guillen as the right fit for entertainment in Aug 2025 but the connection was intercepted by a since-fired GM
+- OpenTable ranks The Lodge's Grill restaurant #1 for "live music" with zero live music
+- Cumulative: 29 of 33 properties program entertainment, 1 closed (had it), 2 nature retreats, Lodge is the only traditional resort at zero
+- Every property Oscar has worked at programmed live entertainment — Lodge is the first at zero
+- NO luxury hotel brand mandates entertainment — it's all property-level F&B Director discretion (Batch 6)
+- Auberge is the only luxury collection with a formalized Concert Series (dedicated corporate role, presenting sponsors)
+- "Music at Montage" is an emerging brand template at 2 of 7 properties; all 7 program live music
+- Marriott has formal entertainment programs at EDITION/Aloft/Renaissance but NOT at Ritz-Carlton — luxury entertainment is a white space
+- BMI/NRG: 82% more enjoyable with live music, 5-10% check average increase, ~25% revenue jump on live music nights (Batch 7)
+- 87% of UK hospitality venues are INCREASING live music programming (Batch 7)
+- Summer programming decisions are being made NOW
+- San Ysidro Ranch went from zero to nightly jazz in 2024 — dark-to-active transition parallel
+
+Run Batch 8: Seasonal Planning Intelligence and Dark-to-Restart Patterns.
+
+Two research goals:
+
+GOAL 1 — Seasonal Planning Timeline:
+When do luxury resort properties make entertainment programming decisions for summer season? Search for:
+- "summer entertainment programming" luxury hotel resort planning timeline
+- "entertainment vendor" OR "entertainment RFP" luxury hotel procurement
+- "seasonal programming" resort planning "Q1" OR "first quarter"
+- How far in advance do F&B Directors lock in summer entertainment?
+
+GOAL 2 — Properties That Went Dark and Restarted:
+Search for any luxury properties that discontinued live entertainment and then brought it back. What triggered the restart — new leadership, guest complaints, competitive pressure, renovation completion?
+- "discontinued live music" OR "ended entertainment" luxury hotel resort
+- "brought back live music" OR "returned live entertainment" hotel
+- "new F&B director" OR "new general manager" "live entertainment" OR "live music" launched OR restored
+
+Also search for any commentary about WHY luxury properties cut entertainment (cost-cutting, COVID aftermath, leadership change) and what the impact was.
+
+Output format: Findings organized by goal. PFE Executive Summary should answer: (1) Is February-March the right time to pitch for summer programming? (2) Is there a documented pattern of new leadership restarting entertainment? (3) Any data on what happens to guest satisfaction when entertainment is cut?
+
+Save to: reports/Batch_8_Seasonal_Planning_Dark_Restart.md. After saving, update HANDOFF.md with batch status, key findings, and next phase pointer. Do only Batch 8 — stop after updating HANDOFF.md.
 ```
