@@ -3,7 +3,7 @@
 ## Current State
 
 **Project:** PFE strategic intelligence — mapping live entertainment at luxury hotels
-**Phase:** Research execution (ALL 8 BATCHES COMPLETE — ready for Final Assembly)
+**Phase:** FINAL ASSEMBLY COMPLETE — Report 1 delivered
 **Branch:** `main`
 **Date:** February 23, 2026
 
@@ -596,55 +596,42 @@ DELIVERABLE B — PFE Executive Summary (reports/Report_1_PFE_Summary.md):
 
 ---
 
+## Final Assembly — COMPLETE
+
+**Deliverable A:** `reports/Report_1_FINAL.md` — Full 7-part report covering all 46 properties
+**Deliverable B:** `reports/Report_1_PFE_Summary.md` — 1-2 page executive summary answering all 7 Deliverable B questions
+
+### What the Final Assembly Produced
+
+- Part 1: Property-by-property capture tables for all 46 properties across 6 tiers
+- Part 2: Activation patterns — frequency, venue distribution, fine dining music, residency vs. rotating, branded series, Spanish guitar validation
+- Part 3: 15 executive quotes + 4 industry data points organized by source tier, plus top 5 quotes for Oscar email
+- Part 4: Properties with no programming — Lodge is the only traditional luxury resort at zero
+- Part 5: 6 dark-to-restart cases — all resulted in entertainment upgrade, not elimination
+- Part 6: Seasonal planning intelligence — Feb-March is "just in time" for summer operational decisions
+- Part 7: Summary comparison table covering all 33 individual properties with venue type columns
+
+### Three Questions (Final Assembly)
+
+1. **Hardest implementation decision in this session?** How much detail to include in Part 1 capture tables vs. keeping the document scannable. With 46 properties, full capture tables for every property would create a 3,000+ line document. Chose to use full 12-field capture tables for Tiers 0-3 (the individually surveyed properties) and condensed summary tables for Tiers 4-5 (Oscar's former properties and brand scans). This keeps the most actionable data (competitors + national peers) in full detail while summarizing reference data.
+
+2. **What did you consider changing but left alone, and why?** Considered adding a "Recommended Actions" section to Deliverable B. Left it out because: (a) the prompt spec doesn't call for it; (b) the 7 questions already cover timing intelligence, activation models, and data points for the Oscar email — the actions are implicit; (c) prescribing specific outreach tactics goes beyond intelligence gathering into sales strategy, which is PFE's domain. The report provides the ammunition; PFE decides how to use it.
+
+3. **Least confident about going into the next phase?** Whether the summary comparison table (Part 7) is readable at 33 rows with venue type columns. The table conveys a lot of data in a compact format, but some nuance is lost — e.g., a "Yes" in the REST column doesn't distinguish between fine dining piano (Eau Palm Beach Angle Tue-Sun) and casual restaurant background music (Estancia Trading Post daily). Readers should use Part 7 for quick scanning and Part 1 for full detail. If the report is used in a presentation, Part 7 may need to be simplified further.
+
+---
+
 ## Next Phase
 
-**ALL 8 BATCHES COMPLETE. Next: Final Assembly.**
+**Report 1 is COMPLETE.** All 8 research batches + final assembly delivered.
 
-The Final Assembly session will merge all 8 batch reports into two deliverables:
-- **Deliverable A:** Full Report 1 (`reports/Report_1_FINAL.md`) — all 46 properties, 7 parts per prompt spec
-- **Deliverable B:** PFE Executive Summary (`reports/Report_1_PFE_Summary.md`) — 1-2 page summary answering the 7 questions in the prompt
+Next steps for PFE (user's decision):
+1. **Report 2** — if there's a second macro research prompt to execute
+2. **Oscar email draft** — using Deliverable B data points and competitive positioning language
+3. **Review/refinement** — if any sections of Report 1 need deeper investigation
 
 ### Prompt for Next Session
 
 ```
-I'm running a multi-batch research project for Pacific Flow Entertainment (PFE). This is Report 1: Luxury Hotel Music Programming — Current Industry Landscape (2025–2026).
-
-ALL 8 BATCHES ARE COMPLETE. This is the Final Assembly session.
-
-Read these files:
-1. reports/Report_1_Prompt_v2.1.md — master prompt (output format specification in particular)
-2. HANDOFF.md — cumulative findings from all 8 batches (key findings summary)
-3. reports/Batch_1_San_Diego_Competitors.md
-4. reports/Batch_2_SoCal_Luxury_Resorts.md
-5. reports/Batch_3_National_Peers.md
-6. reports/Batch_4_Independent_Comparables.md
-7. reports/Batch_5_Oscar_Former_Properties.md
-8. reports/Batch_6_Brand_Scan.md
-9. reports/Batch_7_Executive_Voices.md
-10. reports/Batch_8_Seasonal_Planning_Dark_Restart.md
-
-Produce two final deliverables:
-
-DELIVERABLE A — Full Report 1 (reports/Report_1_FINAL.md):
-Merge all batch findings into the output format specified in the prompt:
-- Part 1: Property-by-property breakdown (all 46 properties, organized by tier)
-- Part 2: Activation patterns across the full set
-- Part 3: Executive quotes and industry voices (with source tier labels)
-- Part 4: Properties with no programming
-- Part 5: Properties that went dark and restarted
-- Part 6: Seasonal planning intelligence
-- Part 7: Summary comparison table (all properties, all venue types)
-
-DELIVERABLE B — PFE Executive Summary (reports/Report_1_PFE_Summary.md):
-1-2 page executive summary answering the 7 questions in the prompt's Deliverable B section. This is the document that directly informs the Oscar Gonzalez outreach strategy.
-
-Key cumulative stats:
-- 29 of 33 properties program entertainment, 1 closed (had it), 2 nature retreats, Lodge is the only traditional resort at zero
-- Every property Oscar has worked at programmed entertainment — Lodge is his first at zero
-- No luxury brand mandates entertainment — F&B Director discretion
-- Hotel budget season: Aug–Dec. Feb-March is "just in time" for summer operational decisions.
-- 6 documented dark-to-restart cases: all resulted in entertainment upgrade, not elimination
-- 87% of UK hospitality venues increasing live music; BMI/NRG: 5-10% check increase, 25% revenue jump
-
-Save Deliverable A to reports/Report_1_FINAL.md and Deliverable B to reports/Report_1_PFE_Summary.md. After saving, update HANDOFF.md with final assembly status.
+Read HANDOFF.md and reports/Report_1_PFE_Summary.md. Report 1 (Luxury Hotel Music Programming Landscape) is complete. What's the next priority — Report 2, Oscar email draft, or refinement of Report 1?
 ```
