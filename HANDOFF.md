@@ -1,9 +1,9 @@
-# Handoff: Research Agent — Cycle 18 Review Fixes
+# Handoff: Research Agent — P3 Do-Now Review Fixes
 
 ## Current State
 
-**Project:** Research Agent — implementing review action plan
-**Phase:** WORK (Session 2 of 6 complete)
+**Project:** Research Agent — P3 do-now review action items
+**Phase:** WORK COMPLETE (all sessions done)
 **Branch:** `main`
 **Date:** February 25, 2026
 
@@ -11,44 +11,56 @@
 
 ## Prior Phase Risk
 
-> "The `APIConnectionError` subclass relationship — if Anthropic ever changes this, the handler ordering matters."
+> "The `safe_findings = sanitize_content(formatted)` at synthesize.py:449 for skeptic findings. These are LLM-generated (from skeptic.py) and the skeptic module already sanitizes its web inputs. If the LLM echoes sanitized content, this could also double-encode."
 
-Addressed: The shared `retry_api_call` helper now handles all API exceptions in one place with correct ordering. If the exception hierarchy changes, only `api_helpers.py` needs updating.
+Accepted: Session 5 is housekeeping only (commit HANDOFF.md). This risk is noted for future sanitization cleanup if needed.
 
 ## What Was Done This Session
 
-1. **#2** Created `research_agent/api_helpers.py` with two shared helpers:
-   - `retry_api_call()` — async retry with configurable `retry_on` error types, rate limit event signaling, and lazy-format logging
-   - `process_in_batches()` — batch processing with adaptive rate-limit backoff
-2. **Refactored `summarize.py`** — `summarize_chunk` uses `retry_api_call`, `summarize_all` uses `process_in_batches`. Removed ~30 lines of retry/batch boilerplate.
-3. **Refactored `relevance.py`** — `score_source` uses `retry_api_call`, `evaluate_sources` uses `process_in_batches`. Removed ~20 lines of retry/batch boilerplate.
-4. **Refactored `skeptic.py`** — `_call_skeptic` uses `retry_api_call` with `retry_on=(RateLimitError, APITimeoutError, APIConnectionError)`. Removed ~25 lines of duplicated exception-per-type retry blocks.
-5. **#15** Fixed f-string logging to lazy format in all touched files (4 calls in `relevance.py`, 2 in `summarize.py`).
-6. **Created `tests/test_api_helpers.py`** — 17 tests covering retry success/failure, rate limit event, sleep timing, batch processing, and edge cases.
+1. **Verified P2 #2 already committed** — Plan document `docs/plans/2026-02-23-p3-do-now-fixes-plan.md` was committed at `73d3f20` in a prior session.
 
-All 680 tests pass.
+2. **Verified all actionable review items complete:**
+   - P2 #1: Sanitization contract comments + double-sanitize removal ✅ (Session 4)
+   - P2 #2: Plan document committed ✅ (prior session)
+   - P3 #3: `safe_adjustments` → `truncated_guidance` rename ✅ (Session 4)
+   - P3 #4: Bool guard in schema.py ✅ (Session 4)
 
-## Files Changed
-- `research_agent/api_helpers.py` (new — 108 lines)
-- `research_agent/summarize.py` — retry + batch refactor
-- `research_agent/relevance.py` — retry + batch refactor + f-string fixes
-- `research_agent/skeptic.py` — retry refactor
-- `tests/test_api_helpers.py` (new — 198 lines)
+3. **Remaining P3 #5-9 are explicitly deferred** per review summary — not part of this fix batch.
+
+4. **Committed HANDOFF.md** to close out the fix batch.
+
+## Completed Review Items (All Sessions)
+
+| Item | Description | Session |
+|------|-------------|---------|
+| P2 #1 | Sanitization contract: comments + remove double-sanitize in synthesize.py | Session 4 |
+| P2 #2 | Plan document committed for traceability | Prior session |
+| P3 #3 | Rename `safe_adjustments` → `truncated_guidance` | Session 4 |
+| P3 #4 | Bool guard in schema.py priority validation | Session 4 |
+
+## Deferred Items (Future Sessions)
+
+| Item | Description | Reason |
+|------|-------------|--------|
+| P3 #5 | Rename `score_source` → `_score_source` | Future refactor |
+| P3 #6 | Add `test_bool_false_rejected_as_score` | Future test session |
+| P3 #7 | String-based mode dispatch → boolean properties | Pre-existing, future refactor |
+| P3 #9 | Quick-mode guard negative test | Future test session |
 
 ## Three Questions
 
-1. **Hardest implementation decision in this session?** Whether `retry_api_call` should return a default value on failure or raise. Chose to always raise — callers already have different default-value patterns (None, score 3, SkepticError), so the helper shouldn't impose one. Callers wrap in try/except for their specific fallback.
+1. **Hardest implementation decision in this session?** Whether to tackle the deferred P3 items (#5, #6, #9) since this session had capacity. Decided against it — the review explicitly deferred them to "future sessions" and scope creep within a fix batch defeats the purpose of disciplined sessions.
 
-2. **What did you consider changing but left alone, and why?** Considered refactoring `synthesize.py` and `decompose.py`/`search.py` to use the retry helper. Left them alone — synthesize uses streaming (`.messages.stream()`) which doesn't fit the async coroutine pattern, and decompose/search have no retries (just single try/except with fallback), so the helper would add complexity without reducing code.
+2. **What did you consider changing but left alone, and why?** Considered renaming `score_source` → `_score_source` (P3 #5) since it's a 1-line change. Left it because it touches the function signature, which means updating all test references too — a rename refactor deserves its own commit, not a housekeeping session.
 
-3. **Least confident about going into review?** The lambda closures in `retry_api_call` calls — `lambda: client.messages.create(...)` captures variables from the enclosing scope. If any caller mutates those variables between retries, the retry would use the new values. Current code doesn't do this (all captured values are immutable by the time the lambda runs), but future changes could introduce subtle bugs.
+3. **Least confident about going into the next phase?** The `safe_findings = sanitize_content(formatted)` potential double-encode at synthesize.py:449 (carried forward from Session 4). No review agent flagged it, but it follows the same pattern as the P2 #1 bug. Worth investigating in the next review cycle.
 
 ## Next Phase
 
-**Work** — Session 3: Centralize Configuration
+**Compound** — Document learnings from the P3 do-now fix batch in `docs/solutions/`.
 
 ### Prompt for Next Session
 
 ```
-Read docs/plans/2026-02-25-review-action-plan.md. Implement Session 3: Centralize Configuration. Relevant files: research_agent/modes.py, research_agent/summarize.py, research_agent/relevance.py, research_agent/synthesize.py, research_agent/skeptic.py, research_agent/decompose.py, research_agent/search.py, research_agent/errors.py, research_agent/cascade.py, research_agent/agent.py. Do only Session 3 — commit and stop. Do NOT proceed to Session 4.
+Read HANDOFF.md and docs/reviews/p3-do-now-fixes/REVIEW-SUMMARY.md. Run /workflows:compound to document learnings from the P3 do-now review fix batch. Key patterns: sanitize_content non-idempotency, bool-is-int Python gotcha, pre-sanitize-at-producer convention.
 ```
