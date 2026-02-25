@@ -1764,10 +1764,13 @@ class TestCoverageGapRetry:
 
     @pytest.mark.asyncio
     async def test_retry_returns_combined_summaries_on_success(self):
-        """Successful retry → returns (combined_summaries, new_evaluation)."""
+        """Successful retry → merges original + retry evaluations."""
         agent = self._make_agent()
-        existing = self._make_summaries(1)
-        evaluation = self._make_evaluation("insufficient_data")
+        # 3 existing survivors → short_report (standard needs 4 for full)
+        existing = self._make_summaries(3)
+        evaluation = self._make_evaluation(
+            "short_report", surviving=tuple(existing), total_scored=3,
+        )
 
         gap = CoverageGap(
             gap_type="QUERY_MISMATCH",
@@ -1783,25 +1786,29 @@ class TestCoverageGapRetry:
         new_summaries = [
             Summary(url="https://new.com/page", title="New Source", summary="New content")
         ]
-        new_eval = self._make_evaluation(
-            "full_report",
-            surviving=existing + new_summaries,
-            total_scored=2,
+        # evaluate_sources is called on ONLY new_summaries (not combined)
+        retry_eval = self._make_evaluation(
+            "insufficient_data",
+            surviving=tuple(new_summaries),
+            total_scored=1,
         )
 
         with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
              patch("research_agent.agent.search", return_value=new_results), \
              patch.object(agent, "_fetch_extract_summarize", new_callable=AsyncMock, return_value=new_summaries), \
-             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=new_eval), \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=retry_eval), \
              patch("builtins.print"):
             result = await agent._try_coverage_retry(
                 "test query", existing, evaluation, ["test query"],
             )
 
         assert result is not None
-        combined, new_evaluation = result
-        assert len(combined) == 2  # 1 existing + 1 new
-        assert new_evaluation.decision == "full_report"
+        combined, merged_evaluation = result
+        assert len(combined) == 4  # 3 existing + 1 new
+        # Merged: 3 + 1 = 4 survived → meets full_report threshold (4)
+        assert merged_evaluation.decision == "full_report"
+        assert merged_evaluation.total_survived == 4
+        assert merged_evaluation.total_scored == 4
 
     @pytest.mark.asyncio
     async def test_retry_returns_none_when_fetch_fails(self):

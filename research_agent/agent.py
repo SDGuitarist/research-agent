@@ -16,7 +16,7 @@ from .fetch import fetch_urls
 from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all, Summary
 from .synthesize import synthesize_report, synthesize_draft, synthesize_final
-from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation
+from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore
 from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_synthesis_context, load_critique_history, clear_context_cache
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
@@ -471,20 +471,53 @@ class ResearchAgent:
             logger.warning("Retry fetch/summarize failed: %s", e)
             return None
 
-        # Combine and re-evaluate
+        # Score ONLY new summaries (preserve existing scores)
         combined = existing_summaries + new_summaries
         print(f"      Retry added {len(new_summaries)} summaries (total: {len(combined)})")
 
-        new_eval = await evaluate_sources(
+        retry_eval = await evaluate_sources(
             query=query,
-            summaries=combined,
+            summaries=new_summaries,
             mode=self.mode,
             client=self.async_client,
             refined_query=evaluation.refined_query,
             critique_guidance=critique_context,
         )
 
-        return combined, new_eval
+        # Merge surviving/dropped from original + retry evaluations
+        merged_surviving = evaluation.surviving_sources + retry_eval.surviving_sources
+        merged_dropped = evaluation.dropped_sources + retry_eval.dropped_sources
+        total_scored = evaluation.total_scored + retry_eval.total_scored
+        total_survived = evaluation.total_survived + retry_eval.total_survived
+
+        # Determine combined decision using mode thresholds
+        mode = self.mode
+        if total_survived >= mode.min_sources_full_report:
+            decision = "full_report"
+            rationale = f"{total_survived}/{total_scored} sources passed after retry merge"
+        elif total_survived >= mode.min_sources_short_report:
+            decision = "short_report"
+            rationale = f"{total_survived}/{total_scored} sources passed after retry merge (below full threshold)"
+        elif total_scored > 0 and total_survived == 0:
+            decision = "no_new_findings"
+            rationale = f"All {total_scored} sources below cutoff after retry"
+        else:
+            decision = "insufficient_data"
+            rationale = f"Only {total_survived}/{total_scored} sources passed after retry"
+
+        print(f"      Merged decision: {decision} ({total_survived}/{total_scored} sources passed)")
+
+        merged_eval = RelevanceEvaluation(
+            decision=decision,
+            decision_rationale=rationale,
+            surviving_sources=merged_surviving,
+            dropped_sources=merged_dropped,
+            total_scored=total_scored,
+            total_survived=total_survived,
+            refined_query=evaluation.refined_query,
+        )
+
+        return combined, merged_eval
 
     async def _evaluate_and_synthesize(
         self,
