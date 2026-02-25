@@ -7,8 +7,9 @@ from pathlib import Path
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
 from .context import load_search_context
-from .modes import DEFAULT_MODEL
 from .errors import ANTHROPIC_TIMEOUT
+from .modes import DEFAULT_MODEL
+from .query_validation import validate_query_list
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
@@ -42,60 +43,21 @@ def _validate_sub_queries(sub_queries: list[str], original_query: str) -> list[s
     Returns:
         Validated list of sub-queries, or [original_query] if all fail
     """
-    valid = []
-    original_lower = original_query.lower()
-    original_words = set(original_lower.split())
-
-    for sq in sub_queries:
-        sq = sq.strip().strip('"').strip("'").strip("-").strip("•").strip()
-        if not sq:
-            continue
-
-        word_count = len(sq.split())
-
-        # Too short or too long
-        if word_count < MIN_SUB_QUERY_WORDS or word_count > MAX_SUB_QUERY_WORDS:
-            logger.warning(f"Sub-query rejected (word count {word_count}): {sq}")
-            continue
-
-        # Check it shares at least one meaningful word with original query
-        sq_words = set(sq.lower().split())
-        # Remove common stop words for overlap check
-        stop_words = {"the", "a", "an", "in", "on", "of", "for", "and", "or", "to", "is", "how", "what", "why"}
-        meaningful_original = original_words - stop_words
-        meaningful_sq = sq_words - stop_words
-        if not meaningful_original.intersection(meaningful_sq):
-            logger.warning(f"Sub-query rejected (no overlap with original): {sq}")
-            continue
-
-        # Check it's not too similar to original (restatements waste API calls)
-        overlap_count = len(meaningful_sq.intersection(meaningful_original))
-        if overlap_count >= len(meaningful_sq) * MAX_OVERLAP_WITH_ORIGINAL:
-            logger.warning(
-                f"Sub-query rejected (too similar to original, "
-                f"{overlap_count}/{len(meaningful_sq)} words overlap): {sq}"
-            )
-            continue
-
-        # Check for near-duplicates within the valid list
-        is_duplicate = False
-        for existing in valid:
-            existing_words = set(existing.lower().split())
-            overlap = len(sq_words.intersection(existing_words))
-            if overlap >= len(sq_words) * 0.7:
-                logger.warning(f"Sub-query rejected (too similar to existing): {sq}")
-                is_duplicate = True
-                break
-        if is_duplicate:
-            continue
-
-        valid.append(sq)
-
-    if not valid:
+    validated = validate_query_list(
+        sub_queries,
+        min_words=MIN_SUB_QUERY_WORDS,
+        max_words=MAX_SUB_QUERY_WORDS,
+        max_results=MAX_SUB_QUERIES,
+        reference_queries=[original_query],
+        max_reference_overlap=MAX_OVERLAP_WITH_ORIGINAL,
+        require_reference_overlap=True,
+        extra_strip_chars="•",
+        label="Sub-query",
+    )
+    if not validated:
         logger.warning("All sub-queries failed validation, using original query")
         return [original_query]
-
-    return valid[:MAX_SUB_QUERIES]
+    return validated
 
 
 def decompose_query(

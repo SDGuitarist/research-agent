@@ -9,6 +9,7 @@ from anthropic import (
 
 from .errors import ANTHROPIC_TIMEOUT
 from .modes import DEFAULT_MODEL
+from .query_validation import validate_query_list
 from .sanitize import sanitize_content
 from .summarize import Summary
 from .token_budget import truncate_to_budget
@@ -46,65 +47,20 @@ _SAFE_DEFAULT = CoverageGap(
     reasoning="Parse failure — skipping retry to avoid wasted API calls",
 )
 
-# Stop words excluded from overlap checks
-_STOP_WORDS = frozenset({
-    "the", "a", "an", "in", "on", "of", "for", "and", "or",
-    "to", "is", "how", "what", "why",
-})
-
-
 def _validate_retry_queries(
     queries: list[str],
     tried_queries: list[str] | None = None,
 ) -> list[str]:
     """Validate retry queries: word count, duplicates, overlap with tried queries."""
-    valid = []
-    tried_lower = [q.lower() for q in (tried_queries or [])]
-
-    for q in queries:
-        q = q.strip().strip('"').strip("'").strip("-").strip()
-        if not q:
-            continue
-
-        word_count = len(q.split())
-        if word_count < MIN_RETRY_QUERY_WORDS or word_count > MAX_RETRY_QUERY_WORDS:
-            logger.warning(f"Retry query rejected (word count {word_count}): {q}")
-            continue
-
-        # Meaningful words for overlap checks
-        q_words = set(q.lower().split()) - _STOP_WORDS
-        if not q_words:
-            continue
-
-        # Check not too similar to tried queries
-        too_similar = False
-        for tried in tried_lower:
-            tried_words = set(tried.split()) - _STOP_WORDS
-            if not tried_words:
-                continue
-            overlap = len(q_words.intersection(tried_words))
-            if overlap >= len(q_words) * 0.8:
-                logger.warning(f"Retry query rejected (too similar to tried): {q}")
-                too_similar = True
-                break
-        if too_similar:
-            continue
-
-        # Check for near-duplicates within valid list
-        is_duplicate = False
-        for existing in valid:
-            existing_words = set(existing.lower().split()) - _STOP_WORDS
-            overlap = len(q_words.intersection(existing_words))
-            if overlap >= len(q_words) * 0.7:
-                logger.warning(f"Retry query rejected (duplicate): {q}")
-                is_duplicate = True
-                break
-        if is_duplicate:
-            continue
-
-        valid.append(q)
-
-    return valid[:MAX_RETRY_QUERIES]
+    return validate_query_list(
+        queries,
+        min_words=MIN_RETRY_QUERY_WORDS,
+        max_words=MAX_RETRY_QUERY_WORDS,
+        max_results=MAX_RETRY_QUERIES,
+        reference_queries=tried_queries,
+        max_reference_overlap=0.8,
+        label="Retry query",
+    )
 
 
 def _parse_gap_response(
