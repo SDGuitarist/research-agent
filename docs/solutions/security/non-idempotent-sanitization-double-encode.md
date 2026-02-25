@@ -90,6 +90,15 @@ sanitization source:
 3. **Added** pre-sanitization contract comments in `decompose.py` and `relevance.py`
 4. **Updated** `score_source` docstring to document the pre-sanitized query precondition
 
+### Known Remaining Call: `synthesize.py:450`
+
+`safe_findings = sanitize_content(formatted)` sanitizes skeptic findings (LLM output)
+before re-injecting into the final synthesis prompt. This is **not** a double-encode
+bug — the skeptic findings are LLM-generated text that hasn't been previously
+sanitized. However, the skeptic module (`skeptic.py:58`) already sanitizes its own
+web inputs, so if the LLM echoes those inputs, the output could contain
+already-encoded entities. This is a low-risk edge case — noting it for future review.
+
 ### Commits
 
 - `8420227` — Removed redundant sanitize calls in decompose and relevance

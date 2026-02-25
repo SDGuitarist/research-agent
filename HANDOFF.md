@@ -1,9 +1,9 @@
-# Handoff: Research Agent — P3 Do-Now Review Fixes
+# Handoff: Research Agent — P3 Do-Now Compound Phase
 
 ## Current State
 
-**Project:** Research Agent — P3 do-now review action items
-**Phase:** WORK COMPLETE (all sessions done)
+**Project:** Research Agent — P3 do-now review fix batch
+**Phase:** COMPOUND COMPLETE (loop closed)
 **Branch:** `main`
 **Date:** February 25, 2026
 
@@ -11,56 +11,52 @@
 
 ## Prior Phase Risk
 
-> "The `safe_findings = sanitize_content(formatted)` at synthesize.py:449 for skeptic findings. These are LLM-generated (from skeptic.py) and the skeptic module already sanitizes its web inputs. If the LLM echoes sanitized content, this could also double-encode."
+> "The `safe_findings = sanitize_content(formatted)` potential double-encode at synthesize.py:449 (carried forward from Session 4). No review agent flagged it, but it follows the same pattern as the P2 #1 bug. Worth investigating in the next review cycle."
 
-Accepted: Session 5 is housekeeping only (commit HANDOFF.md). This risk is noted for future sanitization cleanup if needed.
+Addressed: Investigated via subagent audit of all 28 `sanitize_content()` call sites. This is NOT a double-encode bug — skeptic findings are LLM-generated text that hasn't been previously sanitized. However, if the LLM echoes already-sanitized web content, entities could double-encode. Documented as a known edge case in the existing sanitization solution doc.
 
 ## What Was Done This Session
 
-1. **Verified P2 #2 already committed** — Plan document `docs/plans/2026-02-23-p3-do-now-fixes-plan.md` was committed at `73d3f20` in a prior session.
+1. **Created new solution doc:** `docs/solutions/logic-errors/python-bool-is-int-yaml-validation.md`
+   - Documents Python's `bool` subclass of `int` gotcha
+   - Covers `schema.py` and `context.py` fixes
+   - Includes prevention rules scoped to YAML/JSON boundaries only
+   - Notes related YAML type coercion family (yes/no/on/off)
 
-2. **Verified all actionable review items complete:**
-   - P2 #1: Sanitization contract comments + double-sanitize removal ✅ (Session 4)
-   - P2 #2: Plan document committed ✅ (prior session)
-   - P3 #3: `safe_adjustments` → `truncated_guidance` rename ✅ (Session 4)
-   - P3 #4: Bool guard in schema.py ✅ (Session 4)
+2. **Updated existing solution doc:** `docs/solutions/security/non-idempotent-sanitization-double-encode.md`
+   - Added "Known Remaining Call" section for `synthesize.py:450`
+   - Documents why it's not a bug but noting the edge case
 
-3. **Remaining P3 #5-9 are explicitly deferred** per review summary — not part of this fix batch.
+3. **Ran full sanitize_content audit** via subagent — confirmed all 28 call sites follow correct patterns, no remaining double-encode bugs.
 
-4. **Committed HANDOFF.md** to close out the fix batch.
+4. **Ran bool/int guard audit** via subagent — confirmed both YAML-facing validation sites have the guard, typed dataclasses are safe without it.
 
-## Completed Review Items (All Sessions)
+## Compound Loop Status
 
-| Item | Description | Session |
-|------|-------------|---------|
-| P2 #1 | Sanitization contract: comments + remove double-sanitize in synthesize.py | Session 4 |
-| P2 #2 | Plan document committed for traceability | Prior session |
-| P3 #3 | Rename `safe_adjustments` → `truncated_guidance` | Session 4 |
-| P3 #4 | Bool guard in schema.py priority validation | Session 4 |
+The P3 do-now fix batch compound engineering loop is **fully closed**:
 
-## Deferred Items (Future Sessions)
-
-| Item | Description | Reason |
-|------|-------------|--------|
-| P3 #5 | Rename `score_source` → `_score_source` | Future refactor |
-| P3 #6 | Add `test_bool_false_rejected_as_score` | Future test session |
-| P3 #7 | String-based mode dispatch → boolean properties | Pre-existing, future refactor |
-| P3 #9 | Quick-mode guard negative test | Future test session |
+| Phase | Status | Output |
+|-------|--------|--------|
+| Plan | Done | `docs/plans/2026-02-23-p3-do-now-fixes-plan.md` |
+| Work | Done | Commits `8ecfdb3`, `e647405`, `9dde2c4`, `8420227`, `fa4daaf` |
+| Review | Done | `docs/reviews/p3-do-now-fixes/REVIEW-SUMMARY.md` |
+| Fix | Done | Commits `58425a1`, `7a002f4` |
+| Compound | Done | This session |
 
 ## Three Questions
 
-1. **Hardest implementation decision in this session?** Whether to tackle the deferred P3 items (#5, #6, #9) since this session had capacity. Decided against it — the review explicitly deferred them to "future sessions" and scope creep within a fix batch defeats the purpose of disciplined sessions.
+1. **Hardest pattern to extract from the fixes?** The scoping rule for the bool-is-int guard. "Always check for bool before int" is the naive rule, but it's wrong — you only need it at data deserialization boundaries (YAML, JSON, external input), not for typed function parameters. Getting that distinction documented clearly was the hard part.
 
-2. **What did you consider changing but left alone, and why?** Considered renaming `score_source` → `_score_source` (P3 #5) since it's a 1-line change. Left it because it touches the function signature, which means updating all test references too — a rename refactor deserves its own commit, not a housekeeping session.
+2. **What did you consider documenting but left out, and why?** A standalone "P3 do-now batch retrospective" doc covering the multi-session workflow itself (5 sessions across plan/work/review/fix/compound). Left it out because the workflow is already documented in CLAUDE.md's compound engineering loop — a retrospective would duplicate that without adding new patterns.
 
-3. **Least confident about going into the next phase?** The `safe_findings = sanitize_content(formatted)` potential double-encode at synthesize.py:449 (carried forward from Session 4). No review agent flagged it, but it follows the same pattern as the P2 #1 bug. Worth investigating in the next review cycle.
+3. **What might future sessions miss that this solution doesn't cover?** The `synthesize.py:450` skeptic findings sanitization. It's not a bug today, but if a future change adds a pre-sanitization step to skeptic findings upstream (e.g., in `agent.py`), it would become a double-encode bug silently. The edge case is documented in the sanitization solution doc, but a developer would need to find and read that doc to know about it.
 
 ## Next Phase
 
-**Compound** — Document learnings from the P3 do-now fix batch in `docs/solutions/`.
+No next phase — loop is closed. Ready for new work.
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md and docs/reviews/p3-do-now-fixes/REVIEW-SUMMARY.md. Run /workflows:compound to document learnings from the P3 do-now review fix batch. Key patterns: sanitize_content non-idempotency, bool-is-int Python gotcha, pre-sanitize-at-producer convention.
+Read HANDOFF.md. Start a new brainstorm or plan for the next feature/fix cycle.
 ```
