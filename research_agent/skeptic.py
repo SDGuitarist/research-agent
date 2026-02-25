@@ -12,6 +12,7 @@ from anthropic import (
     RateLimitError,
 )
 
+from .api_helpers import retry_api_call
 from .sanitize import sanitize_content
 from .errors import SkepticError
 
@@ -70,54 +71,46 @@ async def _call_skeptic(
 ) -> SkepticFinding:
     """Make a skeptic API call and parse the response.
 
-    Retries once on rate limit or timeout errors before raising.
+    Retries once on rate limit, timeout, or connection errors before raising.
     """
-    for attempt in range(SKEPTIC_MAX_RETRIES + 1):
-        try:
-            response = await client.messages.create(
+    try:
+        response = await retry_api_call(
+            lambda: client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
                 timeout=SKEPTIC_TIMEOUT,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
-            )
+            ),
+            max_retries=SKEPTIC_MAX_RETRIES,
+            retry_on=(RateLimitError, APITimeoutError, APIConnectionError),
+            context=f"Skeptic ({lens})",
+        )
 
-            if not response.content:
-                raise SkepticError(f"Skeptic ({lens}) returned empty response")
+        if not response.content:
+            raise SkepticError(f"Skeptic ({lens}) returned empty response")
 
-            text = response.content[0].text.strip()
-            if not text:
-                raise SkepticError(f"Skeptic ({lens}) returned empty response")
+        text = response.content[0].text.strip()
+        if not text:
+            raise SkepticError(f"Skeptic ({lens}) returned empty response")
 
-            critical, concern = _count_severity(text)
+        critical, concern = _count_severity(text)
 
-            return SkepticFinding(
-                lens=lens,
-                checklist=text,
-                critical_count=critical,
-                concern_count=concern,
-            )
+        return SkepticFinding(
+            lens=lens,
+            checklist=text,
+            critical_count=critical,
+            concern_count=concern,
+        )
 
-        except RateLimitError as e:
-            if attempt < SKEPTIC_MAX_RETRIES:
-                logger.warning(f"Skeptic ({lens}) rate limited, retrying in 2s...")
-                await asyncio.sleep(2.0)
-                continue
-            raise SkepticError(f"Skeptic ({lens}) rate limited: {e}")
-        except APITimeoutError as e:
-            if attempt < SKEPTIC_MAX_RETRIES:
-                logger.warning(f"Skeptic ({lens}) timed out, retrying in 2s...")
-                await asyncio.sleep(2.0)
-                continue
-            raise SkepticError(f"Skeptic ({lens}) timed out: {e}")
-        except APIConnectionError as e:
-            if attempt < SKEPTIC_MAX_RETRIES:
-                logger.warning(f"Skeptic ({lens}) connection error, retrying in 2s...")
-                await asyncio.sleep(2.0)
-                continue
-            raise SkepticError(f"Skeptic ({lens}) connection error: {e}")
-        except APIError as e:
-            raise SkepticError(f"Skeptic ({lens}) API error: {e}")
+    except RateLimitError as e:
+        raise SkepticError(f"Skeptic ({lens}) rate limited: {e}")
+    except APITimeoutError as e:
+        raise SkepticError(f"Skeptic ({lens}) timed out: {e}")
+    except APIConnectionError as e:
+        raise SkepticError(f"Skeptic ({lens}) connection error: {e}")
+    except APIError as e:
+        raise SkepticError(f"Skeptic ({lens}) API error: {e}")
 
 
 # --- Individual skeptic agents ---

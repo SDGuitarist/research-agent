@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from anthropic import AsyncAnthropic, RateLimitError, APIError, APIConnectionError, APITimeoutError
 
+from .api_helpers import retry_api_call, process_in_batches
 from .extract import ExtractedContent
 from .sanitize import sanitize_content
 
@@ -80,8 +81,6 @@ async def summarize_chunk(
     safe_chunk = sanitize_content(chunk)
     safe_title = sanitize_content(title)
 
-    max_retries = 1
-
     # Choose prompt and token limit based on structured flag
     if structured:
         user_prompt = f"""Extract structured information from this webpage content.
@@ -115,9 +114,9 @@ URL: {url}
 Provide only a factual summary of the content above:"""
         chunk_max_tokens = 500
 
-    for attempt in range(max_retries + 1):
-        try:
-            response = await client.messages.create(
+    try:
+        response = await retry_api_call(
+            lambda: client.messages.create(
                 model=model,
                 max_tokens=chunk_max_tokens,
                 system=(
@@ -132,33 +131,24 @@ Provide only a factual summary of the content above:"""
                     "role": "user",
                     "content": user_prompt,
                 }]
-            )
+            ),
+            rate_limit_event=rate_limit_event,
+            context=f"Summarizing {url}",
+        )
 
-            summary_text = response.content[0].text.strip()
+        summary_text = response.content[0].text.strip()
 
-            return Summary(
-                url=url,
-                title=title,
-                summary=summary_text,
-            )
+        return Summary(
+            url=url,
+            title=title,
+            summary=summary_text,
+        )
 
-        except RateLimitError:
-            if rate_limit_event is not None:
-                rate_limit_event.set()
-            if attempt < max_retries:
-                logger.warning(f"Rate limited for {url}, retrying in 2s...")
-                await asyncio.sleep(2.0)
-                continue
-            logger.warning(f"Rate limited for {url}, exhausted retries")
-            return None
-        except (APIError, APIConnectionError, APITimeoutError) as e:
-            # Log specific API errors for debugging
-            logger.warning(f"Summarization API error for {url}: {type(e).__name__}: {e}")
-            return None
-        except (KeyError, IndexError, AttributeError) as e:
-            # Log unexpected response structure issues
-            logger.warning(f"Unexpected response structure for {url}: {type(e).__name__}: {e}")
-            return None
+    except (RateLimitError, APIError, APIConnectionError, APITimeoutError):
+        return None
+    except (KeyError, IndexError, AttributeError) as e:
+        logger.warning("Unexpected response structure for %s: %s: %s", url, type(e).__name__, e)
+        return None
 
 
 async def summarize_content(
@@ -209,7 +199,7 @@ async def summarize_content(
         if isinstance(result, Summary):
             summaries.append(result)
         elif isinstance(result, Exception):
-            logger.warning(f"Chunk summarization failed: {result}")
+            logger.warning("Chunk summarization failed: %s", result)
 
     return summaries
 
@@ -238,23 +228,24 @@ async def summarize_all(
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_CHUNKS)
     rate_limit_hit = asyncio.Event()
 
-    for batch_start in range(0, len(contents), BATCH_SIZE):
-        batch = contents[batch_start:batch_start + BATCH_SIZE]
-        if batch_start > 0 and rate_limit_hit.is_set():
-            await asyncio.sleep(RATE_LIMIT_BACKOFF)
-            rate_limit_hit.clear()
-        tasks = [
-            summarize_content(client, content, model, structured=structured,
-                              max_chunks=max_chunks, semaphore=semaphore,
-                              rate_limit_event=rate_limit_hit)
-            for content in batch
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+    async def _process(content: ExtractedContent) -> list[Summary]:
+        return await summarize_content(
+            client, content, model, structured=structured,
+            max_chunks=max_chunks, semaphore=semaphore,
+            rate_limit_event=rate_limit_hit,
+        )
 
-        for result in results:
-            if isinstance(result, list):
-                all_summaries.extend(result)
-            elif isinstance(result, Exception):
-                logger.warning(f"Summarization error: {result}")
+    results = await process_in_batches(
+        contents, _process,
+        batch_size=BATCH_SIZE,
+        rate_limit_event=rate_limit_hit,
+        backoff_seconds=RATE_LIMIT_BACKOFF,
+    )
+
+    for result in results:
+        if isinstance(result, list):
+            all_summaries.extend(result)
+        elif isinstance(result, Exception):
+            logger.warning("Summarization error: %s", result)
 
     return all_summaries

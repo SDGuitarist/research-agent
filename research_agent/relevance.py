@@ -9,6 +9,7 @@ import asyncio
 
 from anthropic import AsyncAnthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
+from .api_helpers import retry_api_call, process_in_batches
 from .summarize import Summary
 from .modes import ResearchMode
 from .sanitize import sanitize_content
@@ -76,7 +77,7 @@ def _parse_score_response(response_text: str) -> tuple[int, str]:
     # Try to extract SCORE
     score_match = re.search(r"SCORE:\s*(\d+)", response_text, re.IGNORECASE)
     if not score_match:
-        logger.warning(f"Could not parse SCORE from response: {response_text[:100]}")
+        logger.warning("Could not parse SCORE from response: %s", response_text[:100])
         return 3, default_explanation
 
     try:
@@ -84,7 +85,7 @@ def _parse_score_response(response_text: str) -> tuple[int, str]:
         # Clamp to valid range
         score = max(1, min(5, score))
     except ValueError:
-        logger.warning(f"Invalid score value: {score_match.group(1)}")
+        logger.warning("Invalid score value: %s", score_match.group(1))
         return 3, default_explanation
 
     # Try to extract EXPLANATION
@@ -155,40 +156,30 @@ Respond in exactly this format:
 SCORE: [number]
 EXPLANATION: [one sentence explaining why]"""
 
-    max_retries = 1
-
-    for attempt in range(max_retries + 1):
-        try:
-            response = await client.messages.create(
+    try:
+        response = await retry_api_call(
+            lambda: client.messages.create(
                 model=model,
                 max_tokens=100,
                 timeout=SCORING_TIMEOUT,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
-            )
+            ),
+            rate_limit_event=rate_limit_event,
+            context=f"Scoring {summary.url}",
+        )
 
-            if not response.content:
-                logger.warning(f"Empty response when scoring {summary.url}")
-                score, explanation = 3, "Empty response from scoring, defaulting to include"
-            else:
-                response_text = response.content[0].text
-                score, explanation = _parse_score_response(response_text)
+        if not response.content:
+            logger.warning("Empty response when scoring %s", summary.url)
+            score, explanation = 3, "Empty response from scoring, defaulting to include"
+        else:
+            response_text = response.content[0].text
+            score, explanation = _parse_score_response(response_text)
 
-            break  # Success — exit retry loop
-
-        except RateLimitError:
-            if rate_limit_event is not None:
-                rate_limit_event.set()
-            if attempt < max_retries:
-                logger.warning(f"Rate limited scoring {summary.url}, retrying in 2s...")
-                await asyncio.sleep(2.0)
-                continue
-            logger.warning(f"Rate limited scoring {summary.url}, exhausted retries")
-            score, explanation = 3, "Rate limited during scoring, defaulting to include"
-        except (APIError, APIConnectionError, APITimeoutError) as e:
-            logger.warning(f"API error scoring {summary.url}: {e}")
-            score, explanation = 3, "API error during scoring, defaulting to include"
-            break
+    except RateLimitError:
+        score, explanation = 3, "Rate limited during scoring, defaulting to include"
+    except (APIError, APIConnectionError, APITimeoutError):
+        score, explanation = 3, "API error during scoring, defaulting to include"
 
     return SourceScore(
         url=summary.url,
@@ -224,7 +215,7 @@ def _aggregate_by_source(
     for summary, result in zip(summaries, scored_results):
         # Handle exceptions from gather
         if isinstance(result, Exception):
-            logger.warning(f"Exception scoring {summary.url}: {result}")
+            logger.warning("Exception scoring %s: %s", summary.url, result)
             score = 3
             explanation = "Exception during scoring, defaulting to include"
         else:
@@ -293,16 +284,22 @@ async def evaluate_sources(
     safe_query = sanitize_content(query)
 
     # Score chunks in batches with adaptive backoff (only delay after a 429)
-    scored_results = []
     rate_limit_hit = asyncio.Event()
-    for batch_start in range(0, len(summaries), BATCH_SIZE):
-        batch = summaries[batch_start:batch_start + BATCH_SIZE]
-        if batch_start > 0 and rate_limit_hit.is_set():
-            await asyncio.sleep(RATE_LIMIT_BACKOFF)
-            rate_limit_hit.clear()
-        tasks = [score_source(safe_query, summary, client, rate_limit_event=rate_limit_hit, model=mode.model, critique_guidance=critique_guidance) for summary in batch]
-        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-        scored_results.extend(batch_results)
+
+    async def _score(summary: Summary) -> SourceScore:
+        return await score_source(
+            safe_query, summary, client,
+            rate_limit_event=rate_limit_hit,
+            model=mode.model,
+            critique_guidance=critique_guidance,
+        )
+
+    scored_results = await process_in_batches(
+        summaries, _score,
+        batch_size=BATCH_SIZE,
+        rate_limit_event=rate_limit_hit,
+        backoff_seconds=RATE_LIMIT_BACKOFF,
+    )
 
     # Aggregate chunk scores to source-level (best score per URL)
     source_scores = _aggregate_by_source(summaries, scored_results)
@@ -454,7 +451,7 @@ Do NOT pad the response. Keep it concise and honest."""
         return f"# Insufficient Data Found\n\n{result}"
 
     except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
-        logger.warning(f"API error generating insufficient data response: {e}")
+        logger.warning("API error generating insufficient data response: %s", e)
         return _fallback_insufficient_response(query, refined_query, dropped_sources)
 
 
