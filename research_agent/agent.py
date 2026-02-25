@@ -520,7 +520,7 @@ class ResearchAgent:
         )
 
         # Coverage gap retry for insufficient_data or short_report
-        if evaluation.decision in ("insufficient_data", "short_report"):
+        if not self.mode.is_quick and evaluation.decision in ("insufficient_data", "short_report"):
             retry_result = await self._try_coverage_retry(
                 query, summaries, evaluation,
                 tried_queries or [],

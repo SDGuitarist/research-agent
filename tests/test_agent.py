@@ -2007,3 +2007,35 @@ class TestCoverageGapRetry:
             )
 
         mock_retry.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_and_synthesize_no_retry_in_quick_mode(self):
+        """Quick mode with insufficient_data → no retry attempted."""
+        with patch("research_agent.agent.Anthropic"), \
+             patch("research_agent.agent.AsyncAnthropic"):
+            agent = ResearchAgent(
+                api_key="test-key", mode=ResearchMode.quick(),
+                skip_critique=True,
+            )
+        agent._start_time = 0.0
+        agent._step_num = 0
+        agent._step_total = 10
+        summaries = self._make_summaries(2)
+
+        insufficient_eval = self._make_evaluation(
+            "insufficient_data",
+            dropped=(SourceScore(url="https://ex.com", title="T", score=1, explanation="Bad"),),
+            total_scored=1,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=insufficient_eval), \
+             patch.object(agent, "_try_coverage_retry", new_callable=AsyncMock) as mock_retry, \
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No Data"), \
+             patch("builtins.print"):
+
+            await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+                tried_queries=["test query"],
+            )
+
+        mock_retry.assert_not_called()

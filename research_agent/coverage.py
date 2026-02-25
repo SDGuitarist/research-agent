@@ -108,7 +108,7 @@ def _validate_retry_queries(
 
 
 def _parse_gap_response(
-    text: str,
+    text: str | None,
     tried_queries: list[str] | None = None,
 ) -> CoverageGap:
     """Parse structured gap analysis response from Claude.
