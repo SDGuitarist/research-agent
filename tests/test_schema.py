@@ -163,6 +163,17 @@ class TestLoadSchema:
         with pytest.raises(SchemaError, match="missing required field 'category'"):
             load_schema(schema_file)
 
+    def test_parse_bool_rejected_as_priority(self, tmp_path):
+        schema_file = tmp_path / "gaps.yaml"
+        schema_file.write_text(
+            "gaps:\n"
+            '  - id: "x"\n'
+            '    category: "y"\n'
+            "    priority: true\n"
+        )
+        with pytest.raises(SchemaError, match="non-integer priority"):
+            load_schema(schema_file)
+
     def test_parse_defaults_applied(self, tmp_path):
         schema_file = tmp_path / "gaps.yaml"
         schema_file.write_text(

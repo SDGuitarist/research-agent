@@ -91,7 +91,7 @@ def _parse_gap(raw: dict, index: int) -> Gap:
     blocked_by = raw.get("blocked_by", ())
 
     priority = raw.get("priority", 3)
-    if not isinstance(priority, int):
+    if isinstance(priority, bool) or not isinstance(priority, int):
         raise SchemaError(f"Gap '{raw['id']}' has non-integer priority: {priority!r}")
 
     return Gap(

@@ -410,7 +410,8 @@ def synthesize_final(
         SynthesisError: If synthesis fails
     """
     safe_query = sanitize_content(query)
-    safe_draft = sanitize_content(draft)
+    # draft is LLM output from synthesize_draft — do not re-sanitize
+    # (sanitize_content is not idempotent: & → &amp; → &amp;amp;)
     sources_text = _build_sources_context(summaries)
 
     # Token budget enforcement
@@ -419,7 +420,7 @@ def synthesize_final(
         business_context = sanitize_content(business_context)
         budget_components["business_context"] = business_context
     if draft:
-        budget_components["previous_baseline"] = safe_draft
+        budget_components["previous_baseline"] = draft
     if critique_guidance:
         # critique_guidance is pre-sanitized by load_critique_history
         budget_components["critique_guidance"] = critique_guidance
@@ -519,7 +520,7 @@ def synthesize_final(
 <query>{safe_query}</query>
 
 <draft_analysis>
-{safe_draft}
+{draft}
 </draft_analysis>
 {context_block}{skeptic_block}{lessons_block}
 <sources>

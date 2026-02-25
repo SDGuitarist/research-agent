@@ -134,8 +134,8 @@ async def score_source(
 
     adjustments_block = ""
     if critique_guidance:
-        safe_adjustments = truncate_to_budget(critique_guidance, 500)
-        adjustments_block = f"\n\n<scoring_guidance>\n{safe_adjustments}\n</scoring_guidance>"
+        truncated_guidance = truncate_to_budget(critique_guidance, 500)
+        adjustments_block = f"\n\n<scoring_guidance>\n{truncated_guidance}\n</scoring_guidance>"
 
     user_prompt = f"""ORIGINAL QUERY: {query}
 
