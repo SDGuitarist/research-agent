@@ -1,9 +1,9 @@
-# Handoff: Research Agent — P3 Do-Now Compound Phase
+# Handoff: Research Agent — P1 Fix Batch
 
 ## Current State
 
-**Project:** Research Agent — P3 do-now review fix batch
-**Phase:** COMPOUND COMPLETE (loop closed)
+**Project:** Research Agent — Cycle 21 coverage gap P1 fixes
+**Phase:** FIX COMPLETE (P1 only)
 **Branch:** `main`
 **Date:** February 25, 2026
 
@@ -11,52 +11,36 @@
 
 ## Prior Phase Risk
 
-> "The `safe_findings = sanitize_content(formatted)` potential double-encode at synthesize.py:449 (carried forward from Session 4). No review agent flagged it, but it follows the same pattern as the P2 #1 bug. Worth investigating in the next review cycle."
+> "What might this review have missed? Interaction between coverage gap retry and the gap schema state system. When a retry upgrades `insufficient_data` to `full_report`, `_update_gap_states` marks gaps as verified. If the retry added low-quality sources that inflated the count, gaps could be prematurely verified."
 
-Addressed: Investigated via subagent audit of all 28 `sanitize_content()` call sites. This is NOT a double-encode bug — skeptic findings are LLM-generated text that hasn't been previously sanitized. However, if the LLM echoes already-sanitized web content, entities could double-encode. Documented as a known edge case in the existing sanitization solution doc.
+Accepted: Not addressed in this P1 batch — these fixes prevent quick mode from entering the retry path entirely (#043) and correct a type contract (#044). The gap state interaction is a deeper concern for a future cycle.
 
 ## What Was Done This Session
 
-1. **Created new solution doc:** `docs/solutions/logic-errors/python-bool-is-int-yaml-validation.md`
-   - Documents Python's `bool` subclass of `int` gotcha
-   - Covers `schema.py` and `context.py` fixes
-   - Includes prevention rules scoped to YAML/JSON boundaries only
-   - Notes related YAML type coercion family (yes/no/on/off)
+1. **Fixed #043** — Added `not self.mode.is_quick` guard at `agent.py:523`, matching the existing critique guard pattern at line 150. Added test `test_evaluate_and_synthesize_no_retry_in_quick_mode`.
 
-2. **Updated existing solution doc:** `docs/solutions/security/non-idempotent-sanitization-double-encode.md`
-   - Added "Known Remaining Call" section for `synthesize.py:450`
-   - Documents why it's not a bug but noting the edge case
+2. **Fixed #044** — Changed `_parse_gap_response(text: str, ...)` to `text: str | None` at `coverage.py:111` to match runtime behavior.
 
-3. **Ran full sanitize_content audit** via subagent — confirmed all 28 call sites follow correct patterns, no remaining double-encode bugs.
+3. **Marked both todos as done** (status: pending → done).
 
-4. **Ran bool/int guard audit** via subagent — confirmed both YAML-facing validation sites have the guard, typed dataclasses are safe without it.
+4. **All 694 tests pass** (693 existing + 1 new).
 
-## Compound Loop Status
-
-The P3 do-now fix batch compound engineering loop is **fully closed**:
-
-| Phase | Status | Output |
-|-------|--------|--------|
-| Plan | Done | `docs/plans/2026-02-23-p3-do-now-fixes-plan.md` |
-| Work | Done | Commits `8ecfdb3`, `e647405`, `9dde2c4`, `8420227`, `fa4daaf` |
-| Review | Done | `docs/reviews/p3-do-now-fixes/REVIEW-SUMMARY.md` |
-| Fix | Done | Commits `58425a1`, `7a002f4` |
-| Compound | Done | This session |
+**Commit:** `fc8ca59` — `fix(review): quick-mode retry guard + type hint honesty (#043, #044)`
 
 ## Three Questions
 
-1. **Hardest pattern to extract from the fixes?** The scoping rule for the bool-is-int guard. "Always check for bool before int" is the naive rule, but it's wrong — you only need it at data deserialization boundaries (YAML, JSON, external input), not for typed function parameters. Getting that distinction documented clearly was the hard part.
+1. **Hardest fix in this batch?** Neither fix was technically hard — both were 1-line changes. The judgment call was whether #043 needed Option B (a `retry_on_gaps: bool` field in `ResearchMode`) instead of Option A (inline guard). Went with Option A because it matches the existing `is_quick` guard pattern at line 150 and avoids adding a field that only differs for one mode.
 
-2. **What did you consider documenting but left out, and why?** A standalone "P3 do-now batch retrospective" doc covering the multi-session workflow itself (5 sessions across plan/work/review/fix/compound). Left it out because the workflow is already documented in CLAUDE.md's compound engineering loop — a retrospective would duplicate that without adding new patterns.
+2. **What did you consider fixing differently, and why didn't you?** Considered adding a test that quick mode with `short_report` also skips retry (not just `insufficient_data`). Didn't add it because the guard is mode-level (`not self.mode.is_quick`), so testing one decision value is sufficient — both are gated by the same condition.
 
-3. **What might future sessions miss that this solution doesn't cover?** The `synthesize.py:450` skeptic findings sanitization. It's not a bug today, but if a future change adds a pre-sanitization step to skeptic findings upstream (e.g., in `agent.py`), it would become a double-encode bug silently. The edge case is documented in the sanitization solution doc, but a developer would need to find and read that doc to know about it.
+3. **Least confident about going into the next batch or compound phase?** The HANDOFF.md diff is large because it replaced the previous session's content. No code concern — the fixes are minimal and well-tested.
 
 ## Next Phase
 
-No next phase — loop is closed. Ready for new work.
+**FIX (P2)** or **COMPOUND** — Either tackle P2 items (#045-#049) or document P1 learnings first.
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. Start a new brainstorm or plan for the next feature/fix cycle.
+Read HANDOFF.md. Read todos/045 through 049 (P2 items). Fix P2 issues. Relevant files: research_agent/agent.py, research_agent/coverage.py, research_agent/modes.py, tests/test_agent.py. Do only P2 fixes — commit and stop.
 ```

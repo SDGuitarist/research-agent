@@ -14,7 +14,7 @@ from anthropic import Anthropic, AsyncAnthropic, APIError, RateLimitError, APICo
 from .search import search, refine_query, SearchResult
 from .fetch import fetch_urls
 from .extract import extract_all, ExtractedContent
-from .summarize import summarize_all
+from .summarize import summarize_all, Summary
 from .synthesize import synthesize_report, synthesize_draft, synthesize_final
 from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation
 from .decompose import decompose_query, DecompositionResult
@@ -38,9 +38,6 @@ MAX_CONCURRENT_SUB_QUERIES = 2
 
 # Default directory for critique metadata files
 META_DIR = Path("reports/meta")
-
-# Sources to search per retry query during coverage gap retry
-RETRY_SOURCES_PER_QUERY = 3
 
 
 class ResearchAgent:
@@ -333,7 +330,7 @@ class ResearchAgent:
         structured: bool = False,
         max_chunks: int = 3,
         quiet: bool = False,
-    ) -> list:
+    ) -> list[Summary]:
         """Shared pipeline: split prefetched, fetch, extract, cascade, summarize.
 
         Args:
@@ -418,11 +415,11 @@ class ResearchAgent:
     async def _try_coverage_retry(
         self,
         query: str,
-        existing_summaries: list,
+        existing_summaries: list[Summary],
         evaluation: RelevanceEvaluation,
         tried_queries: list[str],
         critique_context: str | None = None,
-    ) -> tuple[list, RelevanceEvaluation] | None:
+    ) -> tuple[list[Summary], RelevanceEvaluation] | None:
         """Attempt one coverage gap retry when relevance gate under-delivers.
 
         Calls identify_coverage_gaps() to diagnose why results are thin,
@@ -455,22 +452,11 @@ class ResearchAgent:
         for rq in gap.retry_queries:
             print(f"        \u2192 {rq}")
 
-        # Search each retry query
+        # Search retry queries in parallel (reuses _search_sub_queries)
         seen_urls = {s.url for s in existing_summaries}
-        retry_results: list[SearchResult] = []
-        for rq in gap.retry_queries:
-            try:
-                results = await asyncio.to_thread(
-                    search, rq, RETRY_SOURCES_PER_QUERY,
-                )
-                new = [r for r in results if r.url not in seen_urls]
-                for r in new:
-                    seen_urls.add(r.url)
-                retry_results.extend(new)
-                print(f"        \"{rq}\": {len(results)} results ({len(new)} new)")
-            except SearchError as e:
-                logger.warning("Retry query search failed: %s", e)
-                print(f"        \"{rq}\": search failed")
+        retry_results = await self._search_sub_queries(
+            gap.retry_queries, self.mode.retry_sources_per_query, seen_urls,
+        )
 
         if not retry_results:
             print(f"      No new results from retry queries")
@@ -503,7 +489,7 @@ class ResearchAgent:
     async def _evaluate_and_synthesize(
         self,
         query: str,
-        summaries: list,
+        summaries: list[Summary],
         refined_query: str,
         critique_context: str | None = None,
         tried_queries: list[str] | None = None,

@@ -23,6 +23,7 @@ class ResearchMode:
     min_sources_short_report: int  # Minimum survivors for short report (below = insufficient)
     relevance_cutoff: int = 3  # Minimum score (1-5) for a source to be kept
     decompose: bool = True  # Whether to attempt query decomposition
+    retry_sources_per_query: int = 3  # Sources per retry query during coverage gap retry
     cost_estimate: str = ""  # Estimated cost per query (e.g., "~$0.20")
     model: str = DEFAULT_MODEL  # Claude model for all API calls
 
@@ -94,6 +95,7 @@ class ResearchMode:
             min_sources_short_report=1,
             relevance_cutoff=3,
             decompose=False,  # Skip decomposition for speed
+            retry_sources_per_query=2,
             cost_estimate="~$0.12",
         )
 
@@ -167,6 +169,7 @@ class ResearchMode:
             min_sources_full_report=8,  # Increased for deep mode
             min_sources_short_report=5,  # Increased for deep mode
             relevance_cutoff=3,
+            retry_sources_per_query=5,
             cost_estimate="~$0.85",
         )
 
