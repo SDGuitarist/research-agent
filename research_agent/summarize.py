@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from anthropic import AsyncAnthropic, RateLimitError, APIError, APIConnectionError, APITimeoutError
 
 from .api_helpers import retry_api_call, process_in_batches
+from .modes import DEFAULT_MODEL
 from .extract import ExtractedContent
 from .sanitize import sanitize_content
 
@@ -72,7 +73,7 @@ async def summarize_chunk(
     chunk: str,
     url: str,
     title: str,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
     structured: bool = False,
     rate_limit_event: asyncio.Event | None = None,
 ) -> Summary | None:
@@ -154,7 +155,7 @@ Provide only a factual summary of the content above:"""
 async def summarize_content(
     client: AsyncAnthropic,
     content: ExtractedContent,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
     structured: bool = False,
     max_chunks: int = MAX_CHUNKS_PER_SOURCE,
     semaphore: asyncio.Semaphore | None = None,
@@ -207,7 +208,7 @@ async def summarize_content(
 async def summarize_all(
     client: AsyncAnthropic,
     contents: list[ExtractedContent],
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
     structured: bool = False,
     max_chunks: int = MAX_CHUNKS_PER_SOURCE,
 ) -> list[Summary]:

@@ -15,6 +15,7 @@ import yaml
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
 from .errors import ANTHROPIC_TIMEOUT
+from .modes import DEFAULT_MODEL
 from .sanitize import sanitize_content
 from .safe_io import atomic_write
 
@@ -117,7 +118,7 @@ def evaluate_report(
     dropped_sources: int,
     skeptic_findings: list | None,
     gate_decision: str,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
 ) -> CritiqueResult:
     """Call Claude to evaluate the just-completed report on 5 dimensions.
 
@@ -220,7 +221,7 @@ QUERY_DOMAIN: [1-3 word topic label]"""
 def critique_report_file(
     client: Anthropic,
     report_path: Path,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
 ) -> CritiqueResult:
     """Critique a saved report file by evaluating its text directly.
 

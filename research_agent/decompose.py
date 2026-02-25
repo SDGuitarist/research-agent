@@ -7,6 +7,7 @@ from pathlib import Path
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
 from .context import load_search_context
+from .modes import DEFAULT_MODEL
 from .errors import ANTHROPIC_TIMEOUT
 from .sanitize import sanitize_content
 
@@ -101,7 +102,7 @@ def decompose_query(
     client: Anthropic,
     query: str,
     context_path: Path | None = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
     critique_guidance: str | None = None,
 ) -> DecompositionResult:
     """

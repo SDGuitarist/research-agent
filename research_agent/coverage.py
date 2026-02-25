@@ -8,6 +8,7 @@ from anthropic import (
 )
 
 from .errors import ANTHROPIC_TIMEOUT
+from .modes import DEFAULT_MODEL
 from .sanitize import sanitize_content
 from .summarize import Summary
 from .token_budget import truncate_to_budget
@@ -267,7 +268,7 @@ async def identify_coverage_gaps(
     summaries: list[Summary],
     tried_queries: list[str],
     client: AsyncAnthropic,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
 ) -> CoverageGap:
     """Identify coverage gaps in research results using Claude.
 

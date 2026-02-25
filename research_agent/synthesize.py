@@ -15,6 +15,7 @@ from anthropic import (
     RateLimitError,
 )
 
+from .modes import DEFAULT_MODEL
 from .summarize import Summary
 from .errors import SynthesisError
 from .sanitize import sanitize_content
@@ -89,7 +90,7 @@ def synthesize_report(
     client: Anthropic,
     query: str,
     summaries: list[Summary],
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
     max_tokens: int = 4096,
     mode_instructions: str | None = None,
     limited_sources: bool = False,
@@ -256,7 +257,7 @@ def synthesize_draft(
     client: Anthropic,
     query: str,
     summaries: list[Summary],
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
     max_tokens: int = 4000,
 ) -> str:
     """Produce sections 1-8 (objective factual findings).
@@ -373,7 +374,7 @@ def synthesize_final(
     draft: str,
     skeptic_findings: list[SkepticFinding],
     summaries: list[Summary],
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
     max_tokens: int = 3000,
     business_context: str | None = None,
     limited_sources: bool = False,

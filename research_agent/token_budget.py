@@ -6,8 +6,10 @@ allocation to prevent context window overflow (risk F5.2).
 
 from dataclasses import dataclass, field
 
+from .modes import DEFAULT_MODEL
 
-def count_tokens(text: str, model: str = "claude-sonnet-4-20250514") -> int:
+
+def count_tokens(text: str, model: str = DEFAULT_MODEL) -> int:
     """Count tokens in text using anthropic's token counting.
 
     Falls back to a conservative character-based estimate (1 token ≈ 4 chars)

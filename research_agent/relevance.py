@@ -11,7 +11,7 @@ from anthropic import AsyncAnthropic, APIError, RateLimitError, APIConnectionErr
 
 from .api_helpers import retry_api_call, process_in_batches
 from .summarize import Summary
-from .modes import ResearchMode
+from .modes import DEFAULT_MODEL, ResearchMode
 from .sanitize import sanitize_content
 from .token_budget import truncate_to_budget
 
@@ -105,7 +105,7 @@ async def score_source(
     summary: Summary,
     client: AsyncAnthropic,
     rate_limit_event: asyncio.Event | None = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
     critique_guidance: str | None = None,
 ) -> SourceScore:
     """
@@ -379,7 +379,7 @@ async def generate_insufficient_data_response(
     refined_query: str | None,
     dropped_sources: tuple[SourceScore, ...],
     client: AsyncAnthropic,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
 ) -> str:
     """
     Generate a response explaining why insufficient relevant data was found.

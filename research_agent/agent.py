@@ -143,7 +143,7 @@ class ResearchAgent:
         gate_decision: str,
     ) -> None:
         """Run self-critique after report synthesis. Never crashes pipeline."""
-        if self.mode.name == "quick" or self.skip_critique:
+        if self.mode.is_quick or self.skip_critique:
             return  # Quick mode has no skeptic data; --no-critique opts out
 
         try:
@@ -200,19 +200,18 @@ class ResearchAgent:
         self._last_gate_decision = ""
         clear_context_cache()
         critique_context: str | None = None
-        if self.mode.name != "quick":
+        if not self.mode.is_quick:
             critique_ctx = await asyncio.to_thread(load_critique_history, META_DIR)
             if critique_ctx:
                 critique_context = critique_ctx.content
                 logger.info("Loaded critique history for adaptive prompts")
-        is_deep = self.mode.name == "deep"
 
         # Calculate total steps:
         # Quick=6, Standard=9, Deep=10
         # +1 if decomposition step is shown (mode.decompose is True)
-        if is_deep:
+        if self.mode.is_deep:
             base_steps = 9
-        elif self.mode.name == "standard":
+        elif self.mode.is_standard:
             base_steps = 8
         else:
             base_steps = 6
@@ -262,7 +261,7 @@ class ResearchAgent:
         self._next_step(f"Searching for: {query}")
         print(f"      Mode: {self.mode.name} ({self.mode.max_sources} sources, {self.mode.search_passes} passes)")
 
-        if is_deep:
+        if self.mode.is_deep:
             return await self._research_deep(query, decomposition, critique_context)
         else:
             return await self._research_with_refinement(query, decomposition, critique_context)
@@ -455,7 +454,7 @@ class ResearchAgent:
         total_count = evaluation.total_scored
 
         # Quick mode: single-pass synthesis (no skeptic)
-        if self.mode.name == "quick":
+        if self.mode.is_quick:
             label = "short report" if limited_sources else "report"
             self._next_step(f"Synthesizing {label} with {self.mode.model}...")
             print()  # blank line before streaming
@@ -477,7 +476,6 @@ class ResearchAgent:
             return report
 
         # Standard/deep mode: draft → skeptic → final synthesis
-        is_deep = self.mode.name == "deep"
 
         self._next_step("Generating draft analysis...")
         print()  # blank line before streaming
@@ -491,7 +489,7 @@ class ResearchAgent:
         synthesis_context = synth_result.content
 
         try:
-            if is_deep:
+            if self.mode.is_deep:
                 findings = await run_deep_skeptic_pass(
                     self.async_client, draft, synthesis_context,
                     model=self.mode.model,
@@ -523,7 +521,7 @@ class ResearchAgent:
             limited_sources=limited_sources,
             dropped_count=dropped_count,
             total_count=total_count,
-            is_deep=is_deep,
+            is_deep=self.mode.is_deep,
             critique_guidance=critique_context,
         )
         await asyncio.to_thread(

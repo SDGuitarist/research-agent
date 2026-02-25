@@ -13,6 +13,7 @@ from anthropic import (
 )
 
 from .api_helpers import retry_api_call
+from .modes import DEFAULT_MODEL
 from .sanitize import sanitize_content
 from .errors import SkepticError
 
@@ -66,7 +67,7 @@ async def _call_skeptic(
     system_prompt: str,
     user_prompt: str,
     lens: str,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
     max_tokens: int = 1500,
 ) -> SkepticFinding:
     """Make a skeptic API call and parse the response.
@@ -130,7 +131,7 @@ async def run_skeptic_evidence(
     draft: str,
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
 ) -> SkepticFinding:
     """Skeptic 1: Evidence Alignment.
 
@@ -184,7 +185,7 @@ async def run_skeptic_timing(
     draft: str,
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
 ) -> SkepticFinding:
     """Skeptic 2: Timing & Stakes.
 
@@ -236,7 +237,7 @@ async def run_skeptic_frame(
     draft: str,
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
 ) -> SkepticFinding:
     """Skeptic 3: Break the Trolley.
 
@@ -287,7 +288,7 @@ async def run_skeptic_combined(
     client: AsyncAnthropic,
     draft: str,
     synthesis_context: str | None = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
 ) -> SkepticFinding:
     """Single-pass skeptic for standard mode.
 
@@ -341,7 +342,7 @@ async def run_deep_skeptic_pass(
     client: AsyncAnthropic,
     draft: str,
     synthesis_context: str | None = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
 ) -> list[SkepticFinding]:
     """Run three skeptic agents with evidence+timing in parallel (deep mode).
 

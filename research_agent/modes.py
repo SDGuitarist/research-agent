@@ -2,6 +2,9 @@
 
 from dataclasses import dataclass
 
+# Single source of truth for the default Claude model across all modules.
+DEFAULT_MODEL = "claude-sonnet-4-20250514"
+
 
 @dataclass(frozen=True)
 class ResearchMode:
@@ -21,7 +24,19 @@ class ResearchMode:
     relevance_cutoff: int = 3  # Minimum score (1-5) for a source to be kept
     decompose: bool = True  # Whether to attempt query decomposition
     cost_estimate: str = ""  # Estimated cost per query (e.g., "~$0.20")
-    model: str = "claude-sonnet-4-20250514"  # Claude model for all API calls
+    model: str = DEFAULT_MODEL  # Claude model for all API calls
+
+    @property
+    def is_quick(self) -> bool:
+        return self.name == "quick"
+
+    @property
+    def is_standard(self) -> bool:
+        return self.name == "standard"
+
+    @property
+    def is_deep(self) -> bool:
+        return self.name == "deep"
 
     def __post_init__(self) -> None:
         """Validate mode configuration."""

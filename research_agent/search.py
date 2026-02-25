@@ -8,6 +8,8 @@ from dataclasses import dataclass
 
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 from ddgs import DDGS
+
+from .modes import DEFAULT_MODEL
 from ddgs.exceptions import DDGSException, RatelimitException
 from tavily.errors import (
     BadRequestError as TavilyBadRequest,
@@ -173,7 +175,7 @@ def refine_query(
     client: Anthropic,
     original_query: str,
     summaries: list[str],
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_MODEL,
 ) -> str:
     """
     Generate a refined follow-up search query based on initial findings.
