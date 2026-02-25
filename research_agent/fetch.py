@@ -78,19 +78,21 @@ PROCESSABLE_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "text/plain"}
 # Blocked URL schemes (prevent SSRF)
 ALLOWED_SCHEMES = {"http", "https"}
 
-# Blocked hosts (internal/private networks)
+# Blocked hosts (internal/private networks + cloud metadata endpoints)
 BLOCKED_HOSTS = {
     "localhost",
     "127.0.0.1",
     "0.0.0.0",
     "::1",
+    "169.254.169.254",
+    "metadata.google.internal",
 }
 
 # Maximum redirects to follow per URL (prevents redirect loops)
 MAX_REDIRECTS = 10
 
-# Maximum response body size (10 MB) — enforced via streaming
-MAX_RESPONSE_SIZE = 10 * 1024 * 1024
+# Maximum response body size (5 MB) — matches extract.py MAX_HTML_SIZE
+MAX_RESPONSE_SIZE = 5 * 1024 * 1024
 
 
 def _is_private_ip(ip_str: str) -> bool:

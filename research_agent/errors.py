@@ -24,10 +24,6 @@ class SkepticError(ResearchError):
     pass
 
 
-class ContextError(ResearchError):
-    """Base exception for all context loading failures."""
-    pass
-
 
 class SchemaError(ResearchError):
     """YAML parse or validation failure.

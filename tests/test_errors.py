@@ -1,7 +1,6 @@
 """Tests for the exception hierarchy in research_agent.errors."""
 
 from research_agent.errors import (
-    ContextError,
     ResearchError,
     SchemaError,
     SearchError,
@@ -12,10 +11,7 @@ from research_agent.errors import (
 
 
 class TestAllExceptionsSubclassResearchError:
-    """ContextError, SchemaError, and StateError all subclass ResearchError."""
-
-    def test_context_error(self):
-        assert issubclass(ContextError, ResearchError)
+    """SchemaError and StateError subclass ResearchError."""
 
     def test_schema_error(self):
         assert issubclass(SchemaError, ResearchError)
@@ -44,10 +40,6 @@ class TestSchemaErrorCarriesMultipleErrors:
 
 class TestExceptionsCarryMessage:
     """All new exceptions accept and store a message string."""
-
-    def test_context_error_message(self):
-        err = ContextError("context failed")
-        assert str(err) == "context failed"
 
     def test_schema_error_message(self):
         err = SchemaError("bad yaml")

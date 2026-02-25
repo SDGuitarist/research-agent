@@ -4,7 +4,13 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
-from anthropic import AsyncAnthropic, RateLimitError, APIError, APITimeoutError
+from anthropic import (
+    AsyncAnthropic,
+    APIConnectionError,
+    APIError,
+    APITimeoutError,
+    RateLimitError,
+)
 
 from .sanitize import sanitize_content
 from .errors import SkepticError
@@ -104,6 +110,12 @@ async def _call_skeptic(
                 await asyncio.sleep(2.0)
                 continue
             raise SkepticError(f"Skeptic ({lens}) timed out: {e}")
+        except APIConnectionError as e:
+            if attempt < SKEPTIC_MAX_RETRIES:
+                logger.warning(f"Skeptic ({lens}) connection error, retrying in 2s...")
+                await asyncio.sleep(2.0)
+                continue
+            raise SkepticError(f"Skeptic ({lens}) connection error: {e}")
         except APIError as e:
             raise SkepticError(f"Skeptic ({lens}) API error: {e}")
 

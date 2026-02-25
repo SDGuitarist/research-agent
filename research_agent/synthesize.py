@@ -7,7 +7,13 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from anthropic import Anthropic, RateLimitError, APIError, APITimeoutError
+from anthropic import (
+    Anthropic,
+    APIConnectionError,
+    APIError,
+    APITimeoutError,
+    RateLimitError,
+)
 
 from .summarize import Summary
 from .errors import SynthesisError
@@ -236,6 +242,8 @@ Write the report now:"""
         raise SynthesisError(f"Rate limited: {e}")
     except APITimeoutError as e:
         raise SynthesisError(f"Request timed out after {SYNTHESIS_TIMEOUT}s: {e}")
+    except APIConnectionError as e:
+        raise SynthesisError(f"Connection error: {e}")
     except APIError as e:
         raise SynthesisError(f"API error: {e}")
     except (SynthesisError, KeyboardInterrupt):
@@ -339,6 +347,8 @@ Write sections 1-8 now:"""
         raise SynthesisError(f"Draft synthesis rate limited: {e}")
     except APITimeoutError as e:
         raise SynthesisError(f"Draft synthesis timed out: {e}")
+    except APIConnectionError as e:
+        raise SynthesisError(f"Draft synthesis connection error: {e}")
     except APIError as e:
         raise SynthesisError(f"Draft synthesis API error: {e}")
     except (SynthesisError, KeyboardInterrupt):
@@ -575,6 +585,8 @@ Continue the report now:"""
         raise SynthesisError(f"Final synthesis rate limited: {e}")
     except APITimeoutError as e:
         raise SynthesisError(f"Final synthesis timed out: {e}")
+    except APIConnectionError as e:
+        raise SynthesisError(f"Final synthesis connection error: {e}")
     except APIError as e:
         raise SynthesisError(f"Final synthesis API error: {e}")
     except (SynthesisError, KeyboardInterrupt):
