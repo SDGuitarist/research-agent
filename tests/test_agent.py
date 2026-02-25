@@ -17,6 +17,7 @@ from research_agent.context_result import ContextResult
 from research_agent.schema import Gap, GapStatus, SchemaResult
 from research_agent.cycle_config import CycleConfig
 from research_agent.errors import StateError
+from research_agent.coverage import CoverageGap
 
 
 class TestResearchAgentQuickMode:
@@ -1628,3 +1629,381 @@ class TestResearchAgentPostResearch:
 
             # Should NOT raise — graceful degradation
             agent._update_gap_states("full_report")
+
+
+class TestCoverageGapRetry:
+    """Tests for _try_coverage_retry() and its integration with _evaluate_and_synthesize."""
+
+    def _make_agent(self):
+        with patch("research_agent.agent.Anthropic"), \
+             patch("research_agent.agent.AsyncAnthropic"):
+            agent = ResearchAgent(
+                api_key="test-key", mode=ResearchMode.standard(),
+                skip_critique=True,
+            )
+        agent._start_time = 0.0
+        agent._step_num = 0
+        agent._step_total = 10
+        return agent
+
+    def _make_summaries(self, count=2):
+        return [
+            Summary(
+                url=f"https://example{i}.com/page",
+                title=f"Source {i}",
+                summary=f"Summary {i} with useful content.",
+            )
+            for i in range(1, count + 1)
+        ]
+
+    def _make_evaluation(self, decision, surviving=(), dropped=(), total_scored=0):
+        return RelevanceEvaluation(
+            decision=decision,
+            decision_rationale=f"Test: {decision}",
+            surviving_sources=tuple(surviving),
+            dropped_sources=tuple(dropped),
+            total_scored=total_scored,
+            total_survived=len(surviving),
+            refined_query="refined query",
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_skipped_when_no_retry(self):
+        """NO_RETRY gap recommendation → returns None."""
+        agent = self._make_agent()
+        evaluation = self._make_evaluation("insufficient_data")
+
+        gap = CoverageGap(
+            gap_type="ABSENCE",
+            description="Data doesn't exist",
+            retry_recommendation="NO_RETRY",
+            retry_queries=(),
+            reasoning="No evidence",
+        )
+
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
+             patch("builtins.print"):
+            result = await agent._try_coverage_retry(
+                "test query", [], evaluation, ["test query"],
+            )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_retry_skipped_when_maybe_retry(self):
+        """MAYBE_RETRY → returns None (conservative)."""
+        agent = self._make_agent()
+        evaluation = self._make_evaluation("insufficient_data")
+
+        gap = CoverageGap(
+            gap_type="THIN_FOOTPRINT",
+            description="Limited presence",
+            retry_recommendation="MAYBE_RETRY",
+            retry_queries=("alternative search terms here",),
+            reasoning="Niche topic",
+        )
+
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
+             patch("builtins.print"):
+            result = await agent._try_coverage_retry(
+                "test query", [], evaluation, ["test query"],
+            )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_retry_skipped_when_retry_but_no_queries(self):
+        """RETRY with empty queries → returns None."""
+        agent = self._make_agent()
+        evaluation = self._make_evaluation("insufficient_data")
+
+        gap = CoverageGap(
+            gap_type="COVERAGE_GAP",
+            description="Missing info",
+            retry_recommendation="RETRY",
+            retry_queries=(),
+            reasoning="Gap found",
+        )
+
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
+             patch("builtins.print"):
+            result = await agent._try_coverage_retry(
+                "test query", [], evaluation, ["test query"],
+            )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_retry_skipped_when_search_finds_no_new_urls(self):
+        """RETRY queries return only already-seen URLs → returns None."""
+        agent = self._make_agent()
+        existing = self._make_summaries(2)
+        evaluation = self._make_evaluation("insufficient_data")
+
+        gap = CoverageGap(
+            gap_type="QUERY_MISMATCH",
+            description="Wrong terminology",
+            retry_recommendation="RETRY",
+            retry_queries=("better search terms here",),
+            reasoning="Language mismatch",
+        )
+
+        # Search returns URLs already in existing summaries
+        duplicate_results = [
+            SearchResult(title="Source 1", url="https://example1.com/page", snippet="S")
+        ]
+
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
+             patch("research_agent.agent.search", return_value=duplicate_results), \
+             patch("builtins.print"):
+            result = await agent._try_coverage_retry(
+                "test query", existing, evaluation, ["test query"],
+            )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_retry_returns_combined_summaries_on_success(self):
+        """Successful retry → returns (combined_summaries, new_evaluation)."""
+        agent = self._make_agent()
+        existing = self._make_summaries(1)
+        evaluation = self._make_evaluation("insufficient_data")
+
+        gap = CoverageGap(
+            gap_type="QUERY_MISMATCH",
+            description="Wrong terminology",
+            retry_recommendation="RETRY",
+            retry_queries=("better search terms here",),
+            reasoning="Language mismatch",
+        )
+
+        new_results = [
+            SearchResult(title="New Source", url="https://new.com/page", snippet="New")
+        ]
+        new_summaries = [
+            Summary(url="https://new.com/page", title="New Source", summary="New content")
+        ]
+        new_eval = self._make_evaluation(
+            "full_report",
+            surviving=existing + new_summaries,
+            total_scored=2,
+        )
+
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
+             patch("research_agent.agent.search", return_value=new_results), \
+             patch.object(agent, "_fetch_extract_summarize", new_callable=AsyncMock, return_value=new_summaries), \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=new_eval), \
+             patch("builtins.print"):
+            result = await agent._try_coverage_retry(
+                "test query", existing, evaluation, ["test query"],
+            )
+
+        assert result is not None
+        combined, new_evaluation = result
+        assert len(combined) == 2  # 1 existing + 1 new
+        assert new_evaluation.decision == "full_report"
+
+    @pytest.mark.asyncio
+    async def test_retry_returns_none_when_fetch_fails(self):
+        """ResearchError during fetch → returns None (graceful degradation)."""
+        agent = self._make_agent()
+        evaluation = self._make_evaluation("insufficient_data")
+
+        gap = CoverageGap(
+            gap_type="COVERAGE_GAP",
+            description="Missing pricing",
+            retry_recommendation="RETRY",
+            retry_queries=("pricing comparison data here",),
+            reasoning="Subtopic gap",
+        )
+
+        new_results = [
+            SearchResult(title="New", url="https://new.com/page", snippet="S")
+        ]
+
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
+             patch("research_agent.agent.search", return_value=new_results), \
+             patch.object(agent, "_fetch_extract_summarize", new_callable=AsyncMock, side_effect=ResearchError("fetch failed")), \
+             patch("builtins.print"):
+            result = await agent._try_coverage_retry(
+                "test query", [], evaluation, ["test query"],
+            )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_retry_passes_tried_queries_to_gap_identifier(self):
+        """Tried queries should be forwarded to identify_coverage_gaps."""
+        agent = self._make_agent()
+        evaluation = self._make_evaluation("insufficient_data")
+
+        gap = CoverageGap(
+            gap_type="ABSENCE",
+            description="Not found",
+            retry_recommendation="NO_RETRY",
+            retry_queries=(),
+            reasoning="No evidence",
+        )
+
+        tried = ["original query", "refined query", "sub query one"]
+
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap) as mock_identify, \
+             patch("builtins.print"):
+            await agent._try_coverage_retry(
+                "original query", [], evaluation, tried,
+            )
+
+        call_kwargs = mock_identify.call_args[1]
+        assert call_kwargs["tried_queries"] == tried
+
+    @pytest.mark.asyncio
+    async def test_retry_search_failure_continues(self):
+        """SearchError on retry query → skipped, other queries still tried."""
+        agent = self._make_agent()
+        evaluation = self._make_evaluation("insufficient_data")
+
+        gap = CoverageGap(
+            gap_type="QUERY_MISMATCH",
+            description="Wrong terms",
+            retry_recommendation="RETRY",
+            retry_queries=("failing query here now", "working query here now"),
+            reasoning="Mismatch",
+        )
+
+        from research_agent.errors import SearchError
+
+        new_results = [
+            SearchResult(title="New", url="https://new.com/page", snippet="S")
+        ]
+        new_summaries = [
+            Summary(url="https://new.com/page", title="New", summary="Content")
+        ]
+        new_eval = self._make_evaluation("short_report", surviving=new_summaries, total_scored=1)
+
+        # First query fails, second succeeds
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
+             patch("research_agent.agent.search", side_effect=[SearchError("timeout"), new_results]), \
+             patch.object(agent, "_fetch_extract_summarize", new_callable=AsyncMock, return_value=new_summaries), \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=new_eval), \
+             patch("builtins.print"):
+            result = await agent._try_coverage_retry(
+                "test query", [], evaluation, ["test query"],
+            )
+
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_evaluate_and_synthesize_triggers_retry_on_insufficient(self):
+        """_evaluate_and_synthesize calls retry on insufficient_data, upgrades to full_report."""
+        agent = self._make_agent()
+        summaries = self._make_summaries(2)
+
+        insufficient_eval = self._make_evaluation(
+            "insufficient_data",
+            dropped=(SourceScore(url="https://ex.com", title="T", score=2, explanation="Bad"),),
+            total_scored=1,
+        )
+        full_eval = self._make_evaluation(
+            "full_report",
+            surviving=summaries,
+            total_scored=2,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=insufficient_eval), \
+             patch.object(agent, "_try_coverage_retry", new_callable=AsyncMock, return_value=(summaries, full_eval)) as mock_retry, \
+             patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context", return_value=ContextResult.loaded("ctx")), \
+             patch("research_agent.agent.synthesize_final", return_value="Full Report"), \
+             patch("builtins.print"):
+            mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
+
+            result = await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+                tried_queries=["test query", "refined"],
+            )
+
+        assert "Full Report" in result
+        mock_retry.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_and_synthesize_triggers_retry_on_short_report(self):
+        """_evaluate_and_synthesize calls retry on short_report."""
+        agent = self._make_agent()
+        summaries = self._make_summaries(2)
+
+        short_eval = self._make_evaluation(
+            "short_report",
+            surviving=summaries[:1],
+            total_scored=2,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=short_eval), \
+             patch.object(agent, "_try_coverage_retry", new_callable=AsyncMock, return_value=None) as mock_retry, \
+             patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context", return_value=ContextResult.loaded("ctx")), \
+             patch("research_agent.agent.synthesize_final", return_value="Short Report"), \
+             patch("builtins.print"):
+            mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
+
+            result = await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+                tried_queries=["test query"],
+            )
+
+        # Retry was called but returned None (no improvement)
+        mock_retry.assert_called_once()
+        assert "Short Report" in result
+
+    @pytest.mark.asyncio
+    async def test_evaluate_and_synthesize_no_retry_on_full_report(self):
+        """full_report decision → no retry attempted."""
+        agent = self._make_agent()
+        summaries = self._make_summaries(3)
+
+        full_eval = self._make_evaluation(
+            "full_report",
+            surviving=summaries,
+            total_scored=3,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=full_eval), \
+             patch.object(agent, "_try_coverage_retry", new_callable=AsyncMock) as mock_retry, \
+             patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
+             patch("research_agent.agent.load_synthesis_context", return_value=ContextResult.loaded("ctx")), \
+             patch("research_agent.agent.synthesize_final", return_value="Full Report"), \
+             patch("builtins.print"):
+            mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
+
+            await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+                tried_queries=["test query"],
+            )
+
+        mock_retry.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_and_synthesize_no_retry_on_no_new_findings(self):
+        """no_new_findings decision → no retry attempted."""
+        agent = self._make_agent()
+        summaries = self._make_summaries(2)
+
+        no_findings_eval = self._make_evaluation(
+            "no_new_findings",
+            dropped=(SourceScore(url="https://ex.com", title="T", score=1, explanation="Bad"),),
+            total_scored=1,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=no_findings_eval), \
+             patch.object(agent, "_try_coverage_retry", new_callable=AsyncMock) as mock_retry, \
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No Data"), \
+             patch("builtins.print"):
+
+            await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+                tried_queries=["test query"],
+            )
+
+        mock_retry.assert_not_called()

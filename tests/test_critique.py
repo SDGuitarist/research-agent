@@ -254,7 +254,8 @@ class TestCritiqueContextThreading:
         )
 
         with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=fake_eval) as mock_eval, \
-             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No data"):
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No data"), \
+             patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock):
             await agent._evaluate_and_synthesize(
                 query="test",
                 summaries=[],
@@ -287,7 +288,8 @@ class TestCritiqueContextThreading:
         )
 
         with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=fake_eval) as mock_eval, \
-             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No data"):
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No data"), \
+             patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock):
             await agent._evaluate_and_synthesize(
                 query="test",
                 summaries=[],

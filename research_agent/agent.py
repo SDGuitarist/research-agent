@@ -21,6 +21,7 @@ from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_synthesis_context, load_critique_history, clear_context_cache
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
+from .coverage import identify_coverage_gaps
 from .errors import ResearchError, SearchError, SkepticError, StateError
 from .critique import evaluate_report, save_critique, CritiqueResult
 from .modes import ResearchMode
@@ -37,6 +38,9 @@ MAX_CONCURRENT_SUB_QUERIES = 2
 
 # Default directory for critique metadata files
 META_DIR = Path("reports/meta")
+
+# Sources to search per retry query during coverage gap retry
+RETRY_SOURCES_PER_QUERY = 3
 
 
 class ResearchAgent:
@@ -94,9 +98,9 @@ class ResearchAgent:
     def _update_gap_states(self, decision: str) -> None:
         """Update gap schema after research completes.
 
-        - full_report / short_report → mark_verified() for researched gaps
-        - no_new_findings → mark_checked() (searched but found nothing)
-        - insufficient_data → no state update (search itself failed)
+        - full_report / short_report -> mark_verified() for researched gaps
+        - no_new_findings -> mark_checked() (searched but found nothing)
+        - insufficient_data -> no state update (search itself failed)
         """
         schema_result = self._current_schema_result
         if not schema_result or self._current_research_batch is None:
@@ -125,7 +129,7 @@ class ResearchAgent:
                 updated_gaps.append(new_gap)
                 logger.info("Gap '%s' checked (no new findings)", gap.id)
             else:
-                # insufficient_data — don't update state
+                # insufficient_data -- don't update state
                 updated_gaps.append(gap)
 
         try:
@@ -232,9 +236,9 @@ class ResearchAgent:
                     print(f"      {reasoning}")
                 print(f"      Decomposed into {len(sub_queries)} sub-queries:")
                 for sq in sub_queries:
-                    print(f"      → {sq}")
+                    print(f"      \u2192 {sq}")
             else:
-                print(f"      Simple query — skipping decomposition")
+                print(f"      Simple query \u2014 skipping decomposition")
 
         # Pre-research gap check (if schema configured)
         if self.schema_path:
@@ -388,7 +392,7 @@ class ResearchAgent:
                 seen_content_urls.add(c.url)
                 contents.append(c)
         if len(contents) < len(all_contents):
-            print(f"      Deduplicated: {len(all_contents)} → {len(contents)} unique pages")
+            print(f"      Deduplicated: {len(all_contents)} \u2192 {len(contents)} unique pages")
         print(f"      Extracted content from {len(contents)} pages")
 
         if not contents:
@@ -411,12 +415,98 @@ class ResearchAgent:
 
         return summaries
 
+    async def _try_coverage_retry(
+        self,
+        query: str,
+        existing_summaries: list,
+        evaluation: RelevanceEvaluation,
+        tried_queries: list[str],
+        critique_context: str | None = None,
+    ) -> tuple[list, RelevanceEvaluation] | None:
+        """Attempt one coverage gap retry when relevance gate under-delivers.
+
+        Calls identify_coverage_gaps() to diagnose why results are thin,
+        then searches with any RETRY queries and re-evaluates.
+
+        Returns:
+            (combined_summaries, new_evaluation) if retry improved results,
+            None if retry was skipped or found nothing new.
+        """
+        gap = await identify_coverage_gaps(
+            query=query,
+            summaries=list(evaluation.surviving_sources),
+            tried_queries=tried_queries,
+            client=self.async_client,
+            model=self.mode.model,
+        )
+
+        logger.info(
+            "Coverage gap: %s (%s) \u2014 %s",
+            gap.gap_type, gap.description, gap.retry_recommendation,
+        )
+        print(f"      Coverage gap: {gap.gap_type} \u2014 {gap.retry_recommendation}")
+
+        if gap.retry_recommendation != "RETRY" or not gap.retry_queries:
+            if gap.retry_recommendation == "MAYBE_RETRY":
+                print(f"      Skipping retry (conservative \u2014 MAYBE_RETRY)")
+            return None
+
+        print(f"      Retrying with {len(gap.retry_queries)} new queries:")
+        for rq in gap.retry_queries:
+            print(f"        \u2192 {rq}")
+
+        # Search each retry query
+        seen_urls = {s.url for s in existing_summaries}
+        retry_results: list[SearchResult] = []
+        for rq in gap.retry_queries:
+            try:
+                results = await asyncio.to_thread(
+                    search, rq, RETRY_SOURCES_PER_QUERY,
+                )
+                new = [r for r in results if r.url not in seen_urls]
+                for r in new:
+                    seen_urls.add(r.url)
+                retry_results.extend(new)
+                print(f"        \"{rq}\": {len(results)} results ({len(new)} new)")
+            except SearchError as e:
+                logger.warning("Retry query search failed: %s", e)
+                print(f"        \"{rq}\": search failed")
+
+        if not retry_results:
+            print(f"      No new results from retry queries")
+            return None
+
+        # Fetch, extract, summarize new results (quiet -- no step headers)
+        try:
+            new_summaries = await self._fetch_extract_summarize(
+                retry_results, quiet=True,
+            )
+        except ResearchError as e:
+            logger.warning("Retry fetch/summarize failed: %s", e)
+            return None
+
+        # Combine and re-evaluate
+        combined = existing_summaries + new_summaries
+        print(f"      Retry added {len(new_summaries)} summaries (total: {len(combined)})")
+
+        new_eval = await evaluate_sources(
+            query=query,
+            summaries=combined,
+            mode=self.mode,
+            client=self.async_client,
+            refined_query=evaluation.refined_query,
+            critique_guidance=critique_context,
+        )
+
+        return combined, new_eval
+
     async def _evaluate_and_synthesize(
         self,
         query: str,
         summaries: list,
         refined_query: str,
         critique_context: str | None = None,
+        tried_queries: list[str] | None = None,
     ) -> str:
         """Evaluate source relevance and synthesize report."""
         self._next_step("Evaluating source relevance...")
@@ -428,6 +518,16 @@ class ResearchAgent:
             refined_query=refined_query,
             critique_guidance=critique_context,
         )
+
+        # Coverage gap retry for insufficient_data or short_report
+        if evaluation.decision in ("insufficient_data", "short_report"):
+            retry_result = await self._try_coverage_retry(
+                query, summaries, evaluation,
+                tried_queries or [],
+                critique_context=critique_context,
+            )
+            if retry_result is not None:
+                summaries, evaluation = retry_result
 
         # Branch based on relevance gate decision
         if evaluation.decision in ("insufficient_data", "no_new_findings"):
@@ -475,8 +575,7 @@ class ResearchAgent:
                 self._update_gap_states(evaluation.decision)
             return report
 
-        # Standard/deep mode: draft → skeptic → final synthesis
-
+        # Standard/deep mode: draft -> skeptic -> final synthesis
         self._next_step("Generating draft analysis...")
         print()  # blank line before streaming
         draft = await asyncio.to_thread(
@@ -587,14 +686,22 @@ class ResearchAgent:
         all_results = pass1_results + new_results
         print(f"      Total: {len(all_results)} unique sources")
 
-        # Fetch → extract → cascade → summarize
+        # Fetch -> extract -> cascade -> summarize
         summaries = await self._fetch_extract_summarize(all_results)
+
+        # Build tried_queries list for coverage gap analysis
+        tried = [query]
+        if refined_query != query:
+            tried.append(refined_query)
+        if decomposition and decomposition.is_complex:
+            tried.extend(decomposition.sub_queries)
 
         return await self._evaluate_and_synthesize(
             query=query,
             summaries=summaries,
             refined_query=refined_query,
             critique_context=critique_context,
+            tried_queries=tried,
         )
 
     async def _research_deep(
@@ -622,7 +729,7 @@ class ResearchAgent:
             )
             results.extend(new_from_subs)
 
-        # Pass 1: fetch → extract → cascade → summarize
+        # Pass 1: fetch -> extract -> cascade -> summarize
         summaries = await self._fetch_extract_summarize(
             results, structured=True, max_chunks=5
         )
@@ -664,9 +771,17 @@ class ResearchAgent:
             logger.warning(f"Pass 2 search failed: {e}, continuing with pass 1 results")
             print(f"      Pass 2 search failed, continuing with {len(summaries)} summaries")
 
+        # Build tried_queries list for coverage gap analysis
+        tried = [query]
+        if refined_query != query:
+            tried.append(refined_query)
+        if decomposition and decomposition.is_complex:
+            tried.extend(decomposition.sub_queries)
+
         return await self._evaluate_and_synthesize(
             query=query,
             summaries=summaries,
             refined_query=refined_query,
             critique_context=critique_context,
+            tried_queries=tried,
         )
