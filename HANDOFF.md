@@ -1,50 +1,39 @@
-# Handoff: Background Research Agents — Compound Complete
+# Handoff: Compound + Housekeeping Complete
 
 ## Current State
 
-**Project:** Research Agent — Background Research Agents
-**Phase:** COMPOUND COMPLETE
-**Branch:** `feat/background-research-agents`
+**Project:** Research Agent
+**Phase:** DONE — ready for next cycle
+**Branch:** `main`
 **Date:** February 26, 2026
 
 ---
 
 ## What Was Done This Session
 
-1. **Read all prior phase outputs** — brainstorm, plan, review HANDOFF, todos 054-063, both skill files
-2. **Created compound document** at `docs/solutions/architecture/skill-only-features-background-research.md`
-3. **Documented 5 reusable patterns:**
-   - Claude has no clock — use deterministic identifiers
-   - Shell escaping is functional, not just security
-   - Single writer eliminates concurrency but stale detection needs care
-   - Validate paths from hand-edited files
-   - Skill-only features need extra review rigor
-4. **Tracked the full risk chain** in `## Risk Resolution` — 3 risks from brainstorm/plan/review feed-forward, 2 resolved, 1 accepted as fundamental limitation
+1. **Compound doc written** (`f87449d`) — Documented the synthesis template fix pattern in `docs/solutions/logic-errors/conditional-prompt-templates-by-context.md`. Pattern: gate domain-specific prompt structure on whether domain context is present.
+2. **P1 todos 043 and 044** — Already resolved in a prior session (quick-mode retry guard at agent.py:542, type hint fix at coverage.py:67). Both marked `status: done`.
+3. **HANDOFF.md updated** — This file.
+4. **Journal entry** — Added to `~/Documents/dev-notes/2026-02-26.md`.
 
-### Full Commit History (Branch)
+## Previous Session Work (for context)
 
-| Commit | Description |
-|--------|-------------|
-| `a550e6f` | docs: brainstorm + plan for background research agents |
-| `52e32bf` | feat: add /research:queue and /research:digest skills |
-| `f321431` | fix(review): address all review findings for background research skills |
-| `6fb0313` | docs: update HANDOFF.md after review + fix phase |
-| (pending) | docs(compound): document skill-only feature patterns |
+- **Commit `5f3a9d5`:** Synthesis template fix — draft and final synthesis now select template based on business context availability
+- **Commit `2b5f060`:** Background research agents (queue + digest skills)
+- **695 tests passing**
 
 ## Three Questions
 
-1. **Hardest pattern to extract from the fixes?** Pattern 1 (Claude has no clock). The timestamp collision looks like a normal uniqueness bug but its root cause is a property of the inference medium — Claude generates all values in one pass with no time progression. This is non-obvious and will recur in any skill that asks Claude to generate "unique" values.
-
-2. **What did I consider documenting but left out, and why?** The P3 fix details (budget validation defaults, error truncation rules, which specific sections were removed). They're tracked in todo files but don't represent reusable patterns — documenting them would dilute signal.
-
-3. **What might future sessions miss that this solution doesn't cover?** Runtime interpretation of skill instructions. All review was static analysis of prose. Whether Claude reliably applies escaping, parses queue states, and handles Edit tool exact-match requirements can only be validated through real-world usage.
+1. **Hardest implementation decision in this session?** Whether to create todo fix commits for 043/044 or just acknowledge they're already done. Chose to skip redundant commits since the fixes are already on main.
+2. **What did you consider changing but left alone, and why?** Considered auditing decompose.py and relevance.py for business-context assumptions (flagged in the compound doc's "what might future sessions miss"). Left it — that's a separate investigation, not this session's scope.
+3. **Least confident about going into review?** The compound doc's third question flags unaudited prompts in decompose.py and relevance.py that may assume business context. Future work should verify.
 
 ## Next Phase
 
-**MERGE** — The feature branch is complete through all 5 compound engineering phases. Ready to merge `feat/background-research-agents` into `main`.
+Next cycle planning — pick the next feature from the roadmap (Cycle 21: iterative research loops per `docs/research/master-recommendations-future-cycles.md`).
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. Merge feat/background-research-agents into main. Then run /research:queue with a few test queries to validate the skills work end-to-end.
+Read docs/research/master-recommendations-future-cycles.md. Start brainstorm for Cycle 21 (iterative research loops / gap-aware retry). Relevant context: docs/brainstorms/ for prior brainstorm format, HANDOFF.md for current state.
 ```
