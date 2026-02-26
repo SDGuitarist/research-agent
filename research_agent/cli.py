@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 from research_agent import ResearchAgent
 from research_agent.agent import META_DIR
-from research_agent.context import load_critique_history
+from research_agent.context import load_critique_history, resolve_context_path
 from research_agent.critique import critique_report_file, save_critique
 from research_agent.errors import ResearchError
 from research_agent.modes import ResearchMode
@@ -231,6 +231,13 @@ Examples:
         action="store_true",
         help="Skip post-report self-critique (saves one API call)",
     )
+    parser.add_argument(
+        "--context",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help='Context file to load from contexts/ (e.g. "pfe", "none" for no context)',
+    )
 
     args = parser.parse_args()
 
@@ -298,11 +305,25 @@ Examples:
         print(f"Note: --max-sources ignored when using --{mode.name} (uses {mode.max_sources} sources)",
               file=sys.stderr)
 
+    # Resolve context path from --context flag
+    context_path = None  # means "use default"
+    no_context = False
+    if args.context is not None:
+        try:
+            context_path = resolve_context_path(args.context)
+        except FileNotFoundError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        if context_path is None:
+            no_context = True  # --context none: explicitly skip context
+
     try:
         agent = ResearchAgent(
             mode=mode,
             max_sources=args.max_sources if not mode_flag_used else None,
             skip_critique=args.no_critique,
+            context_path=context_path,
+            no_context=no_context,
         )
 
         report = agent.research(args.query)

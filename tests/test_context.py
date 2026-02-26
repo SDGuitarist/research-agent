@@ -9,6 +9,8 @@ import yaml
 from research_agent.context import (
     load_full_context,
     load_critique_history,
+    resolve_context_path,
+    CONTEXTS_DIR,
     _validate_critique_yaml,
     _summarize_patterns,
 )
@@ -121,6 +123,48 @@ class TestContextResultReturnTypes:
         assert result.error != ""
         assert result.content is None
 
+
+class TestResolveContextPath:
+    """Tests for resolve_context_path()."""
+
+    def test_none_returns_none(self):
+        """'none' (any case) should return None."""
+        assert resolve_context_path("none") is None
+        assert resolve_context_path("None") is None
+        assert resolve_context_path("NONE") is None
+
+    def test_resolves_existing_file(self, tmp_path, monkeypatch):
+        """Should return path to contexts/<name>.md when file exists."""
+        ctx_dir = tmp_path / "contexts"
+        ctx_dir.mkdir()
+        (ctx_dir / "pfe.md").write_text("PFE context")
+        monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
+        result = resolve_context_path("pfe")
+        assert result == ctx_dir / "pfe.md"
+
+    def test_raises_for_missing_file(self, tmp_path, monkeypatch):
+        """Should raise FileNotFoundError when context file doesn't exist."""
+        ctx_dir = tmp_path / "contexts"
+        ctx_dir.mkdir()
+        monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
+        with pytest.raises(FileNotFoundError, match="Context file not found"):
+            resolve_context_path("nonexistent")
+
+    def test_error_lists_available_contexts(self, tmp_path, monkeypatch):
+        """Error message should list available context files."""
+        ctx_dir = tmp_path / "contexts"
+        ctx_dir.mkdir()
+        (ctx_dir / "pfe.md").write_text("PFE")
+        (ctx_dir / "music.md").write_text("Music")
+        monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
+        with pytest.raises(FileNotFoundError, match="Available: music, pfe"):
+            resolve_context_path("nonexistent")
+
+    def test_no_contexts_dir(self, tmp_path, monkeypatch):
+        """Should raise FileNotFoundError when contexts/ doesn't exist."""
+        monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", tmp_path / "nope")
+        with pytest.raises(FileNotFoundError, match="Context file not found"):
+            resolve_context_path("pfe")
 
 
 # --- Helper to write critique YAML files ---

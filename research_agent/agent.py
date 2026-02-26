@@ -19,6 +19,7 @@ from .synthesize import synthesize_report, synthesize_draft, synthesize_final
 from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore
 from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_critique_history, clear_context_cache
+from .context_result import ContextResult
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .coverage import identify_coverage_gaps
@@ -61,6 +62,8 @@ class ResearchAgent:
         cycle_config: CycleConfig | None = None,
         schema_path: Path | str | None = None,
         skip_critique: bool = False,
+        context_path: Path | None = None,
+        no_context: bool = False,
     ):
         self.client = Anthropic(api_key=api_key)
         self.async_client = AsyncAnthropic(api_key=api_key)
@@ -70,6 +73,8 @@ class ResearchAgent:
         self.mode = mode or ResearchMode.standard()
         self.cycle_config = cycle_config or CycleConfig()
         self.skip_critique = skip_critique
+        self.context_path = context_path
+        self.no_context = no_context
         self.schema_path = Path(schema_path) if schema_path else None
         self._current_schema_result: SchemaResult | None = None
         self._current_research_batch: tuple[Gap, ...] | None = None
@@ -81,6 +86,27 @@ class ResearchAgent:
     def last_critique(self) -> CritiqueResult | None:
         """Most recent self-critique result, or None if not run."""
         return self._last_critique
+
+    def _load_context(self) -> ContextResult:
+        """Load research context, respecting --context flag.
+
+        Returns ContextResult.not_configured() if no_context is True.
+        """
+        if self.no_context:
+            return ContextResult.not_configured(source="--context none")
+        return load_full_context(self.context_path)
+
+    @property
+    def _effective_context_path(self) -> Path | None:
+        """Context path for functions that load context themselves (e.g. decompose_query).
+
+        Returns a nonexistent path when no_context is True to prevent fallback
+        to the default context file. Returns None otherwise to let the function
+        use its own default.
+        """
+        if self.no_context:
+            return Path("__no_context__")
+        return self.context_path
 
     def _already_covered_response(self, schema_result: SchemaResult) -> str:
         """Generate a response when all gaps are verified and fresh."""
@@ -223,7 +249,9 @@ class ResearchAgent:
         if self.mode.decompose:
             self._next_step("Analyzing query...")
             decomposition = await asyncio.to_thread(
-                decompose_query, self.client, query, model=self.mode.model,
+                decompose_query, self.client, query,
+                context_path=self._effective_context_path,
+                model=self.mode.model,
                 critique_guidance=critique_context,
             )
             if decomposition.is_complex:
@@ -578,7 +606,7 @@ class ResearchAgent:
             self._next_step(f"Synthesizing {label} with {self.mode.model}...")
             print()  # blank line before streaming
 
-            ctx_result = load_full_context()
+            ctx_result = self._load_context()
             business_context = ctx_result.content
             report = synthesize_report(
                 self.client, query, surviving,
@@ -596,7 +624,7 @@ class ResearchAgent:
 
         # Standard/deep mode: draft -> skeptic -> final synthesis
         # Check for business context early so draft uses the right template
-        synth_result = load_full_context()
+        synth_result = self._load_context()
         synthesis_context = synth_result.content
 
         self._next_step("Generating draft analysis...")

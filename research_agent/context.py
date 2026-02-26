@@ -13,6 +13,7 @@ from .sanitize import sanitize_content
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONTEXT_PATH = Path("research_context.md")
+CONTEXTS_DIR = Path("contexts")
 
 # Per-run cache: avoids re-reading the same context file multiple times.
 # Call clear_context_cache() at the start of each research run.
@@ -22,6 +23,30 @@ _context_cache: dict[str, ContextResult] = {}
 def clear_context_cache() -> None:
     """Clear the per-run context cache. Call at the start of each research run."""
     _context_cache.clear()
+
+
+def resolve_context_path(name: str) -> Path | None:
+    """Resolve a --context flag value to a file path.
+
+    Args:
+        name: Context name from CLI. "none" means no context.
+              Otherwise looks for contexts/<name>.md.
+
+    Returns:
+        Path to the context file, or None if "none" was specified.
+
+    Raises:
+        FileNotFoundError: If the named context file doesn't exist.
+    """
+    if name.lower() == "none":
+        return None
+
+    path = CONTEXTS_DIR / f"{name}.md"
+    if not path.exists():
+        available = sorted(p.stem for p in CONTEXTS_DIR.glob("*.md")) if CONTEXTS_DIR.is_dir() else []
+        hint = f" Available: {', '.join(available)}" if available else ""
+        raise FileNotFoundError(f"Context file not found: {path}{hint}")
+    return path
 
 
 def load_full_context(context_path: Path | None = None) -> ContextResult:
