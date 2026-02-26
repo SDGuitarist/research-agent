@@ -78,6 +78,7 @@ class ResearchAgent:
         self.schema_path = Path(schema_path) if schema_path else None
         self._current_schema_result: SchemaResult | None = None
         self._current_research_batch: tuple[Gap, ...] | None = None
+        self._run_context: ContextResult = ContextResult.not_configured(source="init")
         self._last_source_count: int = 0
         self._last_gate_decision: str = ""
         self._last_critique: CritiqueResult | None = None
@@ -87,26 +88,16 @@ class ResearchAgent:
         """Most recent self-critique result, or None if not run."""
         return self._last_critique
 
-    def _load_context(self) -> ContextResult:
-        """Load research context, respecting --context flag.
+    def _load_context_for(self, context_path: Path | None, no_context: bool) -> ContextResult:
+        """Load research context using the given effective parameters.
 
-        Returns ContextResult.not_configured() if no_context is True.
+        Args:
+            context_path: Path to context file, or None for default.
+            no_context: If True, skip context loading entirely.
         """
-        if self.no_context:
+        if no_context:
             return ContextResult.not_configured(source="--context none")
-        return load_full_context(self.context_path)
-
-    @property
-    def _effective_context_path(self) -> Path | None:
-        """Context path for functions that load context themselves (e.g. decompose_query).
-
-        Returns a nonexistent path when no_context is True to prevent fallback
-        to the default context file. Returns None otherwise to let the function
-        use its own default.
-        """
-        if self.no_context:
-            return Path("__no_context__")
-        return self.context_path
+        return load_full_context(context_path)
 
     def _already_covered_response(self, schema_result: SchemaResult) -> str:
         """Generate a response when all gaps are verified and fresh."""
@@ -227,18 +218,25 @@ class ResearchAgent:
         self._last_gate_decision = ""
         clear_context_cache()
 
-        # Auto-detect context when no --context flag was given
-        if self.context_path is None and not self.no_context and CONTEXTS_DIR.is_dir():
+        # Auto-detect context when no --context flag was given.
+        # Use local variables to avoid mutating self (preserves agent reuse).
+        effective_context_path = self.context_path
+        effective_no_context = self.no_context
+
+        if effective_context_path is None and not effective_no_context and CONTEXTS_DIR.is_dir():
             detected = await asyncio.to_thread(
                 auto_detect_context, self.client, query, self.mode.model,
             )
             if detected is not None:
-                self.context_path = detected
+                effective_context_path = detected
                 print(f"      Auto-detected context: {detected.stem}")
             else:
                 # contexts/ exists but nothing matched — skip context
-                self.no_context = True
+                effective_no_context = True
                 logger.info("Auto-detect found no matching context; running without context")
+
+        # Load context once for the entire run using effective (post-auto-detect) state
+        self._run_context = self._load_context_for(effective_context_path, effective_no_context)
 
         critique_context: str | None = None
         if not self.mode.is_quick:
@@ -264,7 +262,7 @@ class ResearchAgent:
             self._next_step("Analyzing query...")
             decomposition = await asyncio.to_thread(
                 decompose_query, self.client, query,
-                context_path=self._effective_context_path,
+                context_content=self._run_context.content,
                 model=self.mode.model,
                 critique_guidance=critique_context,
             )
@@ -620,7 +618,6 @@ class ResearchAgent:
             self._next_step(f"Synthesizing {label} with {self.mode.model}...")
             print()  # blank line before streaming
 
-            ctx_result = self._load_context()
             report = synthesize_report(
                 self.client, query, surviving,
                 model=self.mode.model,
@@ -629,16 +626,14 @@ class ResearchAgent:
                 limited_sources=limited_sources,
                 dropped_count=dropped_count,
                 total_count=total_count,
-                context=ctx_result.content,
+                context=self._run_context.content,
             )
             if self.schema_path and self._current_research_batch:
                 self._update_gap_states(evaluation.decision)
             return report
 
         # Standard/deep mode: draft -> skeptic -> final synthesis
-        # Check for context early so draft uses the right template
-        ctx_result = self._load_context()
-        research_context = ctx_result.content
+        research_context = self._run_context.content
 
         self._next_step("Generating draft analysis...")
         print()  # blank line before streaming

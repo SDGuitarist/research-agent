@@ -2,11 +2,9 @@
 
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
-from .context import load_full_context
 from .errors import ANTHROPIC_TIMEOUT
 from .modes import DEFAULT_MODEL
 from .query_validation import validate_query_list
@@ -63,7 +61,7 @@ def _validate_sub_queries(sub_queries: list[str], original_query: str) -> list[s
 def decompose_query(
     client: Anthropic,
     query: str,
-    context_path: Path | None = None,
+    context_content: str | None = None,
     model: str = DEFAULT_MODEL,
     critique_guidance: str | None = None,
 ) -> DecompositionResult:
@@ -76,7 +74,7 @@ def decompose_query(
     Args:
         client: Anthropic client (sync)
         query: The research query
-        context_path: Optional path to business context file
+        context_content: Optional research context text (already loaded)
         model: Claude model to use for decomposition
         critique_guidance: Optional adaptive guidance from past self-critiques
 
@@ -88,12 +86,10 @@ def decompose_query(
     """
     safe_query = sanitize_content(query)
 
-    # Load optional business context (full file — LLM decides what's relevant)
-    ctx_result = load_full_context(context_path)
-    context = ctx_result.content
+    # Build optional context block from pre-loaded content
     context_block = ""
-    if context:
-        safe_context = sanitize_content(context)
+    if context_content:
+        safe_context = sanitize_content(context_content)
         context_block = f"""
 <research_context>
 {safe_context}

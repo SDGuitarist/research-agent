@@ -263,34 +263,31 @@ class TestDecomposeQuery:
         assert result.is_complex is False
         assert result.sub_queries == ("test query",)
 
-    def test_loads_context_file_when_present(self, mock_anthropic_response, tmp_path):
-        """Context file should be included in the API call."""
-        context_file = tmp_path / "context.md"
-        context_file.write_text("# My Business\nSan Diego luxury weddings")
-
+    def test_includes_context_content_when_provided(self, mock_anthropic_response):
+        """Context content should be included in the API call."""
         mock_client = MagicMock()
         mock_client.messages.create.return_value = mock_anthropic_response(
             "TYPE: SIMPLE\nREASONING: Clear topic"
         )
 
-        decompose_query(mock_client, "wedding trends", context_path=context_file)
+        decompose_query(
+            mock_client, "wedding trends",
+            context_content="San Diego luxury weddings",
+        )
 
         # Verify the context was included in the API call
         call_args = mock_client.messages.create.call_args
         message_content = call_args.kwargs["messages"][0]["content"]
         assert "San Diego luxury weddings" in message_content
 
-    def test_works_without_context_file(self, mock_anthropic_response):
-        """Should work fine when no context file exists."""
+    def test_works_without_context_content(self, mock_anthropic_response):
+        """Should work fine when no context content is provided."""
         mock_client = MagicMock()
         mock_client.messages.create.return_value = mock_anthropic_response(
             "TYPE: SIMPLE\nREASONING: Clear topic"
         )
 
-        result = decompose_query(
-            mock_client, "test query",
-            context_path=Path("/nonexistent/path.md"),
-        )
+        result = decompose_query(mock_client, "test query", context_content=None)
 
         assert result.sub_queries == ("test query",)
 
