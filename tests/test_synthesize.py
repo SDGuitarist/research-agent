@@ -373,14 +373,25 @@ class TestSynthesizeDraft:
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "<business_context>" not in prompt
 
-    def test_instructs_sections_1_through_8_only(self):
-        """Draft instructions should specify sections 1-8 only."""
+    def test_instructs_business_sections_with_context(self):
+        """Draft with business context should specify sections 1-8."""
         client = _make_streaming_client("Draft content")
-        synthesize_draft(client, "test query", SAMPLE_SUMMARIES)
+        synthesize_draft(client, "test query", SAMPLE_SUMMARIES, has_business_context=True)
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "sections 1-8" in prompt.lower() or "sections (sections 1-8)" in prompt.lower()
         assert "Do NOT include Competitive Implications" in prompt
+
+    def test_instructs_generic_sections_without_context(self):
+        """Draft without business context should use generic technical template."""
+        client = _make_streaming_client("Draft content")
+        synthesize_draft(client, "test query", SAMPLE_SUMMARIES, has_business_context=False)
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "Key Findings" in prompt
+        assert "Technical Details" in prompt
+        assert "Company Overview" not in prompt
+        assert "Buyer Psychology" not in prompt
 
     def test_sanitizes_query(self):
         """Should sanitize the query in the prompt."""

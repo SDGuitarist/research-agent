@@ -595,16 +595,19 @@ class ResearchAgent:
             return report
 
         # Standard/deep mode: draft -> skeptic -> final synthesis
+        # Check for business context early so draft uses the right template
+        synth_result = load_synthesis_context()
+        synthesis_context = synth_result.content
+
         self._next_step("Generating draft analysis...")
         print()  # blank line before streaming
         draft = await asyncio.to_thread(
             synthesize_draft, self.client, query, surviving,
             model=self.mode.model,
+            has_business_context=bool(synthesis_context),
         )
 
         self._next_step("Running skeptic review...")
-        synth_result = load_synthesis_context()
-        synthesis_context = synth_result.content
 
         try:
             if self.mode.is_deep:

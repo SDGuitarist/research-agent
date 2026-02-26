@@ -259,10 +259,13 @@ def synthesize_draft(
     summaries: list[Summary],
     model: str = DEFAULT_MODEL,
     max_tokens: int = 4000,
+    has_business_context: bool = False,
 ) -> str:
-    """Produce sections 1-8 (objective factual findings).
+    """Produce the factual analysis sections of a research report.
 
     No business context is injected — keeps factual sections uncolored.
+    When has_business_context is True, uses business-intelligence sections (1-8).
+    When False, uses a generic technical report structure.
     Streams to stdout so the user sees progress.
 
     Args:
@@ -271,9 +274,10 @@ def synthesize_draft(
         summaries: List of source summaries
         model: Model to use for synthesis
         max_tokens: Maximum tokens for the response
+        has_business_context: Whether business context is configured
 
     Returns:
-        Markdown string of sections 1-8
+        Markdown string of draft sections
 
     Raises:
         SynthesisError: If synthesis fails
@@ -284,24 +288,41 @@ def synthesize_draft(
     sources_text = _build_sources_context(summaries)
     safe_query = sanitize_content(query)
 
-    draft_instructions = (
-        "Write ONLY the factual analysis sections (sections 1-8) of a research report. "
-        "Do NOT include Competitive Implications, Positioning Advice, Adversarial Analysis, "
-        "Limitations & Gaps, or Sources sections — those will be generated separately.\n\n"
-        "Sections to produce:\n"
-        "1. **Executive Summary** — 2-3 paragraph overview of key findings.\n"
-        "2. **Company Overview** — Factual: founding, location, team size, years in business.\n"
-        "3. **Service Portfolio** — Factual: services offered, pricing if found, packages.\n"
-        "4. **Marketing Positioning** — Brand voice, taglines, unique selling propositions.\n"
-        "5. **Messaging Theme Analysis** — 3-5 persuasion patterns. Quote exact phrases.\n"
-        "6. **Buyer Psychology** — Fears, desires, emotional triggers in marketing.\n"
-        "7. **Content & Marketing Tactics** — SEO, social media, review strategy.\n"
-        "8. **Business Model Analysis** — Revenue structure, pricing, competitive moats.\n\n"
-        "Omit a section only if no source data supports it. "
-        "Ground all claims in source evidence. "
-        "Cite sources using [Source N] notation.\n\n"
-        f"{BALANCE_INSTRUCTION}"
-    )
+    if has_business_context:
+        draft_instructions = (
+            "Write ONLY the factual analysis sections (sections 1-8) of a research report. "
+            "Do NOT include Competitive Implications, Positioning Advice, Adversarial Analysis, "
+            "Limitations & Gaps, or Sources sections — those will be generated separately.\n\n"
+            "Sections to produce:\n"
+            "1. **Executive Summary** — 2-3 paragraph overview of key findings.\n"
+            "2. **Company Overview** — Factual: founding, location, team size, years in business.\n"
+            "3. **Service Portfolio** — Factual: services offered, pricing if found, packages.\n"
+            "4. **Marketing Positioning** — Brand voice, taglines, unique selling propositions.\n"
+            "5. **Messaging Theme Analysis** — 3-5 persuasion patterns. Quote exact phrases.\n"
+            "6. **Buyer Psychology** — Fears, desires, emotional triggers in marketing.\n"
+            "7. **Content & Marketing Tactics** — SEO, social media, review strategy.\n"
+            "8. **Business Model Analysis** — Revenue structure, pricing, competitive moats.\n\n"
+            "Omit a section only if no source data supports it. "
+            "Ground all claims in source evidence. "
+            "Cite sources using [Source N] notation.\n\n"
+            f"{BALANCE_INSTRUCTION}"
+        )
+    else:
+        draft_instructions = (
+            "Write the factual analysis sections of a research report. "
+            "Do NOT include Adversarial Analysis, Limitations & Gaps, or Sources sections "
+            "— those will be generated separately.\n\n"
+            "Sections to produce:\n"
+            "1. **Executive Summary** — 2-3 paragraph overview of key findings.\n"
+            "2. **Key Findings** — Detailed analysis organized by theme or topic.\n"
+            "3. **Technical Details** — Implementation specifics, comparisons, data points.\n"
+            "4. **Practical Recommendations** — Actionable takeaways based on the evidence.\n\n"
+            "Omit a section only if no source data supports it. "
+            "Use additional sub-headings within sections as needed to organize the material. "
+            "Ground all claims in source evidence. "
+            "Cite sources using [Source N] notation.\n\n"
+            f"{BALANCE_INSTRUCTION}"
+        )
 
     prompt = f"""Based on the source summaries below, write the factual analysis sections of a research report:
 
@@ -315,7 +336,7 @@ def synthesize_draft(
 {draft_instructions}
 </instructions>
 
-Write sections 1-8 now:"""
+Write the factual analysis sections now:"""
 
     system_prompt = (
         "You are a research report writer producing objective factual analysis. "
@@ -484,24 +505,39 @@ def synthesize_final(
             "Focus only on what the available sources can directly answer."
         )
 
-    # Build section list based on whether skeptic findings exist
-    if skeptic_findings:
-        section_list = (
-            "9. **Competitive Implications** — What findings mean for the reader. "
-            "Threats, opportunities, gaps.\n"
-            "10. **Positioning Advice** — 3-5 actionable angles based on findings.\n"
-            "11. **Adversarial Analysis** — Synthesize the skeptic review findings.\n"
-            "12. **Limitations & Gaps** — What sources don't cover, confidence levels.\n"
-            "## Sources — All referenced URLs with [Source N] notation."
-        )
+    # Build section list based on context availability and skeptic findings
+    if business_context:
+        # Business-intelligence report: include competitive analysis sections
+        if skeptic_findings:
+            section_list = (
+                "9. **Competitive Implications** — What findings mean for the reader. "
+                "Threats, opportunities, gaps.\n"
+                "10. **Positioning Advice** — 3-5 actionable angles based on findings.\n"
+                "11. **Adversarial Analysis** — Synthesize the skeptic review findings.\n"
+                "12. **Limitations & Gaps** — What sources don't cover, confidence levels.\n"
+                "## Sources — All referenced URLs with [Source N] notation."
+            )
+        else:
+            section_list = (
+                "9. **Competitive Implications** — What findings mean for the reader. "
+                "Threats, opportunities, gaps.\n"
+                "10. **Positioning Advice** — 3-5 actionable angles based on findings.\n"
+                "11. **Limitations & Gaps** — What sources don't cover, confidence levels.\n"
+                "## Sources — All referenced URLs with [Source N] notation."
+            )
     else:
-        section_list = (
-            "9. **Competitive Implications** — What findings mean for the reader. "
-            "Threats, opportunities, gaps.\n"
-            "10. **Positioning Advice** — 3-5 actionable angles based on findings.\n"
-            "11. **Limitations & Gaps** — What sources don't cover, confidence levels.\n"
-            "## Sources — All referenced URLs with [Source N] notation."
-        )
+        # Generic report: skip business-specific sections
+        if skeptic_findings:
+            section_list = (
+                "5. **Adversarial Analysis** — Synthesize the skeptic review findings.\n"
+                "6. **Limitations & Gaps** — What sources don't cover, confidence levels.\n"
+                "## Sources — All referenced URLs with [Source N] notation."
+            )
+        else:
+            section_list = (
+                "5. **Limitations & Gaps** — What sources don't cover, confidence levels.\n"
+                "## Sources — All referenced URLs with [Source N] notation."
+            )
 
     # Lessons applied block (from critique history)
     lessons_block = ""
