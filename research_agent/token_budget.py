@@ -29,7 +29,7 @@ COMPONENT_PRIORITY: dict[str, int] = {
     "critique_guidance": 2,   # Helpful but expendable
     "previous_baseline": 3,
     "gap_schema": 4,
-    "business_context": 5,
+    "context": 5,
     "sources": 6,  # Cut last — sources are the research
     "instructions": 7,  # Never cut — these control output quality
 }

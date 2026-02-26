@@ -35,12 +35,12 @@ def _apply_budget_pruning(
     max_tokens: int,
     reserved_output: int,
     sources_text: str,
-    business_context: str | None,
+    context: str | None,
 ) -> tuple[str, str | None]:
     """Apply token budget and truncate pruned components.
 
     Returns:
-        (sources_text, business_context) after any truncation.
+        (sources_text, context) after any truncation.
     """
     budget = allocate_budget(
         components, max_tokens=max_tokens, reserved_output=reserved_output,
@@ -52,9 +52,9 @@ def _apply_budget_pruning(
                 sources_text = truncate_to_budget(
                     sources_text, budget.allocations.get("sources", 0)
                 )
-            elif name == "business_context" and business_context:
-                business_context = truncate_to_budget(
-                    business_context, budget.allocations.get("business_context", 0)
+            elif name == "context" and context:
+                context = truncate_to_budget(
+                    context, budget.allocations.get("context", 0)
                 )
             elif name in components:
                 alloc = budget.allocations.get(name, 0)
@@ -64,7 +64,7 @@ def _apply_budget_pruning(
                     )
                 else:
                     components[name] = ""
-    return sources_text, business_context
+    return sources_text, context
 
 # Instruction for balanced coverage of comparison queries
 BALANCE_INSTRUCTION = (
@@ -96,7 +96,7 @@ def synthesize_report(
     limited_sources: bool = False,
     dropped_count: int = 0,
     total_count: int = 0,
-    business_context: str | None = None,
+    context: str | None = None,
 ) -> str:
     """
     Synthesize a research report from summaries.
@@ -128,11 +128,11 @@ def synthesize_report(
     budget_components = {"sources": sources_text}
     if mode_instructions:
         budget_components["instructions"] = mode_instructions
-    if business_context:
-        business_context = sanitize_content(business_context)
-        budget_components["business_context"] = business_context
-    sources_text, business_context = _apply_budget_pruning(
-        budget_components, 100_000, max_tokens, sources_text, business_context,
+    if context:
+        context = sanitize_content(context)
+        budget_components["context"] = context
+    sources_text, context = _apply_budget_pruning(
+        budget_components, 100_000, max_tokens, sources_text, context,
     )
 
     # Default instructions if none provided
@@ -163,11 +163,11 @@ def synthesize_report(
     # Sanitize the query (comes from user but be consistent)
     safe_query = sanitize_content(query)
 
-    # Build optional business context block
+    # Build optional context block
     context_block = ""
     context_instruction = ""
-    if business_context:
-        context_block = f"\n<business_context>\n{business_context}\n</business_context>\n"
+    if context:
+        context_block = f"\n<business_context>\n{context}\n</business_context>\n"
         context_instruction = (
             "\n\nBusiness context is provided in <business_context>. Use it only for "
             "Competitive Implications and Positioning Advice sections. Keep factual "
@@ -259,12 +259,12 @@ def synthesize_draft(
     summaries: list[Summary],
     model: str = DEFAULT_MODEL,
     max_tokens: int = 4000,
-    has_business_context: bool = False,
+    has_context: bool = False,
 ) -> str:
     """Produce the factual analysis sections of a research report.
 
-    No business context is injected — keeps factual sections uncolored.
-    When has_business_context is True, uses business-intelligence sections (1-8).
+    No context is injected — keeps factual sections uncolored.
+    When has_context is True, uses business-intelligence sections (1-8).
     When False, uses a generic technical report structure.
     Streams to stdout so the user sees progress.
 
@@ -274,7 +274,7 @@ def synthesize_draft(
         summaries: List of source summaries
         model: Model to use for synthesis
         max_tokens: Maximum tokens for the response
-        has_business_context: Whether business context is configured
+        has_context: Whether research context is configured
 
     Returns:
         Markdown string of draft sections
@@ -288,7 +288,7 @@ def synthesize_draft(
     sources_text = _build_sources_context(summaries)
     safe_query = sanitize_content(query)
 
-    if has_business_context:
+    if has_context:
         draft_instructions = (
             "Write ONLY the factual analysis sections (sections 1-8) of a research report. "
             "Do NOT include Competitive Implications, Positioning Advice, Adversarial Analysis, "
@@ -397,7 +397,7 @@ def synthesize_final(
     summaries: list[Summary],
     model: str = DEFAULT_MODEL,
     max_tokens: int = 3000,
-    business_context: str | None = None,
+    context: str | None = None,
     limited_sources: bool = False,
     dropped_count: int = 0,
     total_count: int = 0,
@@ -418,7 +418,7 @@ def synthesize_final(
         summaries: Source summaries for citation references
         model: Model for synthesis
         max_tokens: Maximum tokens for the response
-        business_context: Synthesis context slice (competitive positioning, brand identity)
+        context: Research context (competitive positioning, brand identity)
         limited_sources: If True, shorter report with disclaimer
         dropped_count: Sources dropped by relevance gate
         total_count: Total sources evaluated
@@ -437,26 +437,26 @@ def synthesize_final(
 
     # Token budget enforcement
     budget_components = {"sources": sources_text}
-    if business_context:
-        business_context = sanitize_content(business_context)
-        budget_components["business_context"] = business_context
+    if context:
+        context = sanitize_content(context)
+        budget_components["context"] = context
     if draft:
         budget_components["previous_baseline"] = draft
     if critique_guidance:
         # critique_guidance is pre-sanitized by load_critique_history
         budget_components["critique_guidance"] = critique_guidance
-    sources_text, business_context = _apply_budget_pruning(
-        budget_components, 100_000, max_tokens, sources_text, business_context,
+    sources_text, context = _apply_budget_pruning(
+        budget_components, 100_000, max_tokens, sources_text, context,
     )
     # Read back potentially truncated critique_guidance
     if critique_guidance and "critique_guidance" in budget_components:
         critique_guidance = budget_components["critique_guidance"]
 
-    # Business context block
+    # Context block
     context_block = ""
     context_instruction = ""
-    if business_context:
-        context_block = f"\n<business_context>\n{business_context}\n</business_context>\n"
+    if context:
+        context_block = f"\n<business_context>\n{context}\n</business_context>\n"
         context_instruction = (
             "Use the business context in <business_context> for Competitive Implications "
             "and Positioning Advice sections. Reference specific competitive positioning, "
@@ -506,7 +506,7 @@ def synthesize_final(
         )
 
     # Build section list based on context availability and skeptic findings
-    if business_context:
+    if context:
         # Business-intelligence report: include competitive analysis sections
         if skeptic_findings:
             section_list = (

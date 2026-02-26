@@ -607,7 +607,6 @@ class ResearchAgent:
             print()  # blank line before streaming
 
             ctx_result = self._load_context()
-            business_context = ctx_result.content
             report = synthesize_report(
                 self.client, query, surviving,
                 model=self.mode.model,
@@ -616,23 +615,23 @@ class ResearchAgent:
                 limited_sources=limited_sources,
                 dropped_count=dropped_count,
                 total_count=total_count,
-                business_context=business_context,
+                context=ctx_result.content,
             )
             if self.schema_path and self._current_research_batch:
                 self._update_gap_states(evaluation.decision)
             return report
 
         # Standard/deep mode: draft -> skeptic -> final synthesis
-        # Check for business context early so draft uses the right template
-        synth_result = self._load_context()
-        synthesis_context = synth_result.content
+        # Check for context early so draft uses the right template
+        ctx_result = self._load_context()
+        research_context = ctx_result.content
 
         self._next_step("Generating draft analysis...")
         print()  # blank line before streaming
         draft = await asyncio.to_thread(
             synthesize_draft, self.client, query, surviving,
             model=self.mode.model,
-            has_business_context=bool(synthesis_context),
+            has_context=bool(research_context),
         )
 
         self._next_step("Running skeptic review...")
@@ -640,7 +639,7 @@ class ResearchAgent:
         try:
             if self.mode.is_deep:
                 findings = await run_deep_skeptic_pass(
-                    self.async_client, draft, synthesis_context,
+                    self.async_client, draft, research_context,
                     model=self.mode.model,
                 )
                 total_critical = sum(f.critical_count for f in findings)
@@ -648,7 +647,7 @@ class ResearchAgent:
                 print(f"      3 skeptic passes complete ({total_critical} critical, {total_concern} concerns)")
             else:
                 finding = await run_skeptic_combined(
-                    self.async_client, draft, synthesis_context,
+                    self.async_client, draft, research_context,
                     model=self.mode.model,
                 )
                 findings = [finding]
@@ -666,7 +665,7 @@ class ResearchAgent:
             self.client, query, draft, findings, surviving,
             model=self.mode.model,
             max_tokens=self.mode.max_tokens,
-            business_context=synthesis_context,
+            context=research_context,
             limited_sources=limited_sources,
             dropped_count=dropped_count,
             total_count=total_count,

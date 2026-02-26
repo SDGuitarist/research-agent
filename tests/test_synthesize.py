@@ -206,10 +206,10 @@ class TestSynthesizeReport:
         assert "&lt;malicious&gt;" in user_content
         assert "<malicious>" not in user_content
 
-    def test_synthesize_report_includes_business_context_in_prompt(
+    def test_synthesize_report_includes_context_in_prompt(
         self, sample_summaries, mock_anthropic_stream
     ):
-        """Business context should appear in the prompt when provided."""
+        """Context should appear in the prompt when provided."""
         mock_client = MagicMock()
         mock_stream = mock_anthropic_stream(["Report content"])
         mock_client.messages.stream.return_value = mock_stream
@@ -219,7 +219,7 @@ class TestSynthesizeReport:
                 client=mock_client,
                 query="test query",
                 summaries=sample_summaries,
-                business_context="We are a guitar entertainment company.",
+                context="We are a guitar entertainment company.",
             )
 
         call_args = mock_client.messages.stream.call_args
@@ -231,7 +231,7 @@ class TestSynthesizeReport:
     def test_synthesize_report_omits_context_block_when_none(
         self, sample_summaries, mock_anthropic_stream
     ):
-        """No business_context should produce no <business_context> block."""
+        """No context should produce no <business_context> block."""
         mock_client = MagicMock()
         mock_stream = mock_anthropic_stream(["Report content"])
         mock_client.messages.stream.return_value = mock_stream
@@ -241,7 +241,7 @@ class TestSynthesizeReport:
                 client=mock_client,
                 query="test query",
                 summaries=sample_summaries,
-                business_context=None,
+                context=None,
             )
 
         call_args = mock_client.messages.stream.call_args
@@ -250,10 +250,10 @@ class TestSynthesizeReport:
         assert "<business_context>" not in user_content
         assert "Competitive Implications" not in user_content
 
-    def test_synthesize_report_sanitizes_business_context(
+    def test_synthesize_report_sanitizes_context(
         self, sample_summaries, mock_anthropic_stream
     ):
-        """Business context with angle brackets should be escaped."""
+        """Context with angle brackets should be escaped."""
         mock_client = MagicMock()
         mock_stream = mock_anthropic_stream(["Report content"])
         mock_client.messages.stream.return_value = mock_stream
@@ -263,7 +263,7 @@ class TestSynthesizeReport:
                 client=mock_client,
                 query="test query",
                 summaries=sample_summaries,
-                business_context="<script>alert('xss')</script>",
+                context="<script>alert('xss')</script>",
             )
 
         call_args = mock_client.messages.stream.call_args
@@ -285,7 +285,7 @@ class TestSynthesizeReport:
                 client=mock_client,
                 query="test query",
                 summaries=sample_summaries,
-                business_context="Our company does X.",
+                context="Our company does X.",
             )
 
         call_args = mock_client.messages.stream.call_args
@@ -365,8 +365,8 @@ class TestSynthesizeDraft:
         with pytest.raises(SynthesisError, match="empty response"):
             synthesize_draft(client, "test query", SAMPLE_SUMMARIES)
 
-    def test_no_business_context_in_prompt(self):
-        """Draft should NOT include business_context block."""
+    def test_no_context_in_prompt(self):
+        """Draft should NOT include context block."""
         client = _make_streaming_client("Draft content")
         synthesize_draft(client, "test query", SAMPLE_SUMMARIES)
         call_args = client.messages.stream.call_args
@@ -376,7 +376,7 @@ class TestSynthesizeDraft:
     def test_instructs_business_sections_with_context(self):
         """Draft with business context should specify sections 1-8."""
         client = _make_streaming_client("Draft content")
-        synthesize_draft(client, "test query", SAMPLE_SUMMARIES, has_business_context=True)
+        synthesize_draft(client, "test query", SAMPLE_SUMMARIES, has_context=True)
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "sections 1-8" in prompt.lower() or "sections (sections 1-8)" in prompt.lower()
@@ -385,7 +385,7 @@ class TestSynthesizeDraft:
     def test_instructs_generic_sections_without_context(self):
         """Draft without business context should use generic technical template."""
         client = _make_streaming_client("Draft content")
-        synthesize_draft(client, "test query", SAMPLE_SUMMARIES, has_business_context=False)
+        synthesize_draft(client, "test query", SAMPLE_SUMMARIES, has_context=False)
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "Key Findings" in prompt
@@ -451,12 +451,12 @@ class TestSynthesizeFinal:
         assert "Competitive Implications" in result
         assert "Final content" in result
 
-    def test_includes_business_context_when_provided(self):
-        """Should include business_context block in prompt."""
+    def test_includes_context_when_provided(self):
+        """Should include context block in prompt."""
         client = _make_streaming_client("Final sections")
         synthesize_final(
             client, "query", "draft", [], SAMPLE_SUMMARIES,
-            business_context="Pacific Flow context",
+            context="Pacific Flow context",
         )
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
@@ -614,7 +614,7 @@ class TestSynthesizeBudgetEnforcement:
         assert call_kwargs.kwargs["max_tokens"] == 100_000
 
     def test_budget_prunes_context_before_sources(self):
-        """When over budget, business_context pruned before sources."""
+        """When over budget, context pruned before sources."""
         client = _make_streaming_client("Report content")
         with patch(
             "research_agent.synthesize.allocate_budget"
@@ -623,8 +623,8 @@ class TestSynthesizeBudgetEnforcement:
         ) as mock_truncate:
             from research_agent.token_budget import BudgetAllocation
             mock_budget.return_value = BudgetAllocation(
-                allocations={"sources": 500, "business_context": 50},
-                pruned=["business_context"],
+                allocations={"sources": 500, "context": 50},
+                pruned=["context"],
                 total=550,
             )
             mock_truncate.return_value = "truncated context"
@@ -633,12 +633,12 @@ class TestSynthesizeBudgetEnforcement:
                     client=client,
                     query="test query",
                     summaries=SAMPLE_SUMMARIES,
-                    business_context="Very long business context " * 100,
+                    context="Very long context " * 100,
                 )
-        # truncate_to_budget should be called for business_context, not sources
+        # truncate_to_budget should be called for context, not sources
         mock_truncate.assert_called_once()
         call_args = mock_truncate.call_args
-        assert call_args.args[1] == 50  # budget allocation for business_context
+        assert call_args.args[1] == 50  # budget allocation for context
 
 
 class TestCritiqueGuidanceParam:

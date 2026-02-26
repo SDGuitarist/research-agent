@@ -924,9 +924,9 @@ class TestResearchAgentBusinessContext:
 
             # Verify _load_context was called
             mock_load_context.assert_called_once()
-            # Verify business_context was passed to synthesize_report
+            # Verify context was passed to synthesize_report
             synth_call = mock_synthesize.call_args
-            assert synth_call[1]["business_context"] == "We are a guitar company."
+            assert synth_call[1]["context"] == "We are a guitar company."
 
     @pytest.mark.asyncio
     async def test_agent_works_when_context_missing(self):
@@ -970,9 +970,9 @@ class TestResearchAgentBusinessContext:
             result = await agent.research_async("test query")
 
             assert "Report" in result
-            # business_context should be None
+            # context should be None
             synth_call = mock_synthesize.call_args
-            assert synth_call[1]["business_context"] is None
+            assert synth_call[1]["context"] is None
 
 
 class TestResearchAgentStructuredSummaries:
