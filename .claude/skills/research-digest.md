@@ -22,19 +22,9 @@ If no unreviewed items, say "No unreviewed research. Queue is clear." and STOP.
 
 ## Step 2: Read Reports
 
-For each unreviewed item, extract the report file path and read the report.
+For each unreviewed item, extract the report file path. **Validate the path**: must start with `reports/`, must not contain `..`, must end with `.md`. Skip items with invalid paths and warn the user.
 
-**To protect context**, delegate reading to a background sub-agent if there are more than 3 unreviewed reports:
-
-```
-Task(subagent_type="general-purpose"):
-  "Read these report files and extract a 3-5 bullet summary of key findings from each:
-   - reports/path1.md
-   - reports/path2.md
-   Return the summaries in order."
-```
-
-For 3 or fewer, read them directly using the Read tool and extract key findings yourself.
+Read each valid report file using the Read tool and extract 3-5 key findings.
 
 ## Step 3: Generate Digest
 
@@ -56,25 +46,17 @@ Format the digest as:
 ...
 
 ---
-**Total spend today:** ${X.XX} / ${budget}
-**Remaining budget:** ${X.XX}
+**Total cost this batch:** ${sum of costs above}
 ```
 
 Display this digest to the user.
 
 ## Step 4: Mark as Reviewed
 
-Ask the user: "Mark all N items as reviewed?"
+If the user passed "auto" as an argument, mark all items as reviewed automatically without asking.
+
+Otherwise, ask the user: "Mark all N items as reviewed?"
 
 - **If yes**: Edit `reports/queue.md` — append ` reviewed` to each unreviewed completed item.
 - **If no**: Leave as-is. They'll appear again on next `/research:digest` run.
 - **If selective**: If the user wants to mark only some items, edit just those lines.
-
-## Step 5: Show Spend Summary
-
-Read `reports/meta/daily_spend.json` and display:
-
-```
-Today's spend: ${total_spent} / ${budget} ({N} queries run)
-Remaining budget: ${remaining}
-```

@@ -8,16 +8,6 @@ model: sonnet
 
 <command_purpose>Read the research queue, check the daily budget, and launch queued queries as background agents. Results are delivered as notifications when each completes.</command_purpose>
 
-## How It Works
-
-```
-1. You add queries to reports/queue.md (manually, any editor)
-2. Run /research:queue
-3. Skill checks budget, launches up to 3 queries as background agents
-4. You keep working — notifications arrive as each finishes
-5. Run /research:digest to review all results at once
-```
-
 ## Step 1: Read Queue File
 
 Read `reports/queue.md`. If the file does not exist, create it from the template below and tell the user "Queue created at reports/queue.md — add queries and run /research:queue again." then STOP.
@@ -37,26 +27,33 @@ budget: $5.00
 ```
 
 Parse the file:
-- Extract `budget: $X.XX` from the line near the top (default $5.00 if missing)
+- Extract `budget: $X.XX` from the line near the top (default $5.00 if missing). Validate: must be a positive number. If negative, zero, or non-numeric, warn user and default to $5.00.
 - Find all lines in the `## Queued` section matching `- [ ] --{mode} "{query}"`
-- Find all lines in the `## Running` section (stale items from crashed sessions)
-- If mode is missing from a queued line, default to `--standard`
-- Skip blank lines and lines that don't match the format (warn about skipped lines)
+- Find all lines in the `## Running` section (may be active or stale)
+- If mode is missing from a queued line, skip it and warn: "Skipping entry without mode — add --quick, --standard, or --deep"
+- Ignore blank lines and lines that don't match the format
 
-If no queued items AND no stale running items, say "Queue is empty. Add queries to reports/queue.md" and STOP.
+If no queued items, say "Queue is empty. Add queries to reports/queue.md" and STOP.
 
-## Step 2: Handle Stale Running Items
+## Step 2: Check for Running Items
 
-If there are items in the `## Running` section, these are from a previous session that closed before they completed. Move them back to `## Queued` (at the top, so they run first). Edit the queue file to reflect this.
+If there are items in the `## Running` section, warn the user:
 
-Say: "Recovered N stale items from previous session — re-queued for retry."
+"Found N items still marked as Running. If these are from a crashed session, move them back to `## Queued` in reports/queue.md to retry. Proceeding with `## Queued` items only."
+
+Do NOT automatically move Running items — they may be actively running background agents from this session. Only process items in `## Queued`.
 
 ## Step 3: Check Daily Budget
 
-Read `reports/meta/daily_spend.json`. Handle these cases:
+Read `reports/meta/daily_spend.json`. The schema is:
+```json
+{"date": "2026-02-25", "budget": 5.00, "total_spent": 0.47}
+```
 
-- **File missing**: Create it with today's date, budget from queue file, $0.00 spent, empty queries array.
-- **Date is not today**: Reset — write new file with today's date, $0.00 spent, empty queries array. Budget from queue file.
+Handle these cases:
+
+- **File missing or corrupt**: Create with today's date, budget from queue file, $0.00 spent. Warn: "Budget tracker was reset — previous spend data lost."
+- **Date is not today**: Reset — write new file with today's date, budget from queue file, $0.00 spent. Say: "New day — daily spend reset to $0.00."
 - **Date is today**: Use as-is.
 
 Calculate: `remaining = budget - total_spent`
@@ -81,27 +78,31 @@ For each item in the launch batch:
 
 1. **Generate output path**: Use this format exactly:
    ```
-   reports/{sanitized_query}_{YYYY-MM-DD}_{HHMMSS}{microseconds}.md
+   reports/{sanitized_query}_{YYYY-MM-DD}_{HHMMSS}_{batch_index}.md
    ```
-   Where sanitized_query = lowercase, spaces to underscores, strip non-alphanumeric (keep underscores), collapse multiple underscores, truncate to 50 chars at word boundary.
+   Where:
+   - sanitized_query = lowercase, spaces to underscores, keep only alphanumeric + underscores, max 50 chars
+   - batch_index = position in the launch batch (1, 2, or 3) — prevents collisions for parallel queries
 
 2. **Update queue file**: Move the item from `## Queued` to `## Running`, adding the output path:
    ```
    - [~] --standard "query text" → reports/output_path.md
    ```
 
-3. **Update daily_spend.json**: Add an entry with status "running" and the estimated cost.
+3. **Update daily_spend.json**: Add the estimated cost to `total_spent`.
 
 4. **Launch background Task agent**:
+
+   First, escape single quotes in the query text: replace every `'` with `'\''` (closes quote, adds escaped literal quote, reopens).
+
    ```
    Task(run_in_background=true, subagent_type="general-purpose"):
      "Run this exact command and report the result:
-      cd /Users/alejandroguillen/Projects/research-agent && python3 main.py --{mode} '{query}' -o {output_path}
+      python3 main.py --{mode} '{escaped_query}' -o {output_path}
       Use a 600000ms timeout for the Bash command.
       After the command finishes, report:
       - Exit code (0=success, 1=failure)
       - Whether the output file exists (check with ls)
-      - The first 3 lines of the output file if it exists
       - Any error message from stderr if it failed"
    ```
 
@@ -127,33 +128,30 @@ When a background Task agent completes and you receive its result:
 
 ### If successful (exit code 0, file exists):
 
-1. **Update queue file**: Move item from `## Running` to `## Completed`:
+1. **Validate report path**: Must start with `reports/`, must not contain `..`, must end with `.md`. If invalid, treat as failed.
+
+2. **Update queue file**: Move item from `## Running` to `## Completed`:
    ```
    - [x] --standard "query text" → reports/output_path.md ($0.35)
    ```
 
-2. **Update daily_spend.json**: Change status from "running" to "completed".
-
-3. **Read the first 200 characters of the report file** for the notification.
-
-4. **Notify the user**:
+3. **Notify the user**:
    ```
    Research complete: "query text" → reports/output_path.md ($0.35)
-   {first ~150 chars of report as preview}
    ```
 
 ### If failed (exit code 1 or file missing):
 
-1. **Update queue file**: Move item from `## Running` to `## Failed`:
-   ```
-   - [!] --standard "query text" → {brief error reason} ($0.35)
-   ```
+1. **Sanitize error reason**: Use only the final error message line. Truncate to 100 chars. Strip any strings matching API key patterns (`sk-ant-*`, `tvly-*`).
 
-2. **Update daily_spend.json**: Change status from "running" to "failed". Cost still counts.
+2. **Update queue file**: Move item from `## Running` to `## Failed`:
+   ```
+   - [!] --standard "query text" → {sanitized error reason} ($0.35)
+   ```
 
 3. **Notify the user**:
    ```
-   Research failed: "query text" — {error reason} ($0.35 still counted toward budget)
+   Research failed: "query text" — {sanitized error reason} ($0.35 still counted toward budget)
    ```
 
 ## Important Rules
