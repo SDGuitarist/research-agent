@@ -981,6 +981,163 @@ class TestResearchAgentBusinessContext:
             assert synth_call[1]["context"] is None
 
 
+class TestResearchAgentAutoDetect:
+    """Tests for auto-detect context integration in the agent."""
+
+    def _build_quick_patches(self):
+        """Common patches for a quick-mode run that reaches synthesis."""
+        return {
+            "search": patch("research_agent.agent.search", return_value=[
+                SearchResult(title="R", url="https://ex.com", snippet="S"),
+            ]),
+            "refine": patch("research_agent.agent.refine_query", return_value="q"),
+            "fetch": patch("research_agent.agent.fetch_urls", return_value=[
+                FetchedPage(url="https://ex.com", html="<p>" + "x" * 200 + "</p>", status_code=200),
+            ]),
+            "extract": patch("research_agent.agent.extract_all", return_value=[
+                ExtractedContent(url="https://ex.com", title="T", text="C " * 100),
+            ]),
+            "summarize": patch("research_agent.agent.summarize_all"),
+            "evaluate": patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock),
+            "synthesize": patch("research_agent.agent.synthesize_report", return_value="Report"),
+            "sleep": patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock),
+            "print": patch("builtins.print"),
+        }
+
+    @pytest.mark.asyncio
+    async def test_auto_detect_sets_context_when_matched(self):
+        """When auto-detect finds a match, context should be loaded from detected path."""
+        patches = self._build_quick_patches()
+        with patches["search"], patches["refine"], patches["fetch"], \
+             patches["extract"], patches["synthesize"], patches["sleep"], \
+             patches["print"], \
+             patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
+             patch("research_agent.agent.auto_detect_context") as mock_detect, \
+             patch("research_agent.agent.load_full_context") as mock_load_ctx, \
+             patches["summarize"] as mock_sum, \
+             patches["evaluate"] as mock_eval:
+
+            mock_ctx_dir.is_dir.return_value = True
+            mock_detect.return_value = Path("contexts/pfe.md")
+            mock_load_ctx.return_value = ContextResult.loaded("PFE context")
+
+            summaries = [Summary(url="https://ex.com", title="T", summary="S")]
+            mock_sum.return_value = summaries
+            mock_eval.return_value = RelevanceEvaluation(
+                decision="full_report", decision_rationale="ok",
+                surviving_sources=tuple(summaries), dropped_sources=(),
+                total_scored=1, total_survived=1, refined_query="q",
+            )
+
+            agent = ResearchAgent(api_key="test", mode=ResearchMode.quick())
+            await agent.research_async("PFE competitors")
+
+            # Auto-detect was called
+            mock_detect.assert_called_once()
+            # load_full_context was called with the detected path
+            mock_load_ctx.assert_called_once_with(Path("contexts/pfe.md"))
+            # Original agent state was NOT mutated
+            assert agent.context_path is None
+            assert agent.no_context is False
+
+    @pytest.mark.asyncio
+    async def test_auto_detect_skips_context_when_none_matched(self):
+        """When auto-detect returns None, context should be not_configured."""
+        patches = self._build_quick_patches()
+        with patches["search"], patches["refine"], patches["fetch"], \
+             patches["extract"], patches["synthesize"] as mock_synth, \
+             patches["sleep"], patches["print"], \
+             patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
+             patch("research_agent.agent.auto_detect_context") as mock_detect, \
+             patch("research_agent.agent.load_full_context") as mock_load_ctx, \
+             patches["summarize"] as mock_sum, \
+             patches["evaluate"] as mock_eval:
+
+            mock_ctx_dir.is_dir.return_value = True
+            mock_detect.return_value = None
+            mock_load_ctx.return_value = ContextResult.not_configured()
+
+            summaries = [Summary(url="https://ex.com", title="T", summary="S")]
+            mock_sum.return_value = summaries
+            mock_eval.return_value = RelevanceEvaluation(
+                decision="full_report", decision_rationale="ok",
+                surviving_sources=tuple(summaries), dropped_sources=(),
+                total_scored=1, total_survived=1, refined_query="q",
+            )
+
+            agent = ResearchAgent(api_key="test", mode=ResearchMode.quick())
+            await agent.research_async("quantum computing")
+
+            # Context passed to synthesis should be None
+            synth_call = mock_synth.call_args
+            assert synth_call[1]["context"] is None
+            # Agent state not mutated
+            assert agent.no_context is False
+
+    @pytest.mark.asyncio
+    async def test_auto_detect_skipped_when_context_path_set(self):
+        """When context_path is already set, auto-detect should not run."""
+        patches = self._build_quick_patches()
+        with patches["search"], patches["refine"], patches["fetch"], \
+             patches["extract"], patches["synthesize"], patches["sleep"], \
+             patches["print"], \
+             patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
+             patch("research_agent.agent.auto_detect_context") as mock_detect, \
+             patch("research_agent.agent.load_full_context") as mock_load_ctx, \
+             patches["summarize"] as mock_sum, \
+             patches["evaluate"] as mock_eval:
+
+            mock_ctx_dir.is_dir.return_value = True
+            mock_load_ctx.return_value = ContextResult.loaded("Already set")
+
+            summaries = [Summary(url="https://ex.com", title="T", summary="S")]
+            mock_sum.return_value = summaries
+            mock_eval.return_value = RelevanceEvaluation(
+                decision="full_report", decision_rationale="ok",
+                surviving_sources=tuple(summaries), dropped_sources=(),
+                total_scored=1, total_survived=1, refined_query="q",
+            )
+
+            agent = ResearchAgent(
+                api_key="test", mode=ResearchMode.quick(),
+                context_path=Path("contexts/pfe.md"),
+            )
+            await agent.research_async("test")
+
+            mock_detect.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_detect_skipped_when_no_context(self):
+        """When no_context=True, auto-detect should not run."""
+        patches = self._build_quick_patches()
+        with patches["search"], patches["refine"], patches["fetch"], \
+             patches["extract"], patches["synthesize"], patches["sleep"], \
+             patches["print"], \
+             patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
+             patch("research_agent.agent.auto_detect_context") as mock_detect, \
+             patch("research_agent.agent.load_full_context") as mock_load_ctx, \
+             patches["summarize"] as mock_sum, \
+             patches["evaluate"] as mock_eval:
+
+            mock_ctx_dir.is_dir.return_value = True
+            mock_load_ctx.return_value = ContextResult.not_configured(source="--context none")
+
+            summaries = [Summary(url="https://ex.com", title="T", summary="S")]
+            mock_sum.return_value = summaries
+            mock_eval.return_value = RelevanceEvaluation(
+                decision="full_report", decision_rationale="ok",
+                surviving_sources=tuple(summaries), dropped_sources=(),
+                total_scored=1, total_survived=1, refined_query="q",
+            )
+
+            agent = ResearchAgent(
+                api_key="test", mode=ResearchMode.quick(), no_context=True,
+            )
+            await agent.research_async("test")
+
+            mock_detect.assert_not_called()
+
+
 class TestResearchAgentStructuredSummaries:
     """Tests for structured summary passthrough in deep vs standard mode."""
 
