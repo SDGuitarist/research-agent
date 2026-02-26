@@ -1,13 +1,16 @@
-"""Business context loading."""
+"""Context loading and auto-detection."""
 
 import logging
 from collections import Counter
 from pathlib import Path
 
 import yaml
+from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
 from .context_result import ContextResult
 from .critique import DIMENSIONS
+from .errors import ANTHROPIC_TIMEOUT
+from .modes import DEFAULT_MODEL
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
@@ -82,6 +85,103 @@ def load_full_context(context_path: Path | None = None) -> ContextResult:
     except OSError as e:
         logger.warning(f"Could not read context file {path}: {e}")
         return ContextResult.failed(str(e), source=source)
+
+
+# --- Auto-detection: pick context file based on query ---
+
+# Maximum lines to read from each context file for the preview
+_PREVIEW_LINES = 5
+
+
+def list_available_contexts() -> list[tuple[str, str]]:
+    """List context files in contexts/ with a short preview of each.
+
+    Returns:
+        List of (name, preview) tuples. Empty list if contexts/ doesn't exist
+        or has no .md files.
+    """
+    if not CONTEXTS_DIR.is_dir():
+        return []
+
+    results = []
+    for path in sorted(CONTEXTS_DIR.glob("*.md")):
+        try:
+            text = path.read_text().strip()
+            preview_lines = text.split("\n")[:_PREVIEW_LINES]
+            preview = "\n".join(preview_lines)
+        except OSError:
+            preview = "(could not read)"
+        results.append((path.stem, preview))
+    return results
+
+
+def auto_detect_context(
+    client: Anthropic,
+    query: str,
+    model: str = DEFAULT_MODEL,
+) -> Path | None:
+    """Ask the LLM which context file (if any) is relevant to the query.
+
+    Only called when no --context flag is given and contexts/ directory exists
+    with at least one .md file.
+
+    Args:
+        client: Anthropic client (sync).
+        query: The user's research query.
+        model: Claude model to use.
+
+    Returns:
+        Path to the selected context file, or None if no context matches.
+        Returns None on any error (LLM failure, bad response, etc.).
+    """
+    available = list_available_contexts()
+    if not available:
+        return None
+
+    # Build a numbered list of context files with previews
+    options = []
+    for i, (name, preview) in enumerate(available, 1):
+        options.append(f"{i}. {name}\n{preview}")
+    options_text = "\n\n".join(options)
+
+    prompt = (
+        f"Given this research query:\n\n"
+        f"  \"{query}\"\n\n"
+        f"Which of these context files (if any) is relevant? "
+        f"A context file is relevant if the query is about topics covered by that context.\n\n"
+        f"{options_text}\n\n"
+        f"Reply with ONLY the context name (e.g. \"{available[0][0]}\") or \"none\" "
+        f"if no context is relevant. Do not explain."
+    )
+
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=50,
+            timeout=ANTHROPIC_TIMEOUT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        answer = response.content[0].text.strip().lower()
+    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
+        logger.warning("Auto-detect context failed: %s", e)
+        return None
+
+    # Match answer to a known context name
+    valid_names = {name.lower(): name for name, _ in available}
+    if answer in ("none", "\"none\""):
+        logger.info("Auto-detect: no context matches query")
+        return None
+
+    # Strip quotes if the LLM wrapped the name
+    cleaned = answer.strip("\"'")
+    if cleaned in valid_names:
+        original_name = valid_names[cleaned]
+        path = CONTEXTS_DIR / f"{original_name}.md"
+        logger.info("Auto-detect: selected context '%s'", original_name)
+        return path
+
+    logger.warning("Auto-detect returned unrecognized answer: %r", answer)
+    return None
 
 
 # --- Critique history loading (Tier 2 adaptive prompts) ---

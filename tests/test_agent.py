@@ -892,8 +892,11 @@ class TestResearchAgentBusinessContext:
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.load_full_context") as mock_load_context, \
+             patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
+
+            mock_ctx_dir.is_dir.return_value = False
 
             mock_search.return_value = [
                 SearchResult(title="R", url="https://ex1.com", snippet="S")
@@ -939,8 +942,11 @@ class TestResearchAgentBusinessContext:
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.load_full_context") as mock_load_context, \
+             patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
              patch("builtins.print"):
+
+            mock_ctx_dir.is_dir.return_value = False
 
             mock_search.return_value = [
                 SearchResult(title="R", url="https://ex1.com", snippet="S")

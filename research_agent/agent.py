@@ -18,7 +18,7 @@ from .summarize import summarize_all, Summary
 from .synthesize import synthesize_report, synthesize_draft, synthesize_final
 from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore
 from .decompose import decompose_query, DecompositionResult
-from .context import load_full_context, load_critique_history, clear_context_cache
+from .context import load_full_context, load_critique_history, clear_context_cache, auto_detect_context, CONTEXTS_DIR
 from .context_result import ContextResult
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
@@ -226,6 +226,20 @@ class ResearchAgent:
         self._last_source_count = 0
         self._last_gate_decision = ""
         clear_context_cache()
+
+        # Auto-detect context when no --context flag was given
+        if self.context_path is None and not self.no_context and CONTEXTS_DIR.is_dir():
+            detected = await asyncio.to_thread(
+                auto_detect_context, self.client, query, self.mode.model,
+            )
+            if detected is not None:
+                self.context_path = detected
+                print(f"      Auto-detected context: {detected.stem}")
+            else:
+                # contexts/ exists but nothing matched — skip context
+                self.no_context = True
+                logger.info("Auto-detect found no matching context; running without context")
+
         critique_context: str | None = None
         if not self.mode.is_quick:
             critique_ctx = await asyncio.to_thread(load_critique_history, META_DIR)
