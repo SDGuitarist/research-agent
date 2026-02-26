@@ -8,10 +8,7 @@ import yaml
 
 from research_agent.context import (
     load_full_context,
-    load_search_context,
-    load_synthesis_context,
     load_critique_history,
-    _extract_sections,
     _validate_critique_yaml,
     _summarize_patterns,
 )
@@ -104,136 +101,6 @@ class TestLoadFullContext:
         assert bool(result) is False
 
 
-class TestExtractSections:
-    """Tests for _extract_sections()."""
-
-    def test_extracts_matching_sections(self):
-        """Should include only matching sections."""
-        result = _extract_sections(SAMPLE_CONTEXT, {"Target Market"})
-        assert "Target Market" in result
-        assert "San Diego market info" in result
-        assert "Pricing Reference" not in result
-
-    def test_preserves_header(self):
-        """Should include content before first ## heading."""
-        result = _extract_sections(SAMPLE_CONTEXT, {"Target Market"})
-        assert "Business Context" in result
-        assert "Owner" in result
-
-    def test_empty_input(self):
-        """Should return empty string for empty input."""
-        result = _extract_sections("", {"Target Market"})
-        assert result == ""
-
-    def test_no_matching_sections(self):
-        """Should return only the header when no sections match."""
-        result = _extract_sections(SAMPLE_CONTEXT, {"Nonexistent Section"})
-        # Should still have the header but no ## sections
-        assert "Business Context" in result
-        assert "Two Brands" not in result
-
-    def test_case_insensitive_matching(self):
-        """Section matching should be case-insensitive."""
-        result = _extract_sections(SAMPLE_CONTEXT, {"target market"})
-        assert "Target Market" in result
-        assert "San Diego market info" in result
-
-    def test_multiple_sections(self):
-        """Should extract multiple matching sections."""
-        result = _extract_sections(
-            SAMPLE_CONTEXT, {"Target Market", "Key Differentiators"}
-        )
-        assert "Target Market" in result
-        assert "Key Differentiators" in result
-        assert "Pricing Reference" not in result
-
-
-class TestLoadSearchContext:
-    """Tests for load_search_context()."""
-
-    def test_includes_search_sections(self, tmp_path):
-        """Should include search-relevant sections."""
-        ctx_file = tmp_path / "context.md"
-        ctx_file.write_text(SAMPLE_CONTEXT)
-        result = load_search_context(ctx_file)
-        assert result.status == ContextStatus.LOADED
-        assert "Search & Research Parameters" in result.content
-        assert "Target Market" in result.content
-        assert "Two Brands, One Operator" in result.content
-        assert "Research Matching Criteria" in result.content
-
-    def test_excludes_pricing(self, tmp_path):
-        """Should exclude Pricing Reference section."""
-        ctx_file = tmp_path / "context.md"
-        ctx_file.write_text(SAMPLE_CONTEXT)
-        result = load_search_context(ctx_file)
-        assert "Pricing Reference" not in result.content
-        assert "$450" not in result.content
-
-    def test_excludes_what_we_are_not(self, tmp_path):
-        """Should exclude 'What We Are NOT' section."""
-        ctx_file = tmp_path / "context.md"
-        ctx_file.write_text(SAMPLE_CONTEXT)
-        result = load_search_context(ctx_file)
-        assert "What We Are NOT" not in result.content
-
-    def test_returns_not_configured_missing_file(self, tmp_path):
-        """Should return NOT_CONFIGURED when context file is missing."""
-        result = load_search_context(tmp_path / "nonexistent.md")
-        assert result.status == ContextStatus.NOT_CONFIGURED
-        assert result.content is None
-        assert bool(result) is False
-
-
-class TestLoadSynthesisContext:
-    """Tests for load_synthesis_context()."""
-
-    def test_includes_competitive_position(self, tmp_path):
-        """Should include Competitive Position section."""
-        ctx_file = tmp_path / "context.md"
-        ctx_file.write_text(SAMPLE_CONTEXT)
-        result = load_synthesis_context(ctx_file)
-        assert result.status == ContextStatus.LOADED
-        assert "Competitive Position" in result.content
-        assert "Acoustic Spot Talent" in result.content
-
-    def test_includes_key_differentiators(self, tmp_path):
-        """Should include Key Differentiators section."""
-        ctx_file = tmp_path / "context.md"
-        ctx_file.write_text(SAMPLE_CONTEXT)
-        result = load_synthesis_context(ctx_file)
-        assert "Key Differentiators" in result.content
-
-    def test_excludes_pricing(self, tmp_path):
-        """Should exclude Pricing Reference section."""
-        ctx_file = tmp_path / "context.md"
-        ctx_file.write_text(SAMPLE_CONTEXT)
-        result = load_synthesis_context(ctx_file)
-        assert "Pricing Reference" not in result.content
-
-    def test_excludes_contact(self, tmp_path):
-        """Should exclude Contact section."""
-        ctx_file = tmp_path / "context.md"
-        ctx_file.write_text(SAMPLE_CONTEXT)
-        result = load_synthesis_context(ctx_file)
-        assert "alex@example.com" not in result.content
-
-    def test_excludes_what_we_are_not(self, tmp_path):
-        """Should exclude 'What We Are NOT' — causes defensive hedging."""
-        ctx_file = tmp_path / "context.md"
-        ctx_file.write_text(SAMPLE_CONTEXT)
-        result = load_synthesis_context(ctx_file)
-        assert "What We Are NOT" not in result.content
-        assert "Not a band" not in result.content
-
-    def test_returns_not_configured_missing_file(self, tmp_path):
-        """Should return NOT_CONFIGURED when context file is missing."""
-        result = load_synthesis_context(tmp_path / "nonexistent.md")
-        assert result.status == ContextStatus.NOT_CONFIGURED
-        assert result.content is None
-        assert bool(result) is False
-
-
 class TestContextResultReturnTypes:
     """Tests verifying ContextResult return types from all loaders."""
 
@@ -254,19 +121,6 @@ class TestContextResultReturnTypes:
         assert result.error != ""
         assert result.content is None
 
-    def test_load_search_context_returns_context_result(self, tmp_path):
-        """Return type should be ContextResult, not str."""
-        ctx_file = tmp_path / "context.md"
-        ctx_file.write_text(SAMPLE_CONTEXT)
-        result = load_search_context(ctx_file)
-        assert isinstance(result, ContextResult)
-
-    def test_load_synthesis_context_returns_context_result(self, tmp_path):
-        """Return type should be ContextResult, not str."""
-        ctx_file = tmp_path / "context.md"
-        ctx_file.write_text(SAMPLE_CONTEXT)
-        result = load_synthesis_context(ctx_file)
-        assert isinstance(result, ContextResult)
 
 
 # --- Helper to write critique YAML files ---

@@ -18,7 +18,7 @@ from .summarize import summarize_all, Summary
 from .synthesize import synthesize_report, synthesize_draft, synthesize_final
 from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore
 from .decompose import decompose_query, DecompositionResult
-from .context import load_full_context, load_synthesis_context, load_critique_history, clear_context_cache
+from .context import load_full_context, load_critique_history, clear_context_cache
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .coverage import identify_coverage_gaps
@@ -596,7 +596,7 @@ class ResearchAgent:
 
         # Standard/deep mode: draft -> skeptic -> final synthesis
         # Check for business context early so draft uses the right template
-        synth_result = load_synthesis_context()
+        synth_result = load_full_context()
         synthesis_context = synth_result.content
 
         self._next_step("Generating draft analysis...")

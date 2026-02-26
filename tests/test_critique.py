@@ -324,7 +324,7 @@ class TestCritiqueContextThreading:
 
         with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=fake_eval), \
              patch("research_agent.agent.synthesize_draft", return_value="draft"), \
-             patch("research_agent.agent.load_synthesis_context", return_value=ContextResult.not_configured(source="")), \
+             patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured(source="")), \
              patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock, return_value=fake_finding), \
              patch("research_agent.agent.synthesize_final", return_value="# Report") as mock_synth, \
              patch.object(agent, "_run_critique"):

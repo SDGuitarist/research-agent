@@ -6,7 +6,7 @@ from pathlib import Path
 
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
-from .context import load_search_context
+from .context import load_full_context
 from .errors import ANTHROPIC_TIMEOUT
 from .modes import DEFAULT_MODEL
 from .query_validation import validate_query_list
@@ -88,8 +88,8 @@ def decompose_query(
     """
     safe_query = sanitize_content(query)
 
-    # Load optional business context (search-optimized slice)
-    ctx_result = load_search_context(context_path)
+    # Load optional business context (full file — LLM decides what's relevant)
+    ctx_result = load_full_context(context_path)
     context = ctx_result.content
     context_block = ""
     if context:
