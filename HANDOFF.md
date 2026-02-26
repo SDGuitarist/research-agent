@@ -1,49 +1,48 @@
-# Handoff: Work Session 3 Complete — Flexible Context System
+# Handoff: Work Session 4 Complete — Flexible Context System
 
 ## Current State
 
 **Project:** Research Agent
-**Phase:** Work (Session 3 of 4 done)
+**Phase:** Work (Session 4 of 4 done — all sessions complete)
 **Branch:** `main`
 **Date:** February 26, 2026
-**Commit:** `692844a` — `refactor(context): rename business_context/has_business_context to generic names`
+**Commit:** `4cbaf2e` — `feat(context): auto-detect context from query when no --context flag given`
 
 ---
 
 ### Prior Phase Risk
 
-> "The sentinel path approach (`_effective_context_path` returning `Path("__no_context__")`) is a workaround."
+> "The `modes.py` file still has `'Reference <business_context> if provided'` in synthesis instructions — this is prompt text, not a variable name, so it's correct to leave it. But it could confuse someone reading the code who sees `context=` parameter but `<business_context>` in prompts."
 
-Accepted for now — Session 3 scope was variable renames only. The sentinel path still works correctly and the rename doesn't interact with it.
+Accepted — Session 4 scope is auto-detection, not prompt label renames. The XML tag is prompt-facing, not code-facing; renaming it is a separate concern.
 
 ## What Was Done This Session
 
-### Session 3: Rename `business_context` → Generic Names
+### Session 4: Auto-Detect Context from Query (Layer 3)
 
-Renamed all pipeline variables and parameters from business-specific to domain-agnostic names:
+Added automatic context file detection when no `--context` flag is given:
 
-1. **synthesize.py** — `business_context` param → `context` in `synthesize_report()`, `synthesize_final()`, and `_apply_budget_pruning()`. `has_business_context` → `has_context` in `synthesize_draft()`. Budget key `"business_context"` → `"context"`. Docstrings updated.
-2. **agent.py** — Local vars `business_context`/`synthesis_context` → `ctx_result.content` (inline) and `research_context`. Kwargs updated to match new param names (`context=`, `has_context=`).
-3. **token_budget.py** — Priority dict key `"business_context"` → `"context"`.
-4. **tests/test_agent.py** — Updated 2 assertions to check `["context"]` instead of `["business_context"]`.
-5. **tests/test_synthesize.py** — Updated test names, docstrings, and kwargs across 8 tests.
+1. **context.py** — Added `list_available_contexts()` (lists `contexts/*.md` with 5-line previews) and `auto_detect_context()` (asks LLM which context matches the query). On API error or unrecognized response, returns None gracefully.
+2. **agent.py** — In `_research_async()`, before decomposition: if `context_path` is None, `no_context` is False, and `contexts/` directory exists, calls `auto_detect_context()`. If a match is found, sets `self.context_path`. If no match, sets `self.no_context = True`. If `contexts/` doesn't exist, falls back to `research_context.md` (backward compatible).
+3. **tests/test_context.py** — Added 13 tests: 5 for `list_available_contexts()` (no dir, empty dir, lists files, preview truncation, ignores non-.md) and 8 for `auto_detect_context()` (no dir, empty dir, selects match, LLM says none, quoted response, API error, unrecognized answer, case-insensitive match).
+4. **tests/test_agent.py** — Updated 2 existing agent integration tests to mock `CONTEXTS_DIR.is_dir()` so auto-detect doesn't trigger unexpectedly.
 
-**Not changed (intentionally):** XML tags in LLM prompts (`<business_context>`) — these are prompt-level labels, not code identifiers. Renaming them is a separate concern that would require re-testing LLM output quality.
-
-**All 682 tests pass.**
+**All 695 tests pass.**
 
 ## Three Questions
 
-1. **Hardest implementation decision in this session?** Whether to also rename the XML tag `<business_context>` in LLM prompts. Decided against it — the XML tag is a prompt-level label that the model has been trained on, and renaming it could affect output quality. Variable names and prompt labels are separate concerns.
-2. **What did you consider changing but left alone, and why?** The `synthesis_context` parameter name in `skeptic.py` functions. These already use the generic name `synthesis_context`, which is fine. The `_build_context_block` function's internal variable names were already generic enough.
-3. **Least confident about going into review?** The `modes.py` file still has `"Reference <business_context> if provided"` in synthesis instructions — this is prompt text, not a variable name, so it's correct to leave it. But it could confuse someone reading the code who sees `context=` parameter but `<business_context>` in prompts.
+1. **Hardest implementation decision in this session?** Where to place the auto-detect call in the pipeline. It needs to happen before `decompose_query` (which also uses context via `_effective_context_path`), but also needs the Anthropic client. Placed it at the top of `_research_async()`, right after `clear_context_cache()`, which means it runs before step counting starts — the auto-detect is "invisible" to the step counter, which feels right since it's a setup step.
+
+2. **What did you consider changing but left alone, and why?** Considered adding a `--no-auto-detect` flag to let users skip auto-detection explicitly. Left it alone because `--context none` already achieves this — if you don't want any context, say so. Adding another flag for a niche use case violates YAGNI.
+
+3. **Least confident about going into review?** The LLM prompt for auto-detection is minimal (just "reply with the name or none"). In practice, LLMs sometimes add explanations even when told not to. The `cleaned` variable handles quoted responses, but a verbose LLM response falls through to the "unrecognized answer" warning and returns None. This is safe (falls back to no context) but might be annoying if the LLM consistently picks the right context but wraps it in explanation.
 
 ## Next Phase
 
-**Work** — Session 4: Auto-detect context from query (Layer 3)
+**Review** — All 4 work sessions are complete. Next step is multi-agent code review with `/workflows:review`.
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. Implement Session 4: auto-detect context from query — when no --context flag is given, examine available context files and ask the LLM which (if any) is relevant. Relevant files: research_agent/context.py, research_agent/agent.py, tests/test_context.py. Do only Session 4 — commit and stop.
+Run /workflows:review on the flexible context system changes (commits 4add942..4cbaf2e). Focus on: auto-detect LLM prompt robustness, backward compatibility with research_context.md, and test coverage for edge cases.
 ```
