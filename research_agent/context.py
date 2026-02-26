@@ -151,15 +151,17 @@ def auto_detect_context(
     if not available:
         return None
 
-    # Build a numbered list of context files with previews
+    # Build a numbered list of context files with sanitized previews
+    safe_query = sanitize_content(query)
     options = []
     for i, (name, preview) in enumerate(available, 1):
-        options.append(f"{i}. {name}\n{preview}")
+        safe_preview = sanitize_content(preview)
+        options.append(f"{i}. {name}\n{safe_preview}")
     options_text = "\n\n".join(options)
 
     prompt = (
         f"Given this research query:\n\n"
-        f"  \"{query}\"\n\n"
+        f"  <query>{safe_query}</query>\n\n"
         f"Which of these context files (if any) is relevant? "
         f"A context file is relevant if the query is about topics covered by that context.\n\n"
         f"{options_text}\n\n"

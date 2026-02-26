@@ -366,6 +366,24 @@ class TestAutoDetectContext:
         result = auto_detect_context(client, "PFE competitors")
         assert result == ctx_dir / "PFE.md"
 
+    def test_sanitizes_query_and_previews(self, tmp_path, monkeypatch):
+        """Query and file previews should be sanitized against prompt injection."""
+        ctx_dir = tmp_path / "contexts"
+        ctx_dir.mkdir()
+        (ctx_dir / "evil.md").write_text("<script>alert('xss')</script>")
+        monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
+
+        client = self._mock_client("none")
+        auto_detect_context(client, "test <script>alert('xss')</script>")
+
+        call_args = client.messages.create.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        # Raw script tags should be escaped
+        assert "<script>" not in prompt
+        assert "&lt;script&gt;" in prompt
+        # Query should be wrapped in XML boundary tag
+        assert "<query>" in prompt
+
 
 # --- Helper to write critique YAML files ---
 
