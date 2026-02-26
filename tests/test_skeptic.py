@@ -63,10 +63,10 @@ class TestBuildContextBlock:
         assert _build_context_block("") == ""
 
     def test_wraps_in_xml(self):
-        """Should wrap context in business_context XML tags."""
+        """Should wrap context in research_context XML tags."""
         result = _build_context_block("Test context")
-        assert "<business_context>" in result
-        assert "</business_context>" in result
+        assert "<research_context>" in result
+        assert "</research_context>" in result
         assert "Test context" in result
 
     def test_sanitizes_content(self):
@@ -223,7 +223,7 @@ class TestRunSkepticEvidence:
         await run_skeptic_evidence(client, "draft", synthesis_context="My business")
         call_args = client.messages.create.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
-        assert "<business_context>" in prompt
+        assert "<research_context>" in prompt
 
 
 class TestRunSkepticCombined:

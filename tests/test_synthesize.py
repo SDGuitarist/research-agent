@@ -225,13 +225,13 @@ class TestSynthesizeReport:
         call_args = mock_client.messages.stream.call_args
         user_content = call_args.kwargs["messages"][0]["content"]
 
-        assert "<business_context>" in user_content
+        assert "<research_context>" in user_content
         assert "guitar entertainment company" in user_content
 
     def test_synthesize_report_omits_context_block_when_none(
         self, sample_summaries, mock_anthropic_stream
     ):
-        """No context should produce no <business_context> block."""
+        """No context should produce no <research_context> block."""
         mock_client = MagicMock()
         mock_stream = mock_anthropic_stream(["Report content"])
         mock_client.messages.stream.return_value = mock_stream
@@ -247,7 +247,7 @@ class TestSynthesizeReport:
         call_args = mock_client.messages.stream.call_args
         user_content = call_args.kwargs["messages"][0]["content"]
 
-        assert "<business_context>" not in user_content
+        assert "<research_context>" not in user_content
         assert "Competitive Implications" not in user_content
 
     def test_synthesize_report_sanitizes_context(
@@ -371,7 +371,7 @@ class TestSynthesizeDraft:
         synthesize_draft(client, "test query", SAMPLE_SUMMARIES)
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
-        assert "<business_context>" not in prompt
+        assert "<research_context>" not in prompt
 
     def test_instructs_business_sections_with_context(self):
         """Draft with business context should specify sections 1-8."""
@@ -460,7 +460,7 @@ class TestSynthesizeFinal:
         )
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
-        assert "<business_context>" in prompt
+        assert "<research_context>" in prompt
 
     def test_includes_skeptic_findings_block(self):
         """Should include skeptic_findings block when findings provided."""

@@ -44,7 +44,7 @@ def _build_context_block(synthesis_context: str | None) -> str:
     if not synthesis_context:
         return ""
     safe_ctx = sanitize_content(synthesis_context)
-    return f"\n<business_context>\n{safe_ctx}\n</business_context>\n"
+    return f"\n<research_context>\n{safe_ctx}\n</research_context>\n"
 
 
 def _build_prior_block(prior_findings: list[SkepticFinding] | None) -> str:
