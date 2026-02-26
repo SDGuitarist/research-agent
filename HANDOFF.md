@@ -1,9 +1,9 @@
-# Handoff: Background Research Agents — Review + Fix Complete
+# Handoff: Background Research Agents — Compound Complete
 
 ## Current State
 
 **Project:** Research Agent — Background Research Agents
-**Phase:** REVIEW + FIX COMPLETE
+**Phase:** COMPOUND COMPLETE
 **Branch:** `feat/background-research-agents`
 **Date:** February 26, 2026
 
@@ -11,48 +11,40 @@
 
 ## What Was Done This Session
 
-1. **Ran multi-agent code review** (`/workflows:review`) with 6 agents: security-sentinel, architecture-strategist, agent-native-reviewer, code-simplicity-reviewer, performance-oracle, learnings-researcher.
-2. **Synthesized 10 findings** (2 P1, 5 P2, 3 P3) — created todo files for all.
-3. **Fixed all 10 findings** in the same session:
+1. **Read all prior phase outputs** — brainstorm, plan, review HANDOFF, todos 054-063, both skill files
+2. **Created compound document** at `docs/solutions/architecture/skill-only-features-background-research.md`
+3. **Documented 5 reusable patterns:**
+   - Claude has no clock — use deterministic identifiers
+   - Shell escaping is functional, not just security
+   - Single writer eliminates concurrency but stale detection needs care
+   - Validate paths from hand-edited files
+   - Skill-only features need extra review rigor
+4. **Tracked the full risk chain** in `## Risk Resolution` — 3 risks from brainstorm/plan/review feed-forward, 2 resolved, 1 accepted as fundamental limitation
 
-### P1 Fixes (Critical)
-- **#054 Shell injection**: Added single-quote escaping instruction before command construction
-- **#055 Timestamp collision**: Replaced microsecond timestamps with batch index suffix (1, 2, 3)
-
-### P2 Fixes (Important)
-- **#056 Hardcoded path**: Removed `cd /Users/.../` — agents inherit working directory
-- **#057 Path traversal**: Added path validation (must start with `reports/`, no `..`, must end `.md`) to both skills
-- **#058 Stale recovery**: Replaced automatic re-queuing with user warning (prevents double-launches)
-- **#059 Interactive digest**: Added auto-review mode (`/research:digest auto` skips prompt)
-- **#060 Over-engineered JSON**: Flattened daily_spend.json to 3 fields (`date`, `budget`, `total_spent`), removed per-query tracking array
-
-### P3 Fixes (Nice-to-Have)
-- **#061 Budget validation**: Added positive-number validation with $5.00 default
-- **#062 Error leakage**: Added error sanitization (truncate, strip API keys)
-- **#063 Redundant sections**: Removed "How It Works" overview, report preview in notifications, Step 5 spend summary in digest, sub-agent conditional
-
-### Commits
+### Full Commit History (Branch)
 
 | Commit | Description |
 |--------|-------------|
 | `a550e6f` | docs: brainstorm + plan for background research agents |
 | `52e32bf` | feat: add /research:queue and /research:digest skills |
 | `f321431` | fix(review): address all review findings for background research skills |
+| `6fb0313` | docs: update HANDOFF.md after review + fix phase |
+| (pending) | docs(compound): document skill-only feature patterns |
 
 ## Three Questions
 
-1. **Hardest judgment call in this review?** Whether shell injection (#054) warranted P1. In a single-user system the user "attacks themselves," but apostrophes are so common in English that normal queries would break — making it a functional bug, not just a theoretical security issue.
+1. **Hardest pattern to extract from the fixes?** Pattern 1 (Claude has no clock). The timestamp collision looks like a normal uniqueness bug but its root cause is a property of the inference medium — Claude generates all values in one pass with no time progression. This is non-obvious and will recur in any skill that asks Claude to generate "unique" values.
 
-2. **What did you consider flagging but chose not to, and why?** Filename sanitization duplication between skill prose and `cli.py:sanitize_filename()`. Since the skill controls the `-o` flag and the CLI respects whatever path it receives, the duplication doesn't cause bugs today. Noted in architecture review but no todo created.
+2. **What did I consider documenting but left out, and why?** The P3 fix details (budget validation defaults, error truncation rules, which specific sections were removed). They're tracked in todo files but don't represent reusable patterns — documenting them would dilute signal.
 
-3. **What might this review have missed?** Skills are markdown instructions interpreted by Claude at runtime. We reviewed the *instructions* but couldn't test edge cases in Claude's *interpretation* — e.g., does Claude correctly parse queue sections when items are in unexpected order? Does it handle the Edit tool's exact-match requirement when moving items? Only real-world testing validates these.
+3. **What might future sessions miss that this solution doesn't cover?** Runtime interpretation of skill instructions. All review was static analysis of prose. Whether Claude reliably applies escaping, parses queue states, and handles Edit tool exact-match requirements can only be validated through real-world usage.
 
 ## Next Phase
 
-**COMPOUND** — Document learnings in `docs/solutions/`.
+**MERGE** — The feature branch is complete through all 5 compound engineering phases. Ready to merge `feat/background-research-agents` into `main`.
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. Run /workflows:compound for the background research agents feature. Key learnings: (1) skill-only features have no unit tests — review must be extra thorough on instruction clarity, (2) single-writer pattern eliminates concurrent write concerns but stale-detection needs care, (3) Claude has no real clock so timestamp-based uniqueness fails for parallel operations. Relevant files: .claude/skills/research-queue.md, .claude/skills/research-digest.md, todos/054-063.
+Read HANDOFF.md. Merge feat/background-research-agents into main. Then run /research:queue with a few test queries to validate the skills work end-to-end.
 ```
