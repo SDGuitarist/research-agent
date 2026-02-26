@@ -44,7 +44,20 @@ def resolve_context_path(name: str) -> Path | None:
     if name.lower() == "none":
         return None
 
-    path = CONTEXTS_DIR / f"{name}.md"
+    # Defense layer 1: reject names that look like paths
+    if "/" in name or "\\" in name or name.startswith("."):
+        raise ValueError(
+            f"Invalid context name: {name!r} (must be a simple name, not a path)"
+        )
+
+    # Defense layer 2: verify resolved path stays inside contexts/
+    path = (CONTEXTS_DIR / f"{name}.md").resolve()
+    contexts_resolved = CONTEXTS_DIR.resolve()
+    if not str(path).startswith(str(contexts_resolved) + "/"):
+        raise ValueError(
+            f"Context name {name!r} resolves outside contexts/ directory"
+        )
+
     if not path.exists():
         available = sorted(p.stem for p in CONTEXTS_DIR.glob("*.md")) if CONTEXTS_DIR.is_dir() else []
         hint = f" Available: {', '.join(available)}" if available else ""

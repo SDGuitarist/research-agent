@@ -142,7 +142,7 @@ class TestResolveContextPath:
         (ctx_dir / "pfe.md").write_text("PFE context")
         monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
         result = resolve_context_path("pfe")
-        assert result == ctx_dir / "pfe.md"
+        assert result == (ctx_dir / "pfe.md").resolve()
 
     def test_raises_for_missing_file(self, tmp_path, monkeypatch):
         """Should raise FileNotFoundError when context file doesn't exist."""
@@ -167,6 +167,46 @@ class TestResolveContextPath:
         monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", tmp_path / "nope")
         with pytest.raises(FileNotFoundError, match="Context file not found"):
             resolve_context_path("pfe")
+
+    # --- Path traversal prevention ---
+
+    def test_rejects_relative_traversal(self):
+        """../CLAUDE should raise ValueError, not FileNotFoundError."""
+        with pytest.raises(ValueError, match="must be a simple name, not a path"):
+            resolve_context_path("../../etc/passwd")
+
+    def test_rejects_dot_prefix(self):
+        """Names starting with '.' are rejected."""
+        with pytest.raises(ValueError, match="must be a simple name, not a path"):
+            resolve_context_path("../CLAUDE")
+
+    def test_rejects_forward_slash(self):
+        """Names containing '/' are rejected."""
+        with pytest.raises(ValueError, match="must be a simple name, not a path"):
+            resolve_context_path("sub/dir")
+
+    def test_rejects_backslash(self):
+        """Names containing backslash are rejected."""
+        with pytest.raises(ValueError, match="must be a simple name, not a path"):
+            resolve_context_path("sub\\dir")
+
+    def test_rejects_absolute_path(self):
+        """Absolute paths like /etc/passwd are rejected (starts with /)."""
+        with pytest.raises(ValueError, match="must be a simple name, not a path"):
+            resolve_context_path("/etc/passwd")
+
+    def test_normal_name_still_works(self, tmp_path, monkeypatch):
+        """A valid simple name still resolves correctly after the fix."""
+        ctx_dir = tmp_path / "contexts"
+        ctx_dir.mkdir()
+        (ctx_dir / "pfe.md").write_text("PFE context")
+        monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
+        result = resolve_context_path("pfe")
+        assert result == (ctx_dir / "pfe.md").resolve()
+
+    def test_none_still_returns_none_after_fix(self):
+        """'none' bypass is unaffected by the validation."""
+        assert resolve_context_path("none") is None
 
 
 class TestListAvailableContexts:
