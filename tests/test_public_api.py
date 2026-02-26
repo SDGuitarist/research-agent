@@ -49,6 +49,8 @@ class TestAll:
             "ResearchResult",
             "ResearchError",
             "ModeInfo",
+            "list_available_contexts",
+            "resolve_context_path",
             "run_research",
             "run_research_async",
             "list_modes",
@@ -257,3 +259,63 @@ class TestGateDecisionEdgeCase:
         result = run_research("test query", mode="quick")
 
         assert result.status == "error"
+
+
+# --- context parameter ---
+
+
+class TestContextParameter:
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.ResearchAgent")
+    @patch("research_agent.resolve_context_path")
+    def test_context_name_passed_to_agent(self, mock_resolve, mock_agent_cls):
+        """context='pfe' resolves to a path and passes it to the agent."""
+        from pathlib import Path
+
+        mock_resolve.return_value = Path("contexts/pfe.md")
+        agent_instance = mock_agent_cls.return_value
+        agent_instance.research_async = AsyncMock(return_value="# Report")
+        agent_instance._last_source_count = 3
+        agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_critique = None
+
+        run_research("test", mode="quick", context="pfe")
+
+        mock_resolve.assert_called_once_with("pfe")
+        _, kwargs = mock_agent_cls.call_args
+        assert kwargs["context_path"] == Path("contexts/pfe.md")
+        assert kwargs["no_context"] is False
+
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.ResearchAgent")
+    @patch("research_agent.resolve_context_path")
+    def test_context_none_string_sets_no_context(self, mock_resolve, mock_agent_cls):
+        """context='none' should set no_context=True."""
+        mock_resolve.return_value = None  # resolve_context_path("none") returns None
+        agent_instance = mock_agent_cls.return_value
+        agent_instance.research_async = AsyncMock(return_value="# Report")
+        agent_instance._last_source_count = 3
+        agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_critique = None
+
+        run_research("test", mode="quick", context="none")
+
+        _, kwargs = mock_agent_cls.call_args
+        assert kwargs["context_path"] is None
+        assert kwargs["no_context"] is True
+
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.ResearchAgent")
+    def test_no_context_param_allows_auto_detect(self, mock_agent_cls):
+        """When context is not passed, agent gets default (auto-detect)."""
+        agent_instance = mock_agent_cls.return_value
+        agent_instance.research_async = AsyncMock(return_value="# Report")
+        agent_instance._last_source_count = 3
+        agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_critique = None
+
+        run_research("test", mode="quick")
+
+        _, kwargs = mock_agent_cls.call_args
+        assert kwargs.get("context_path") is None
+        assert kwargs.get("no_context") is False

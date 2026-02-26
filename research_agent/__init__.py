@@ -6,6 +6,7 @@ import asyncio
 import os
 
 from .agent import ResearchAgent
+from .context import list_available_contexts, resolve_context_path
 from .errors import ResearchError
 from .modes import ResearchMode
 from .results import ModeInfo, ResearchResult
@@ -16,18 +17,24 @@ __all__ = [
     "ResearchResult",
     "ResearchError",
     "ModeInfo",
+    "list_available_contexts",
+    "resolve_context_path",
     "run_research",
     "run_research_async",
     "list_modes",
 ]
 
 
-def run_research(query: str, mode: str = "standard") -> ResearchResult:
+def run_research(
+    query: str, mode: str = "standard", context: str | None = None,
+) -> ResearchResult:
     """Run a research query and return a structured result.
 
     Args:
         query: The research question.
         mode: Research mode — "quick", "standard", or "deep".
+        context: Context name (matches contexts/<name>.md), "none" to
+            skip context, or None to auto-detect from the query.
 
     Returns:
         ResearchResult with report, query, mode, sources_used, status.
@@ -47,7 +54,7 @@ def run_research(query: str, mode: str = "standard") -> ResearchResult:
         for standard and deep modes.
     """
     try:
-        return asyncio.run(run_research_async(query, mode=mode))
+        return asyncio.run(run_research_async(query, mode=mode, context=context))
     except RuntimeError as e:
         if "cannot be called from a running event loop" in str(e):
             raise ResearchError(
@@ -57,7 +64,9 @@ def run_research(query: str, mode: str = "standard") -> ResearchResult:
         raise
 
 
-async def run_research_async(query: str, mode: str = "standard") -> ResearchResult:
+async def run_research_async(
+    query: str, mode: str = "standard", context: str | None = None,
+) -> ResearchResult:
     """Async version of run_research for use in async contexts.
 
     Same interface as run_research(). Use this when calling from
@@ -83,7 +92,18 @@ async def run_research_async(query: str, mode: str = "standard") -> ResearchResu
         raise ResearchError(
             "TAVILY_API_KEY environment variable is required"
         )
-    agent = ResearchAgent(mode=research_mode)
+
+    # Resolve context parameter to agent constructor args
+    context_path = None
+    no_context = False
+    if context is not None:
+        context_path = resolve_context_path(context)
+        if context_path is None:
+            no_context = True  # context="none"
+
+    agent = ResearchAgent(
+        mode=research_mode, context_path=context_path, no_context=no_context,
+    )
     report = await agent.research_async(query)
 
     return ResearchResult(
