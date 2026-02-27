@@ -83,45 +83,58 @@ _OLD_FORMAT = re.compile(r"^(\d{4}-\d{2}-\d{2})_\d{6,}_(.+)\.md$")
 _NEW_FORMAT = re.compile(r"^(.+)_(\d{4}-\d{2}-\d{2})_\d{6,}\.md$")
 
 
-def list_reports() -> None:
-    """Print a table of saved reports sorted newest-first."""
+def get_reports() -> list[ReportInfo]:
+    """Return metadata for all saved reports, sorted newest-first.
+
+    Returns:
+        List of ReportInfo objects. Empty list if no reports directory
+        or no report files exist.
+    """
+    from .results import ReportInfo
+
     if not REPORTS_DIR.is_dir():
-        print("No reports directory found.")
-        return
+        return []
 
     md_files = sorted(REPORTS_DIR.glob("*.md"))
     if not md_files:
-        print("No saved reports.")
-        return
+        return []
 
-    # Parse each filename for date and query name
-    dated = []  # (date_str, query_name, filename)
-    undated = []  # filenames that don't match either pattern
-
+    results: list[ReportInfo] = []
     for f in md_files:
         name = f.name
         old_match = _OLD_FORMAT.match(name)
         new_match = _NEW_FORMAT.match(name)
 
         if old_match:
-            dated.append((old_match.group(1), old_match.group(2), name))
+            results.append(ReportInfo(filename=name, date=old_match.group(1), query_name=old_match.group(2)))
         elif new_match:
-            dated.append((new_match.group(2), new_match.group(1), name))
+            results.append(ReportInfo(filename=name, date=new_match.group(2), query_name=new_match.group(1)))
         else:
-            undated.append(name)
+            results.append(ReportInfo(filename=name, date="", query_name=name))
 
-    # Sort dated reports newest-first
-    dated.sort(key=lambda x: x[0], reverse=True)
+    # Sort by date newest-first (undated files sort to beginning)
+    results.sort(key=lambda r: r.date, reverse=True)
+    return results
 
-    total = len(dated) + len(undated)
-    print(f"Saved reports ({total}):")
-    for date_str, query_name, _ in dated:
-        print(f"  {date_str}  {query_name}")
+
+def list_reports() -> None:
+    """Print a table of saved reports sorted newest-first."""
+    reports = get_reports()
+    if not reports:
+        print("No saved reports." if REPORTS_DIR.is_dir() else "No reports directory found.")
+        return
+
+    dated = [r for r in reports if r.date]
+    undated = [r for r in reports if not r.date]
+
+    print(f"Saved reports ({len(reports)}):")
+    for r in dated:
+        print(f"  {r.date}  {r.query_name}")
 
     if undated:
         print(f"  -- {len(undated)} reports with non-standard names --")
-        for name in sorted(undated):
-            print(f"  {name}")
+        for r in undated:
+            print(f"  {r.filename}")
 
 
 def show_costs() -> None:

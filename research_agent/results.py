@@ -40,3 +40,11 @@ class ModeInfo:
     word_target: int
     cost_estimate: str
     auto_save: bool
+
+
+@dataclass(frozen=True)
+class ReportInfo:
+    """Metadata for a saved report file."""
+    filename: str
+    date: str
+    query_name: str

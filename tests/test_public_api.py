@@ -44,16 +44,21 @@ class TestVersion:
 class TestAll:
     def test_all_contains_expected_names(self):
         expected = {
+            "CritiqueResult",
+            "ModeInfo",
+            "ReportInfo",
             "ResearchAgent",
+            "ResearchError",
             "ResearchMode",
             "ResearchResult",
-            "ResearchError",
-            "ModeInfo",
+            "critique_report_file",
+            "get_reports",
             "list_available_contexts",
+            "list_modes",
+            "load_critique_history",
             "resolve_context_path",
             "run_research",
             "run_research_async",
-            "list_modes",
         }
         assert set(research_agent.__all__) == expected
 

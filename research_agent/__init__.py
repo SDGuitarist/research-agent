@@ -6,27 +6,38 @@ import asyncio
 import os
 
 from .agent import ResearchAgent
-from .context import list_available_contexts, resolve_context_path
+from .cli import get_reports
+from .context import list_available_contexts, load_critique_history, resolve_context_path
+from .critique import CritiqueResult, critique_report_file
 from .errors import ResearchError
 from .modes import ResearchMode
-from .results import ModeInfo, ResearchResult
+from .results import ModeInfo, ReportInfo, ResearchResult
 
 __all__ = [
+    "CritiqueResult",
+    "ModeInfo",
+    "ReportInfo",
     "ResearchAgent",
+    "ResearchError",
     "ResearchMode",
     "ResearchResult",
-    "ResearchError",
-    "ModeInfo",
+    "critique_report_file",
+    "get_reports",
     "list_available_contexts",
+    "list_modes",
+    "load_critique_history",
     "resolve_context_path",
     "run_research",
     "run_research_async",
-    "list_modes",
 ]
 
 
 def run_research(
-    query: str, mode: str = "standard", context: str | None = None,
+    query: str,
+    mode: str = "standard",
+    context: str | None = None,
+    skip_critique: bool = False,
+    max_sources: int | None = None,
 ) -> ResearchResult:
     """Run a research query and return a structured result.
 
@@ -35,6 +46,8 @@ def run_research(
         mode: Research mode — "quick", "standard", or "deep".
         context: Context name (matches contexts/<name>.md), "none" to
             skip context, or None to auto-detect from the query.
+        skip_critique: If True, skip self-critique after report generation.
+        max_sources: Override the mode's default source count.
 
     Returns:
         ResearchResult with report, query, mode, sources_used, status.
@@ -54,7 +67,10 @@ def run_research(
         for standard and deep modes.
     """
     try:
-        return asyncio.run(run_research_async(query, mode=mode, context=context))
+        return asyncio.run(run_research_async(
+            query, mode=mode, context=context,
+            skip_critique=skip_critique, max_sources=max_sources,
+        ))
     except RuntimeError as e:
         if "cannot be called from a running event loop" in str(e):
             raise ResearchError(
@@ -65,7 +81,11 @@ def run_research(
 
 
 async def run_research_async(
-    query: str, mode: str = "standard", context: str | None = None,
+    query: str,
+    mode: str = "standard",
+    context: str | None = None,
+    skip_critique: bool = False,
+    max_sources: int | None = None,
 ) -> ResearchResult:
     """Async version of run_research for use in async contexts.
 
@@ -106,6 +126,7 @@ async def run_research_async(
 
     agent = ResearchAgent(
         mode=research_mode, context_path=context_path, no_context=no_context,
+        skip_critique=skip_critique, max_sources=max_sources,
     )
     report = await agent.research_async(query)
 
