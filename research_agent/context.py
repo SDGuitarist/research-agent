@@ -18,14 +18,13 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONTEXT_PATH = Path("research_context.md")
 CONTEXTS_DIR = Path("contexts")
 
-# Per-run cache: avoids re-reading the same context file multiple times.
-# Call clear_context_cache() at the start of each research run.
-_context_cache: dict[str, ContextResult] = {}
+def new_context_cache() -> dict[str, ContextResult]:
+    """Create a fresh per-run context cache.
 
-
-def clear_context_cache() -> None:
-    """Clear the per-run context cache. Call at the start of each research run."""
-    _context_cache.clear()
+    Pass the returned dict to load_full_context() as the cache parameter.
+    Each ResearchAgent run should create its own cache.
+    """
+    return {}
 
 
 def resolve_context_path(name: str) -> Path | None:
@@ -65,39 +64,44 @@ def resolve_context_path(name: str) -> Path | None:
     return path
 
 
-def load_full_context(context_path: Path | None = None) -> ContextResult:
+def load_full_context(
+    context_path: Path | None = None,
+    cache: dict[str, ContextResult] | None = None,
+) -> ContextResult:
     """Load the complete research context file.
-
-    Caches the result per path to avoid redundant disk reads within a run.
-    Call clear_context_cache() at the start of each run.
 
     Args:
         context_path: Path to context file (defaults to research_context.md)
+        cache: Optional per-run cache dict (from new_context_cache()).
+            If provided, avoids redundant disk reads within a run.
 
     Returns:
         ContextResult with status indicating outcome.
     """
     path = context_path or DEFAULT_CONTEXT_PATH
     source = str(path)
-    if source in _context_cache:
-        return _context_cache[source]
+    if cache is not None and source in cache:
+        return cache[source]
     try:
         if not path.exists():
             result = ContextResult.not_configured(source=source)
-            _context_cache[source] = result
+            if cache is not None:
+                cache[source] = result
             return result
         content = path.read_text().strip()
         if not content:
             result = ContextResult.empty(source=source)
-            _context_cache[source] = result
+            if cache is not None:
+                cache[source] = result
             return result
         content = sanitize_content(content)
-        logger.info(f"Loaded research context from {path}")
+        logger.info("Loaded research context from %s", path)
         result = ContextResult.loaded(content, source=source)
-        _context_cache[source] = result
+        if cache is not None:
+            cache[source] = result
         return result
     except OSError as e:
-        logger.warning(f"Could not read context file {path}: {e}")
+        logger.warning("Could not read context file %s: %s", path, e)
         return ContextResult.failed(str(e), source=source)
 
 

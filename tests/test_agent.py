@@ -1035,7 +1035,8 @@ class TestResearchAgentAutoDetect:
             # Auto-detect was called
             mock_detect.assert_called_once()
             # load_full_context was called with the detected path
-            mock_load_ctx.assert_called_once_with(Path("contexts/pfe.md"))
+            mock_load_ctx.assert_called_once()
+            assert mock_load_ctx.call_args[0][0] == Path("contexts/pfe.md")
             # Original agent state was NOT mutated
             assert agent.context_path is None
             assert agent.no_context is False

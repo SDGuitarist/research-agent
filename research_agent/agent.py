@@ -18,7 +18,7 @@ from .summarize import summarize_all, Summary
 from .synthesize import synthesize_report, synthesize_draft, synthesize_final
 from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore
 from .decompose import decompose_query, DecompositionResult
-from .context import load_full_context, load_critique_history, clear_context_cache, auto_detect_context, CONTEXTS_DIR
+from .context import load_full_context, load_critique_history, new_context_cache, auto_detect_context, CONTEXTS_DIR
 from .context_result import ContextResult, ContextStatus
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
@@ -98,16 +98,20 @@ class ResearchAgent:
         """Most recent self-critique result, or None if not run."""
         return self._last_critique
 
-    def _load_context_for(self, context_path: Path | None, no_context: bool) -> ContextResult:
+    def _load_context_for(
+        self, context_path: Path | None, no_context: bool,
+        cache: dict[str, ContextResult] | None = None,
+    ) -> ContextResult:
         """Load research context using the given effective parameters.
 
         Args:
             context_path: Path to context file, or None for default.
             no_context: If True, skip context loading entirely.
+            cache: Optional per-run cache dict to avoid redundant reads.
         """
         if no_context:
             return ContextResult.not_configured(source="--context none")
-        return load_full_context(context_path)
+        return load_full_context(context_path, cache=cache)
 
     def _already_covered_response(self, schema_result: SchemaResult) -> str:
         """Generate a response when all gaps are verified and fresh."""
@@ -227,7 +231,7 @@ class ResearchAgent:
         self._last_source_count = 0
         self._last_gate_decision = ""
         self._last_critique = None
-        clear_context_cache()
+        context_cache = new_context_cache()
 
         # Auto-detect context when no --context flag was given.
         # Use local variables to avoid mutating self (preserves agent reuse).
@@ -247,7 +251,9 @@ class ResearchAgent:
                 logger.info("Auto-detect found no matching context; running without context")
 
         # Load context once for the entire run using effective (post-auto-detect) state
-        self._run_context = self._load_context_for(effective_context_path, effective_no_context)
+        self._run_context = self._load_context_for(
+            effective_context_path, effective_no_context, cache=context_cache,
+        )
         if self._run_context.status == ContextStatus.FAILED:
             logger.warning("Context file could not be read: %s — continuing without context",
                            self._run_context.error)
