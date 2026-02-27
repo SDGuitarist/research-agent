@@ -2,8 +2,6 @@
 name: research-digest
 description: Summarize completed background research results for batch review. Use when asked to "digest research", "review research results", or "what research is done".
 model: sonnet
-disable-model-invocation: true
-allowed-tools: Read, Edit, Task, Glob
 argument-hint: [auto] — pass "auto" to skip the archive prompt
 ---
 
