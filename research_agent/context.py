@@ -120,9 +120,13 @@ def list_available_contexts() -> list[tuple[str, str]]:
     results = []
     for path in sorted(CONTEXTS_DIR.glob("*.md")):
         try:
-            text = path.read_text().strip()
-            preview_lines = text.split("\n")[:_PREVIEW_LINES]
-            preview = "\n".join(preview_lines)
+            lines = []
+            with path.open() as f:
+                for i, line in enumerate(f):
+                    if i >= _PREVIEW_LINES:
+                        break
+                    lines.append(line.rstrip())
+            preview = "\n".join(lines)
         except OSError:
             preview = "(could not read)"
         results.append((path.stem, preview))
