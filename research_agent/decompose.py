@@ -8,7 +8,7 @@ from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, A
 from .errors import ANTHROPIC_TIMEOUT
 from .modes import DEFAULT_MODEL
 from .query_validation import validate_query_list
-from .sanitize import sanitize_content
+from .sanitize import sanitize_content, build_context_block
 
 logger = logging.getLogger(__name__)
 
@@ -87,13 +87,7 @@ def decompose_query(
     safe_query = sanitize_content(query)
 
     # Build optional context block from pre-loaded content
-    context_block = ""
-    if context_content:
-        context_block = f"""
-<research_context>
-{context_content}
-</research_context>
-"""
+    context_block = build_context_block(context_content)
 
     critique_block = ""
     if critique_guidance:

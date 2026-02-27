@@ -18,7 +18,7 @@ from anthropic import (
 from .modes import DEFAULT_MODEL
 from .summarize import Summary
 from .errors import SynthesisError
-from .sanitize import sanitize_content
+from .sanitize import sanitize_content, build_context_block
 from .token_budget import allocate_budget, truncate_to_budget
 
 if TYPE_CHECKING:
@@ -163,10 +163,9 @@ def synthesize_report(
     safe_query = sanitize_content(query)
 
     # Build optional context block
-    context_block = ""
+    context_block = build_context_block(context)
     context_instruction = ""
     if context:
-        context_block = f"\n<research_context>\n{context}\n</research_context>\n"
         context_instruction = (
             "\n\nBusiness context is provided in <research_context>. Use it only for "
             "Competitive Implications and Positioning Advice sections. Keep factual "
@@ -451,10 +450,9 @@ def synthesize_final(
         critique_guidance = budget_components["critique_guidance"]
 
     # Context block
-    context_block = ""
+    context_block = build_context_block(context)
     context_instruction = ""
     if context:
-        context_block = f"\n<research_context>\n{context}\n</research_context>\n"
         context_instruction = (
             "Use the business context in <research_context> for Competitive Implications "
             "and Positioning Advice sections. Reference specific competitive positioning, "

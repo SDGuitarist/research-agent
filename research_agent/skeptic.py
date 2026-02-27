@@ -14,7 +14,7 @@ from anthropic import (
 
 from .api_helpers import retry_api_call
 from .modes import DEFAULT_MODEL
-from .sanitize import sanitize_content
+from .sanitize import sanitize_content, build_context_block
 from .errors import SkepticError
 
 logger = logging.getLogger(__name__)
@@ -41,9 +41,7 @@ def _count_severity(text: str) -> tuple[int, int]:
 
 def _build_context_block(synthesis_context: str | None) -> str:
     """Build optional research context XML block."""
-    if not synthesis_context:
-        return ""
-    return f"\n<research_context>\n{synthesis_context}\n</research_context>\n"
+    return build_context_block(synthesis_context)
 
 
 def _build_prior_block(prior_findings: list[SkepticFinding] | None) -> str:
