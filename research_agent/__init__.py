@@ -113,8 +113,8 @@ async def run_research_async(
         report=report,
         query=query,
         mode=research_mode.name,
-        sources_used=agent._last_source_count,
-        status=agent._last_gate_decision or "error",
+        sources_used=agent.last_source_count,
+        status=agent.last_gate_decision or "error",
         critique=agent.last_critique,
     )
 

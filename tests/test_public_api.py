@@ -152,8 +152,8 @@ class TestRunResearchHappyPath:
     def test_returns_research_result(self, mock_agent_cls):
         agent_instance = mock_agent_cls.return_value
         agent_instance.research_async = AsyncMock(return_value="# Report")
-        agent_instance._last_source_count = 5
-        agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_source_count = 5
+        agent_instance.last_gate_decision = "full_report"
 
         result = run_research("test query", mode="quick")
 
@@ -169,8 +169,8 @@ class TestRunResearchHappyPath:
     def test_default_mode_is_standard(self, mock_agent_cls):
         agent_instance = mock_agent_cls.return_value
         agent_instance.research_async = AsyncMock(return_value="# Report")
-        agent_instance._last_source_count = 8
-        agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_source_count = 8
+        agent_instance.last_gate_decision = "full_report"
 
         result = run_research("test query")
 
@@ -181,8 +181,8 @@ class TestRunResearchHappyPath:
     def test_short_report_status(self, mock_agent_cls):
         agent_instance = mock_agent_cls.return_value
         agent_instance.research_async = AsyncMock(return_value="# Short")
-        agent_instance._last_source_count = 2
-        agent_instance._last_gate_decision = "short_report"
+        agent_instance.last_source_count = 2
+        agent_instance.last_gate_decision = "short_report"
 
         result = run_research("test query", mode="quick")
 
@@ -199,8 +199,8 @@ class TestRunResearchAsyncHappyPath:
     async def test_returns_research_result(self, mock_agent_cls):
         agent_instance = mock_agent_cls.return_value
         agent_instance.research_async = AsyncMock(return_value="# Report")
-        agent_instance._last_source_count = 5
-        agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_source_count = 5
+        agent_instance.last_gate_decision = "full_report"
         agent_instance.last_critique = None
 
         result = await run_research_async("test query", mode="quick")
@@ -221,8 +221,8 @@ class TestRunResearchAsyncHappyPath:
 
         agent_instance = mock_agent_cls.return_value
         agent_instance.research_async = AsyncMock(return_value="# Report")
-        agent_instance._last_source_count = 5
-        agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_source_count = 5
+        agent_instance.last_gate_decision = "full_report"
         agent_instance.last_critique = fake_critique
 
         result = await run_research_async("test query", mode="standard")
@@ -253,8 +253,8 @@ class TestGateDecisionEdgeCase:
         """If agent returns without setting gate decision, status is 'error'."""
         agent_instance = mock_agent_cls.return_value
         agent_instance.research_async = AsyncMock(return_value="# Report")
-        agent_instance._last_source_count = 0
-        agent_instance._last_gate_decision = ""
+        agent_instance.last_source_count = 0
+        agent_instance.last_gate_decision = ""
 
         result = run_research("test query", mode="quick")
 
@@ -275,8 +275,8 @@ class TestContextParameter:
         mock_resolve.return_value = Path("contexts/pfe.md")
         agent_instance = mock_agent_cls.return_value
         agent_instance.research_async = AsyncMock(return_value="# Report")
-        agent_instance._last_source_count = 3
-        agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_source_count = 3
+        agent_instance.last_gate_decision = "full_report"
         agent_instance.last_critique = None
 
         run_research("test", mode="quick", context="pfe")
@@ -294,8 +294,8 @@ class TestContextParameter:
         mock_resolve.return_value = None  # resolve_context_path("none") returns None
         agent_instance = mock_agent_cls.return_value
         agent_instance.research_async = AsyncMock(return_value="# Report")
-        agent_instance._last_source_count = 3
-        agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_source_count = 3
+        agent_instance.last_gate_decision = "full_report"
         agent_instance.last_critique = None
 
         run_research("test", mode="quick", context="none")
@@ -316,8 +316,8 @@ class TestContextParameter:
         """When context is not passed, agent gets default (auto-detect)."""
         agent_instance = mock_agent_cls.return_value
         agent_instance.research_async = AsyncMock(return_value="# Report")
-        agent_instance._last_source_count = 3
-        agent_instance._last_gate_decision = "full_report"
+        agent_instance.last_source_count = 3
+        agent_instance.last_gate_decision = "full_report"
         agent_instance.last_critique = None
 
         run_research("test", mode="quick")

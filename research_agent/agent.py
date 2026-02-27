@@ -19,7 +19,7 @@ from .synthesize import synthesize_report, synthesize_draft, synthesize_final
 from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore
 from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_critique_history, clear_context_cache, auto_detect_context, CONTEXTS_DIR
-from .context_result import ContextResult
+from .context_result import ContextResult, ContextStatus
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .coverage import identify_coverage_gaps
@@ -82,6 +82,16 @@ class ResearchAgent:
         self._last_source_count: int = 0
         self._last_gate_decision: str = ""
         self._last_critique: CritiqueResult | None = None
+
+    @property
+    def last_source_count(self) -> int:
+        """Number of sources used in the most recent run."""
+        return self._last_source_count
+
+    @property
+    def last_gate_decision(self) -> str:
+        """Relevance gate decision from the most recent run."""
+        return self._last_gate_decision
 
     @property
     def last_critique(self) -> CritiqueResult | None:
@@ -238,6 +248,9 @@ class ResearchAgent:
 
         # Load context once for the entire run using effective (post-auto-detect) state
         self._run_context = self._load_context_for(effective_context_path, effective_no_context)
+        if self._run_context.status == ContextStatus.FAILED:
+            logger.warning("Context file could not be read: %s — continuing without context",
+                           self._run_context.error)
 
         critique_context: str | None = None
         if not self.mode.is_quick:
