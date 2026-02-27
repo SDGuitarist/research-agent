@@ -17,6 +17,7 @@ from research_agent.context import load_critique_history, resolve_context_path
 from research_agent.critique import critique_report_file, save_critique
 from research_agent.errors import ResearchError
 from research_agent.modes import ResearchMode
+from research_agent.safe_io import atomic_write
 
 RESEARCH_LOG_PATH = Path("research_log.md")
 REPORTS_DIR = Path("reports")
@@ -347,7 +348,7 @@ Examples:
         if output_path:
             # Create directory if needed
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(report)
+            atomic_write(output_path, report)
             print(f"\n\nReport saved to: {output_path}")
             if args.open:
                 if output_path.suffix != ".md":
