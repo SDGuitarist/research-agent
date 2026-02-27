@@ -1,9 +1,9 @@
-# Handoff: Todo Fixes — P1, P2, P3 Batch
+# Handoff: All Review Todos Resolved
 
 ## Current State
 
 **Project:** Research Agent
-**Phase:** Work (fixing review todos on main)
+**Phase:** Cycle complete — all P1/P2/P3 review todos fixed
 **Branch:** `main`
 **Date:** February 26, 2026
 
@@ -11,58 +11,60 @@
 
 ## What Was Done This Session
 
-Fixed 8 todos across P1/P2/P3 priorities in 7 commits (`20319b7..dabbba7`):
-
-### P1 Fixes
-| Commit | Todo | Fix |
-|--------|------|-----|
-| `20319b7` | 064 | Catch `ValueError` from `resolve_context_path` in CLI and public API |
-| `76f0471` | 065 | Sanitize context once at load time, remove redundant consumer calls |
-
-### P2 Fixes
-| Commit | Todo | Fix |
-|--------|------|-----|
-| `998290d` | 071 | Use `Path.is_relative_to` instead of string prefix check |
-| `c4716e0` | 074 | Reset `_last_critique` between runs |
-| `92d2978` | 067 | Use `atomic_write` for CLI report output |
+Fixed all remaining P3, P2, and P1 review todos in 12 commits (`2e37baa..32b4852`). 714 tests passing.
 
 ### P3 Fixes
 | Commit | Todo | Fix |
 |--------|------|-----|
-| `1d0b121` | 050+052 | %-style logging in coverage.py + named `MAX_TRIED_OVERLAP` constant |
-| `dabbba7` | 053 | Extract `_collect_tried_queries` helper, remove duplication |
+| `84ec074` | 061 | `list_available_contexts` reads line-by-line instead of full file for previews |
+| `2245fe7` | 062 | Replace stale "business context" docstrings with "research context" |
+| `e15c58d` | 063 | Add substring word-matching fallback for verbose auto-detect LLM responses |
 
-All 712 tests passing throughout. All commits pushed to `origin/main`.
+### P2 Fixes
+| Commit | Todo | Fix |
+|--------|------|-----|
+| `99c89ba` | 070 | Extract `build_context_block()` into `sanitize.py`, deduplicate across 3 files |
+| `4463f94` | 072 | Expose `last_source_count`/`last_gate_decision` as public `@property` |
+| `585d0f2` | 073 | Log warning when context file load returns FAILED status |
+| `1b615cc` | 066 | Move context cache from module-level dict to per-run instance parameter |
+| `7f6073e` | 069 | Use Haiku for auto-detect + single-context shortcut (skip LLM entirely) |
+| `c1991b9` | 068 | Add `skip_critique`/`max_sources` params, export `CritiqueResult`, `ReportInfo`, `get_reports` |
 
-### Remaining Pending Todos
+### Already-Done Todos (Verified & Marked)
+| Commit | Todos | Status |
+|--------|-------|--------|
+| `585d0f2` | 064, 065, 067, 071, 074 | Already fixed in prior sessions — marked done |
+| `7745d52` | 061, 062, 063 | Marked done after fixing |
+| `32b4852` | 066, 068, 069 | Marked done after fixing |
 
-**P2 (6 remaining):**
-- 066: Module-level context cache thread safety (Medium)
-- 068: API parity gaps — 6 CLI features not exposed (Medium)
-- 069: Auto-detect LLM call latency — use Haiku (Small-Medium)
-- 070: Context block building duplicated across 3 files (Small)
-- 072: Public API accesses private `_` attributes (Small)
-- 073: FAILED context silently drops to no-context (Small)
-
-**P3 (3 remaining):**
-- 061: `list_available_contexts` reads entire files for preview (Small)
-- 062: Stale "business context" in docstrings (Small)
-- 063: Auto-detect prompt fragility — verbose LLM responses (Small)
+### Key Files Changed
+- `research_agent/context.py` — Cache refactor, line-by-line preview, auto-detect improvements
+- `research_agent/agent.py` — Public properties, per-run cache, FAILED warning
+- `research_agent/__init__.py` — API parity: new params + exports
+- `research_agent/sanitize.py` — `build_context_block()` + `CONTEXT_TAG`
+- `research_agent/modes.py` — `AUTO_DETECT_MODEL` constant
+- `research_agent/results.py` — `ReportInfo` dataclass
+- `research_agent/cli.py` — `get_reports()` data-returning function
+- `research_agent/synthesize.py`, `decompose.py`, `skeptic.py` — Use shared `build_context_block`
+- `tests/test_context.py`, `test_agent.py`, `test_public_api.py` — Updated for all changes
 
 ## Three Questions
 
-1. **Hardest implementation decision in this session?** The double-sanitization fix (065) — deciding to move sanitization to load time and update all consumers + their tests, rather than making `sanitize_content` idempotent. Load-time sanitization is the cleaner architectural boundary.
+1. **Hardest implementation decision in this session?** The context cache refactor (066) — replacing a module-level `_context_cache` dict with a `new_context_cache()` factory and optional `cache` parameter on `load_full_context()`. Had to thread the cache through the agent without breaking existing callers that don't pass it.
 
-2. **What did you consider changing but left alone, and why?** Considered also fixing the f-string logger calls in `query_validation.py` when fixing 050 in `coverage.py`. Left it alone because the todo only scoped coverage.py, and scope creep across modules risks unintended side effects.
+2. **What did you consider changing but left alone, and why?** Considered adding `functools.lru_cache` (Option B from todo 066) instead of the manual dict approach. Left it alone because `lru_cache` doesn't work well with `Path` arguments and per-instance isolation — a plain dict parameter is simpler and more explicit.
 
-3. **Least confident about going into the next batch?** The 11 "pending" todos that are actually `status: done` (045-049, 055-060) have misleading filenames containing "pending". Could cause confusion in future sessions scanning by filename.
+3. **Least confident about going into the next phase?** The 16 untracked todo files with "pending" in their filenames but `status: done` inside. They create noise in `git status` and could confuse future sessions scanning by filename. Should be committed or renamed.
 
 ## Next Phase
 
-Continue fixing remaining todos, or proceed to **review** of the background research agents feature.
+**Cycle complete.** All review todos are resolved. Options:
+- **Compound** — Document learnings from this fix cycle in `docs/solutions/`
+- **Clean up** — Commit the untracked done-todo files and docs
+- **New feature** — Pick up the background research agents brainstorm
 
 ### Prompt for Next Session
 
 ```
-Read todos/061-pending-p3-full-file-read-preview.md, todos/062-pending-p3-stale-business-context-docstrings.md, and todos/063-pending-p3-auto-detect-prompt-fragility.md. Fix all three P3s. Relevant files: research_agent/context.py, research_agent/synthesize.py, tests/test_context.py, tests/test_agent.py. Run tests after each fix. Commit each fix separately. After all commits, push and say DONE.
+Read HANDOFF.md. All review todos are fixed. Remaining P3 todos (050, 051, 052, 053) were fixed in a prior session. 16 untracked todo files (status: done) and docs need committing. Either: (1) commit the untracked files, or (2) start compound phase — document learnings in docs/solutions/.
 ```
