@@ -311,7 +311,7 @@ Examples:
     if args.context is not None:
         try:
             context_path = resolve_context_path(args.context)
-        except FileNotFoundError as e:
+        except (FileNotFoundError, ValueError) as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
         if context_path is None:

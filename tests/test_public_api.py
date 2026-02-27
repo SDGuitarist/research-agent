@@ -305,6 +305,12 @@ class TestContextParameter:
         assert kwargs["no_context"] is True
 
     @patch.dict("os.environ", ENV_BOTH, clear=True)
+    def test_context_path_traversal_raises_research_error(self):
+        """context='../evil' should raise ResearchError, not ValueError."""
+        with pytest.raises(ResearchError, match="must be a simple name"):
+            run_research("test", mode="quick", context="../evil")
+
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
     @patch("research_agent.ResearchAgent")
     def test_no_context_param_allows_auto_detect(self, mock_agent_cls):
         """When context is not passed, agent gets default (auto-detect)."""

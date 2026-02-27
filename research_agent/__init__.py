@@ -97,7 +97,10 @@ async def run_research_async(
     context_path = None
     no_context = False
     if context is not None:
-        context_path = resolve_context_path(context)
+        try:
+            context_path = resolve_context_path(context)
+        except (FileNotFoundError, ValueError) as e:
+            raise ResearchError(str(e)) from e
         if context_path is None:
             no_context = True  # context="none"
 
