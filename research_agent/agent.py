@@ -453,6 +453,19 @@ class ResearchAgent:
 
         return summaries
 
+    @staticmethod
+    def _collect_tried_queries(
+        query: str, refined_query: str,
+        decomposition: DecompositionResult | None,
+    ) -> list[str]:
+        """Build tried_queries list for coverage gap analysis."""
+        tried = [query]
+        if refined_query != query:
+            tried.append(refined_query)
+        if decomposition and decomposition.is_complex:
+            tried.extend(decomposition.sub_queries)
+        return tried
+
     async def _try_coverage_retry(
         self,
         query: str,
@@ -748,12 +761,7 @@ class ResearchAgent:
         # Fetch -> extract -> cascade -> summarize
         summaries = await self._fetch_extract_summarize(all_results)
 
-        # Build tried_queries list for coverage gap analysis
-        tried = [query]
-        if refined_query != query:
-            tried.append(refined_query)
-        if decomposition and decomposition.is_complex:
-            tried.extend(decomposition.sub_queries)
+        tried = self._collect_tried_queries(query, refined_query, decomposition)
 
         return await self._evaluate_and_synthesize(
             query=query,
@@ -830,12 +838,7 @@ class ResearchAgent:
             logger.warning(f"Pass 2 search failed: {e}, continuing with pass 1 results")
             print(f"      Pass 2 search failed, continuing with {len(summaries)} summaries")
 
-        # Build tried_queries list for coverage gap analysis
-        tried = [query]
-        if refined_query != query:
-            tried.append(refined_query)
-        if decomposition and decomposition.is_complex:
-            tried.extend(decomposition.sub_queries)
+        tried = self._collect_tried_queries(query, refined_query, decomposition)
 
         return await self._evaluate_and_synthesize(
             query=query,
