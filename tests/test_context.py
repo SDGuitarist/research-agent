@@ -318,11 +318,27 @@ class TestAutoDetectContext:
         result = auto_detect_context(client, "Who are PFE's competitors?")
         assert result == ctx_dir / "pfe.md"
 
+    def test_single_context_shortcircuits_llm(self, tmp_path, monkeypatch):
+        """Single context file is used without LLM call."""
+        from unittest.mock import MagicMock
+
+        ctx_dir = tmp_path / "contexts"
+        ctx_dir.mkdir()
+        (ctx_dir / "pfe.md").write_text("# Pacific Flow")
+        monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
+
+        client = MagicMock()
+        result = auto_detect_context(client, "PFE competitors")
+        assert result == ctx_dir / "pfe.md"
+        # LLM was never called
+        client.messages.create.assert_not_called()
+
     def test_returns_none_when_llm_says_none(self, tmp_path, monkeypatch):
         """Returns None when LLM says no context is relevant."""
         ctx_dir = tmp_path / "contexts"
         ctx_dir.mkdir()
         (ctx_dir / "pfe.md").write_text("# Pacific Flow")
+        (ctx_dir / "other.md").write_text("# Other context")
         monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
 
         client = self._mock_client("none")
@@ -333,6 +349,7 @@ class TestAutoDetectContext:
         ctx_dir = tmp_path / "contexts"
         ctx_dir.mkdir()
         (ctx_dir / "pfe.md").write_text("# Pacific Flow")
+        (ctx_dir / "other.md").write_text("# Other context")
         monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
 
         client = self._mock_client('"pfe"')
@@ -347,6 +364,7 @@ class TestAutoDetectContext:
         ctx_dir = tmp_path / "contexts"
         ctx_dir.mkdir()
         (ctx_dir / "pfe.md").write_text("# Pacific Flow")
+        (ctx_dir / "other.md").write_text("# Other context")
         monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
 
         client = MagicMock()
@@ -360,6 +378,7 @@ class TestAutoDetectContext:
         ctx_dir = tmp_path / "contexts"
         ctx_dir.mkdir()
         (ctx_dir / "pfe.md").write_text("# Pacific Flow")
+        (ctx_dir / "other.md").write_text("# Other context")
         monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
 
         client = self._mock_client("I think pfe is the best match because...")
@@ -371,6 +390,7 @@ class TestAutoDetectContext:
         ctx_dir = tmp_path / "contexts"
         ctx_dir.mkdir()
         (ctx_dir / "pfe.md").write_text("# Pacific Flow")
+        (ctx_dir / "other.md").write_text("# Other context")
         monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
 
         client = self._mock_client("I'm not sure which context to pick")
@@ -382,6 +402,7 @@ class TestAutoDetectContext:
         ctx_dir = tmp_path / "contexts"
         ctx_dir.mkdir()
         (ctx_dir / "PFE.md").write_text("# Pacific Flow")
+        (ctx_dir / "other.md").write_text("# Other context")
         monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
 
         client = self._mock_client("pfe")
@@ -393,6 +414,7 @@ class TestAutoDetectContext:
         ctx_dir = tmp_path / "contexts"
         ctx_dir.mkdir()
         (ctx_dir / "evil.md").write_text("<script>alert('xss')</script>")
+        (ctx_dir / "other.md").write_text("# Other context")
         monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
 
         client = self._mock_client("none")

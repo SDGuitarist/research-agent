@@ -5,6 +5,9 @@ from dataclasses import dataclass
 # Single source of truth for the default Claude model across all modules.
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
+# Lightweight model for simple classification tasks (e.g., auto-detect context).
+AUTO_DETECT_MODEL = "claude-haiku-4-5-20251001"
+
 
 @dataclass(frozen=True)
 class ResearchMode:

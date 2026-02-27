@@ -10,7 +10,7 @@ from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, A
 from .context_result import ContextResult
 from .critique import DIMENSIONS
 from .errors import ANTHROPIC_TIMEOUT
-from .modes import DEFAULT_MODEL
+from .modes import AUTO_DETECT_MODEL, DEFAULT_MODEL
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
@@ -140,17 +140,17 @@ def list_available_contexts() -> list[tuple[str, str]]:
 def auto_detect_context(
     client: Anthropic,
     query: str,
-    model: str = DEFAULT_MODEL,
+    model: str = AUTO_DETECT_MODEL,
 ) -> Path | None:
     """Ask the LLM which context file (if any) is relevant to the query.
 
     Only called when no --context flag is given and contexts/ directory exists
-    with at least one .md file.
+    with at least one .md file. Uses Haiku by default for fast classification.
 
     Args:
         client: Anthropic client (sync).
         query: The user's research query.
-        model: Claude model to use.
+        model: Claude model to use (defaults to Haiku for speed).
 
     Returns:
         Path to the selected context file, or None if no context matches.
@@ -159,6 +159,13 @@ def auto_detect_context(
     available = list_available_contexts()
     if not available:
         return None
+
+    # Short-circuit: if only one context file exists, use it without LLM call
+    if len(available) == 1:
+        name = available[0][0]
+        path = CONTEXTS_DIR / f"{name}.md"
+        logger.info("Auto-detect: single context '%s' — using without LLM call", name)
+        return path
 
     # Build a numbered list of context files with sanitized previews
     safe_query = sanitize_content(query)

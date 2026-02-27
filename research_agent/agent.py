@@ -240,7 +240,7 @@ class ResearchAgent:
 
         if effective_context_path is None and not effective_no_context and CONTEXTS_DIR.is_dir():
             detected = await asyncio.to_thread(
-                auto_detect_context, self.client, query, self.mode.model,
+                auto_detect_context, self.client, query,
             )
             if detected is not None:
                 effective_context_path = detected
