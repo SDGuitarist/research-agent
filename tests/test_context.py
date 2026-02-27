@@ -355,14 +355,25 @@ class TestAutoDetectContext:
         result = auto_detect_context(client, "any query")
         assert result is None
 
-    def test_returns_none_on_unrecognized_answer(self, tmp_path, monkeypatch):
-        """Returns None when LLM returns an unrecognized name."""
+    def test_extracts_name_from_verbose_response(self, tmp_path, monkeypatch):
+        """Extracts context name when LLM gives a verbose answer."""
         ctx_dir = tmp_path / "contexts"
         ctx_dir.mkdir()
         (ctx_dir / "pfe.md").write_text("# Pacific Flow")
         monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
 
         client = self._mock_client("I think pfe is the best match because...")
+        result = auto_detect_context(client, "PFE competitors")
+        assert result == ctx_dir / "pfe.md"
+
+    def test_returns_none_on_unrecognized_answer(self, tmp_path, monkeypatch):
+        """Returns None when LLM returns a completely unrecognized answer."""
+        ctx_dir = tmp_path / "contexts"
+        ctx_dir.mkdir()
+        (ctx_dir / "pfe.md").write_text("# Pacific Flow")
+        monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
+
+        client = self._mock_client("I'm not sure which context to pick")
         result = auto_detect_context(client, "PFE competitors")
         assert result is None
 

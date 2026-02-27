@@ -200,6 +200,17 @@ def auto_detect_context(
         logger.info("Auto-detect: selected context '%s'", original_name)
         return path
 
+    # Fallback: check if any valid context name appears as a word in the response
+    answer_words = answer.split()
+    for valid_lower, original_name in valid_names.items():
+        if valid_lower in answer_words:
+            path = CONTEXTS_DIR / f"{original_name}.md"
+            logger.info(
+                "Auto-detect: extracted context '%s' from verbose response",
+                original_name,
+            )
+            return path
+
     logger.warning("Auto-detect returned unrecognized answer: %r", answer)
     return None
 
