@@ -43,8 +43,7 @@ def _build_context_block(synthesis_context: str | None) -> str:
     """Build optional business context XML block."""
     if not synthesis_context:
         return ""
-    safe_ctx = sanitize_content(synthesis_context)
-    return f"\n<research_context>\n{safe_ctx}\n</research_context>\n"
+    return f"\n<research_context>\n{synthesis_context}\n</research_context>\n"
 
 
 def _build_prior_block(prior_findings: list[SkepticFinding] | None) -> str:

@@ -263,12 +263,13 @@ class TestSynthesizeReport:
                 client=mock_client,
                 query="test query",
                 summaries=sample_summaries,
-                context="<script>alert('xss')</script>",
+                context="&lt;script&gt;alert('xss')&lt;/script&gt;",
             )
 
         call_args = mock_client.messages.stream.call_args
         user_content = call_args.kwargs["messages"][0]["content"]
 
+        # Context is pre-sanitized at load time; synthesize passes it through
         assert "&lt;script&gt;" in user_content
         assert "<script>" not in user_content
 

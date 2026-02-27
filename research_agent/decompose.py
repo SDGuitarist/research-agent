@@ -89,10 +89,9 @@ def decompose_query(
     # Build optional context block from pre-loaded content
     context_block = ""
     if context_content:
-        safe_context = sanitize_content(context_content)
         context_block = f"""
 <research_context>
-{safe_context}
+{context_content}
 </research_context>
 """
 

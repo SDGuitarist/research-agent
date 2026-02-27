@@ -129,7 +129,6 @@ def synthesize_report(
     if mode_instructions:
         budget_components["instructions"] = mode_instructions
     if context:
-        context = sanitize_content(context)
         budget_components["context"] = context
     sources_text, context = _apply_budget_pruning(
         budget_components, 100_000, max_tokens, sources_text, context,
@@ -438,7 +437,6 @@ def synthesize_final(
     # Token budget enforcement
     budget_components = {"sources": sources_text}
     if context:
-        context = sanitize_content(context)
         budget_components["context"] = context
     if draft:
         budget_components["previous_baseline"] = draft

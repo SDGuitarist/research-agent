@@ -69,11 +69,12 @@ class TestBuildContextBlock:
         assert "</research_context>" in result
         assert "Test context" in result
 
-    def test_sanitizes_content(self):
-        """Should sanitize angle brackets in context."""
-        result = _build_context_block("<script>alert('xss')</script>")
+    def test_passes_pre_sanitized_content(self):
+        """Context is pre-sanitized at load time; _build_context_block passes it through."""
+        pre_sanitized = "&lt;script&gt;alert('xss')&lt;/script&gt;"
+        result = _build_context_block(pre_sanitized)
+        assert pre_sanitized in result
         assert "<script>" not in result
-        assert "&lt;script&gt;" in result
 
 
 class TestBuildPriorBlock:

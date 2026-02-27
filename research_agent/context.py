@@ -91,6 +91,7 @@ def load_full_context(context_path: Path | None = None) -> ContextResult:
             result = ContextResult.empty(source=source)
             _context_cache[source] = result
             return result
+        content = sanitize_content(content)
         logger.info(f"Loaded research context from {path}")
         result = ContextResult.loaded(content, source=source)
         _context_cache[source] = result

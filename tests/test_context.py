@@ -104,6 +104,17 @@ class TestLoadFullContext:
         assert result.status == ContextStatus.EMPTY
         assert bool(result) is False
 
+    def test_sanitizes_content_at_load_time(self, tmp_path):
+        """Content with & should be sanitized once, not double-encoded."""
+        ctx_file = tmp_path / "context.md"
+        ctx_file.write_text("R&D department")
+        result = load_full_context(ctx_file)
+        assert result.status == ContextStatus.LOADED
+        # & should become &amp; (single sanitization)
+        assert "&amp;" in result.content
+        # Must NOT be double-encoded to &amp;amp;
+        assert "&amp;amp;" not in result.content
+
 
 class TestContextResultReturnTypes:
     """Tests verifying ContextResult return types from all loaders."""
