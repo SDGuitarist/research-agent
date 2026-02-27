@@ -878,12 +878,12 @@ class TestResearchAgentRelevanceGate:
             assert eval_call[1]["refined_query"] == "specifically refined query"
 
 
-class TestResearchAgentBusinessContext:
-    """Tests for business context passthrough to synthesis."""
+class TestResearchAgentContext:
+    """Tests for research context passthrough to synthesis."""
 
     @pytest.mark.asyncio
     async def test_agent_loads_context_and_passes_to_synthesize(self):
-        """Agent should load business context and pass it to synthesize_report."""
+        """Agent should load research context and pass it to synthesize_report."""
         with patch("research_agent.agent.search") as mock_search, \
              patch("research_agent.agent.refine_query") as mock_refine, \
              patch("research_agent.agent.fetch_urls") as mock_fetch, \

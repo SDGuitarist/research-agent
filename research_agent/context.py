@@ -66,7 +66,7 @@ def resolve_context_path(name: str) -> Path | None:
 
 
 def load_full_context(context_path: Path | None = None) -> ContextResult:
-    """Load the complete business context file.
+    """Load the complete research context file.
 
     Caches the result per path to avoid redundant disk reads within a run.
     Call clear_context_cache() at the start of each run.

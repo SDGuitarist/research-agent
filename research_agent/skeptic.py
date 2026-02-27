@@ -40,7 +40,7 @@ def _count_severity(text: str) -> tuple[int, int]:
 
 
 def _build_context_block(synthesis_context: str | None) -> str:
-    """Build optional business context XML block."""
+    """Build optional research context XML block."""
     if not synthesis_context:
         return ""
     return f"\n<research_context>\n{synthesis_context}\n</research_context>\n"

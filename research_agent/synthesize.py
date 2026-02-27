@@ -417,7 +417,7 @@ def synthesize_final(
         summaries: Source summaries for citation references
         model: Model for synthesis
         max_tokens: Maximum tokens for the response
-        context: Research context (competitive positioning, brand identity)
+        context: Research context for personalized synthesis
         limited_sources: If True, shorter report with disclaimer
         dropped_count: Sources dropped by relevance gate
         total_count: Total sources evaluated
