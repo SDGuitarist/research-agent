@@ -53,7 +53,7 @@ def resolve_context_path(name: str) -> Path | None:
     # Defense layer 2: verify resolved path stays inside contexts/
     path = (CONTEXTS_DIR / f"{name}.md").resolve()
     contexts_resolved = CONTEXTS_DIR.resolve()
-    if not str(path).startswith(str(contexts_resolved) + "/"):
+    if not path.is_relative_to(contexts_resolved):
         raise ValueError(
             f"Context name {name!r} resolves outside contexts/ directory"
         )
