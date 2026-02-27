@@ -27,6 +27,7 @@ MAX_RETRY_QUERIES = 3
 # Retry query limits
 MIN_RETRY_QUERY_WORDS = 2
 MAX_RETRY_QUERY_WORDS = 12
+MAX_TRIED_OVERLAP = 0.8
 
 
 @dataclass(frozen=True)
@@ -58,7 +59,7 @@ def _validate_retry_queries(
         max_words=MAX_RETRY_QUERY_WORDS,
         max_results=MAX_RETRY_QUERIES,
         reference_queries=tried_queries,
-        max_reference_overlap=0.8,
+        max_reference_overlap=MAX_TRIED_OVERLAP,
         label="Retry query",
     )
 
@@ -105,14 +106,14 @@ def _parse_gap_response(
     # Validate gap type — default to COVERAGE_GAP if unrecognized
     if gap_type not in VALID_GAP_TYPES:
         if gap_type:
-            logger.warning(f"Unknown gap type '{gap_type}', defaulting to COVERAGE_GAP")
+            logger.warning("Unknown gap type '%s', defaulting to COVERAGE_GAP", gap_type)
         gap_type = "COVERAGE_GAP"
 
     # Validate recommendation — default to NO_RETRY if unrecognized
     if retry_recommendation not in VALID_RECOMMENDATIONS:
         if retry_recommendation:
             logger.warning(
-                f"Unknown recommendation '{retry_recommendation}', defaulting to NO_RETRY"
+                "Unknown recommendation '%s', defaulting to NO_RETRY", retry_recommendation
             )
         retry_recommendation = "NO_RETRY"
 
