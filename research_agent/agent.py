@@ -216,6 +216,7 @@ class ResearchAgent:
         self._current_research_batch = None
         self._last_source_count = 0
         self._last_gate_decision = ""
+        self._last_critique = None
         clear_context_cache()
 
         # Auto-detect context when no --context flag was given.
