@@ -225,10 +225,7 @@ def main():
                 "No authentication is configured.", host, port,
             )
 
-        # host/port go in FastMCP settings, not run(). run() only accepts transport.
-        mcp.settings.host = host
-        mcp.settings.port = port
-        mcp.run(transport="http")
+        mcp.run(transport="http", host=host, port=port)
     else:
         sys.exit(f"Unknown MCP_TRANSPORT: {transport!r}. Use 'stdio' or 'http'.")
 
