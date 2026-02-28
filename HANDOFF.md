@@ -1,68 +1,64 @@
-# Handoff: Cycle 19 Plan Review Complete
+# Handoff: Lessons Learned Restructure Complete
 
 ## Current State
 
 **Project:** Research Agent
-**Phase:** Plan reviewed and corrected — ready for Work phase (Session 1)
+**Phase:** Work complete — lessons learned restructure (cross-project)
 **Branch:** `main`
 **Date:** February 28, 2026
-**Commits:** `8e31112`, `fff05d9`, `c5ae4a1`
+**Commits:** 7 commits (`a08ef47` through `773b98a`)
 
 ---
 
 ## What Was Done This Session
 
-Applied 3 batches of review corrections to the Cycle 19 MCP Server plan.
+Restructured `LESSONS_LEARNED.md` from a 2,278-line monolith into a hub + 5 category files under `docs/lessons/`. No code changes — docs only.
 
-### Batch 1 — Critical (commit `8e31112`)
-- Fixed `list_modes()` return type to use `list[ModeInfo]` (not dict)
-- Fixed `list_available_contexts()` return type to use `list[tuple[str, str]]`
-- Added missing `get_reports` re-export fix in Session 2 Step 1 (`__init__.py`)
-- Added `logger = logging.getLogger(__name__)` to code sketch
-- Added lazy imports inside tool functions to avoid import-time side effects
+### Commits
 
-### Batch 2 — Medium (commit `fff05d9`)
-- Replaced `save_path.write_text()` with `atomic_write()` from `safe_io.py`
-- Updated except clause to catch `(OSError, StateError)`
-- Added path-stripping in `except ResearchError` handler (security: no leaked paths)
-- Corrected test mock counts: test_agent.py=42, test_coverage.py=0, total=57
-- Removed test_coverage.py from Session 1 Step 3
-- Dropped `__main_mcp__.py` (redundant — `if __name__ == "__main__"` suffices)
-- Clarified `context` parameter docstring with three-way behavior
+| # | Commit | What |
+|---|--------|------|
+| 1 | `a08ef47` | Created `docs/lessons/patterns-index.md` — searchable table with cycle mappings |
+| 2 | `5965b20` | Replaced inline Summary table with pointer |
+| 3 | `222d2bc` | Created `docs/lessons/security.md` — Sections 7, 14 (security) |
+| 4 | `521ee15` | Created `docs/lessons/architecture.md` — Sections 3, 5, 6, 8, 10, 12, 13, 16, 18, 20 |
+| 5 | `ef3c9b7` | Created `docs/lessons/operations.md` — Sections 2, 9, 11, 14 (perf), 15, 16 (parallel), 19 |
+| 6 | `c1cc6d8` | Created `docs/lessons/process.md` — Sections 1, 4, 14 (review), 17, 20 |
+| 7 | `773b98a` | Rewrote `LESSONS_LEARNED.md` as 67-line hub with Top 10 and links |
 
-### Batch 3 — Housekeeping (commit `c5ae4a1`)
-- Split `_dns_cache` fix into its own Session 2 step (separate concern)
-- Added `asyncio_mode = "auto"` to Session 2 pyproject.toml changes
-- Added `pip install -e ".[test]"` preamble to Session 3
-- Updated test count from "558+" to "769" everywhere
-- Added "Optional: Consider for This Cycle or Next" section (delete_report, critique_report, list_saved_reports format)
+### Files Changed
 
-### Cleanup
-- Deleted 4 stale feature branches
-- Pushed all commits to `main`
+- `LESSONS_LEARNED.md` — 2,177 → 67 lines (hub with Top 10, dev history, category links)
+- `docs/lessons/patterns-index.md` — 115 lines (flat searchable table)
+- `docs/lessons/security.md` — 160 lines (SSRF, prompt injection, TOCTOU)
+- `docs/lessons/architecture.md` — 309 lines (pipeline, additive, dataclasses, multi-pass)
+- `docs/lessons/operations.md` — 194 lines (rate limits, fetch, instrumentation)
+- `docs/lessons/process.md` — 149 lines (planning, review, testing, feed-forward)
 
-### Test Count
+### Key Decisions
 
-769 tests, all passing.
+- **Top 10 #7:** Replaced "dedicated review-only cycles" (2 cycles) with "SSRF protection compounds across cycles" (4 cycles, security-critical)
+- **Section 14 split:** Sub-headings routed to 4 files with cross-references (security findings → security.md, performance → operations.md, review methodology → process.md, code quality → architecture.md)
+- **Hub at 67 lines** (vs plan's 120 target) — Development History table provides sufficient navigation
 
 ---
 
 ## Three Questions
 
-1. **Hardest decision in this session?** Whether to keep or remove `__main_mcp__.py`. Removed it — `if __name__ == "__main__": main()` in `mcp_server.py` already enables `python -m research_agent.mcp_server`, so the extra file was pure duplication.
+1. **Hardest implementation decision in this session?** Section 14's sub-heading split. Each sub-section (security/performance/code quality/review methodology) stood alone well enough to route separately, but the "Lessons from the Review" table at the end of Section 14 spans all four categories. Decided to put it in security.md (the primary assignment) and cross-reference from the other three.
 
-2. **What did you reject, and why?** Considered updating the research insights example code (line ~314) to also include path-stripping, but left it alone — it's illustrative context, not the authoritative code sketch. Updating it would add noise for no functional benefit.
+2. **What did you consider changing but left alone, and why?** Considered keeping full code snippets from every section in the category files. Left most code out because the category files should be distilled lessons, not a second copy of the original. The patterns-index provides the flat lookup; category files provide narrative context.
 
-3. **Least confident about going into Work phase?** The `_dns_cache` fix (Session 2 Step 2) — threading a local dict through `fetch_urls()` internals may touch more functions than expected. The plan says "mechanical parameter threading" but the actual call chain needs verification during implementation.
+3. **Least confident about going into review?** Whether the category file summaries preserved enough detail. The original had ~2,200 lines of narrative; the split files total ~930 lines. Some mid-cycle assessment sections and live-test result tables were condensed to key takeaways. If a developer needs the exact Cycle 8 live-test results table, they'd need git history.
 
 ---
 
 ## Next Phase
 
-**Work phase** — implement Session 1 (print-to-logging conversion).
+**Work phase** — return to Cycle 19 MCP server (Session 3: tests).
 
 ### Prompt for Next Session
 
 ```
-Read docs/plans/2026-02-28-feat-cycle-19-mcp-server-plan.md, Session 1 only. Implement print-to-logging conversion: agent.py + test_agent.py (Step 1), synthesize.py + test_synthesize.py (Step 2), relevance.py + CLI logging (Step 3). Relevant files: research_agent/agent.py, research_agent/synthesize.py, research_agent/relevance.py, research_agent/cli.py, tests/test_agent.py, tests/test_synthesize.py. Do only Session 1 — commit each step and stop after Step 3.
+Read docs/plans/2026-02-28-feat-cycle-19-mcp-server-plan.md, Session 3 only. Run `pip install -e ".[test]"` first. Create tests/test_mcp_server.py with unit tests (mocked pipeline, in-memory client), integration tests (stdio/HTTP roundtrip), and transport validation test. Relevant files: research_agent/mcp_server.py, research_agent/report_store.py, tests/. Do only Session 3 — commit and stop.
 ```
