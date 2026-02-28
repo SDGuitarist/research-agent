@@ -1,6 +1,7 @@
 """Shared query validation utilities for decompose and coverage modules."""
 
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +10,13 @@ STOP_WORDS = frozenset({
     "the", "a", "an", "in", "on", "of", "for", "and", "or",
     "to", "is", "how", "what", "why",
 })
+
+
+# Search operators that could be injected via LLM-generated queries
+_SEARCH_OPERATOR_RE = re.compile(
+    r"\b(site|inurl|filetype|intitle|cache|related):", re.IGNORECASE
+)
+MAX_QUERY_LENGTH = 120
 
 
 def strip_query(text: str, extra_chars: str = "") -> str:
@@ -72,9 +80,22 @@ def validate_query_list(
         if not q:
             continue
 
+        # Strip non-printable characters
+        q = "".join(ch for ch in q if ch.isprintable())
+
+        # Block search operators (defense against LLM prompt injection)
+        if _SEARCH_OPERATOR_RE.search(q):
+            logger.warning("%s rejected (search operator): %s", label, q)
+            continue
+
+        # Cap total length
+        if len(q) > MAX_QUERY_LENGTH:
+            logger.warning("%s rejected (too long, %d chars): %s", label, len(q), q)
+            continue
+
         word_count = len(q.split())
         if word_count < min_words or word_count > max_words:
-            logger.warning(f"{label} rejected (word count {word_count}): {q}")
+            logger.warning("%s rejected (word count %d): %s", label, word_count, q)
             continue
 
         q_words = meaningful_words(q)
@@ -87,12 +108,12 @@ def validate_query_list(
             if not ref_words:
                 continue
             if require_reference_overlap and not q_words.intersection(ref_words):
-                logger.warning(f"{label} rejected (no overlap with reference): {q}")
+                logger.warning("%s rejected (no overlap with reference): %s", label, q)
                 skip = True
                 break
             overlap = len(q_words.intersection(ref_words))
             if overlap >= len(q_words) * max_reference_overlap:
-                logger.warning(f"{label} rejected (too similar to reference): {q}")
+                logger.warning("%s rejected (too similar to reference): %s", label, q)
                 skip = True
                 break
         if skip:
@@ -100,7 +121,7 @@ def validate_query_list(
 
         # Near-duplicate detection within valid list
         if has_near_duplicate(q_words, valid, dedup_threshold):
-            logger.warning(f"{label} rejected (duplicate): {q}")
+            logger.warning("%s rejected (duplicate): %s", label, q)
             continue
 
         valid.append(q)

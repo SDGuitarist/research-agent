@@ -285,6 +285,26 @@ class TestRetryQueryValidation:
         valid = _validate_retry_queries(queries)
         assert valid[0] == "quoted search query here"
 
+    def test_rejects_search_operators(self):
+        queries = [
+            "site:example.com secret data",
+            "inurl:admin login page",
+            "filetype:pdf confidential report",
+            "intitle:password reset portal",
+        ]
+        valid = _validate_retry_queries(queries)
+        assert valid == []
+
+    def test_rejects_query_exceeding_length_cap(self):
+        long_query = "word " * 25  # 125 chars, over 120 limit
+        valid = _validate_retry_queries([long_query.strip()])
+        assert valid == []
+
+    def test_strips_non_printable_characters(self):
+        queries = ["valid search\x00 query here"]
+        valid = _validate_retry_queries(queries)
+        assert valid == ["valid search query here"]
+
 
 # ── Parser with tried_queries ─────────────────────────────────────────
 
