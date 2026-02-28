@@ -16,6 +16,23 @@ class ContextStatus(Enum):
 
 
 @dataclass(frozen=True)
+class ReportTemplate:
+    """Report section template parsed from context file YAML frontmatter.
+
+    Attributes:
+        name: Display name for the context (e.g. "Pacific Flow Entertainment").
+        draft_sections: Ordered (heading, description) pairs for draft pass.
+        final_sections: Ordered (heading, description) pairs for final pass.
+        context_usage: Instruction for how to use business context in synthesis.
+    """
+
+    name: str
+    draft_sections: tuple[tuple[str, str], ...]
+    final_sections: tuple[tuple[str, str], ...]
+    context_usage: str
+
+
+@dataclass(frozen=True)
 class ContextResult:
     """Result of a context loading operation.
 
@@ -30,13 +47,19 @@ class ContextResult:
     status: ContextStatus
     source: str = ""
     error: str = ""
+    template: ReportTemplate | None = None
 
     def __bool__(self) -> bool:
         """True only when content was successfully loaded."""
         return self.status == ContextStatus.LOADED and self.content is not None
 
     @classmethod
-    def loaded(cls, content: str, source: str = "") -> "ContextResult":
+    def loaded(
+        cls,
+        content: str,
+        source: str = "",
+        template: ReportTemplate | None = None,
+    ) -> "ContextResult":
         """Create a result for successfully loaded content.
 
         Raises:
@@ -44,7 +67,12 @@ class ContextResult:
         """
         if not content:
             raise ValueError("loaded() requires non-empty content")
-        return cls(content=content, status=ContextStatus.LOADED, source=source)
+        return cls(
+            content=content,
+            status=ContextStatus.LOADED,
+            source=source,
+            template=template,
+        )
 
     @classmethod
     def not_configured(cls, source: str = "") -> "ContextResult":

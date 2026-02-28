@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
-from .context_result import ContextResult
+from .context_result import ContextResult, ReportTemplate
 from .critique import DIMENSIONS
 from .errors import ANTHROPIC_TIMEOUT
 from .modes import AUTO_DETECT_MODEL, DEFAULT_MODEL
@@ -17,6 +17,92 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONTEXT_PATH = Path("research_context.md")
 CONTEXTS_DIR = Path("contexts")
+
+def _parse_sections(raw_sections: list) -> tuple[tuple[str, str], ...]:
+    """Convert a list of {heading: description} dicts to a tuple of pairs.
+
+    Each element in raw_sections should be a single-key dict like:
+        {"Executive Summary": "2-3 paragraph overview of key findings."}
+
+    Raises ValueError if the structure is invalid.
+    """
+    result = []
+    for item in raw_sections:
+        if not isinstance(item, dict) or len(item) != 1:
+            raise ValueError(f"Each section must be a single-key dict, got: {item!r}")
+        heading, description = next(iter(item.items()))
+        if not isinstance(heading, str) or not isinstance(description, str):
+            raise ValueError(f"Section heading and description must be strings, got: {heading!r}: {description!r}")
+        result.append((heading, description))
+    return tuple(result)
+
+
+def _parse_template(raw: str) -> tuple[str, ReportTemplate | None]:
+    """Extract YAML frontmatter template from a context file.
+
+    Args:
+        raw: Full file content (may or may not have YAML frontmatter).
+
+    Returns:
+        (body, template) — body is the content after the closing ``---``,
+        template is the parsed ReportTemplate or None if no valid template.
+
+    Never raises — logs a warning and returns (raw, None) on any error.
+    """
+    stripped = raw.strip()
+    if not stripped.startswith("---"):
+        return (raw, None)
+
+    # Find the closing --- delimiter
+    end = stripped.find("---", 3)
+    if end == -1:
+        return (raw, None)
+
+    yaml_block = stripped[3:end]
+    body = stripped[end + 3:].lstrip("\n")
+
+    try:
+        data = yaml.safe_load(yaml_block)
+    except yaml.YAMLError as e:
+        logger.warning("Failed to parse YAML frontmatter: %s", e)
+        return (raw, None)
+
+    if not isinstance(data, dict) or "template" not in data:
+        # Valid YAML but no template key — return body without template
+        return (body if body else raw, None)
+
+    try:
+        tmpl = data["template"]
+        if not isinstance(tmpl, dict):
+            raise ValueError("template must be a mapping")
+
+        draft_raw = tmpl.get("draft", [])
+        final_raw = tmpl.get("final", [])
+        if not isinstance(draft_raw, list) or not isinstance(final_raw, list):
+            raise ValueError("draft and final must be lists")
+
+        draft_sections = _parse_sections(draft_raw)
+        final_sections = _parse_sections(final_raw)
+        context_usage = tmpl.get("context_usage", "")
+        if not isinstance(context_usage, str):
+            raise ValueError("context_usage must be a string")
+
+        name = data.get("name", "")
+        if not isinstance(name, str):
+            name = str(name)
+
+        template = ReportTemplate(
+            name=name,
+            draft_sections=draft_sections,
+            final_sections=final_sections,
+            context_usage=context_usage,
+        )
+        return (body if body else raw, template)
+
+    except (ValueError, TypeError, AttributeError) as e:
+        logger.warning("Invalid template structure in YAML frontmatter: %s", e)
+        return (body if body else raw, None)
+
 
 def new_context_cache() -> dict[str, ContextResult]:
     """Create a fresh per-run context cache.
@@ -88,15 +174,18 @@ def load_full_context(
             if cache is not None:
                 cache[source] = result
             return result
-        content = path.read_text().strip()
-        if not content:
+        raw_content = path.read_text().strip()
+        if not raw_content:
             result = ContextResult.empty(source=source)
             if cache is not None:
                 cache[source] = result
             return result
-        content = sanitize_content(content)
+        # Parse YAML template before sanitization — YAML is trusted author
+        # input and sanitization would break YAML parsing by escaping & and <.
+        body, template = _parse_template(raw_content)
+        content = sanitize_content(body)
         logger.info("Loaded research context from %s", path)
-        result = ContextResult.loaded(content, source=source)
+        result = ContextResult.loaded(content, source=source, template=template)
         if cache is not None:
             cache[source] = result
         return result

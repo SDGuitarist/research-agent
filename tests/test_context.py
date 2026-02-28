@@ -15,8 +15,9 @@ from research_agent.context import (
     CONTEXTS_DIR,
     _validate_critique_yaml,
     _summarize_patterns,
+    _parse_template,
 )
-from research_agent.context_result import ContextResult, ContextStatus
+from research_agent.context_result import ContextResult, ContextStatus, ReportTemplate
 
 
 SAMPLE_CONTEXT = """# Business Context
@@ -114,6 +115,222 @@ class TestLoadFullContext:
         assert "&amp;" in result.content
         # Must NOT be double-encoded to &amp;amp;
         assert "&amp;amp;" not in result.content
+
+
+    def test_parses_yaml_template_from_context_file(self, tmp_path):
+        """Should parse YAML frontmatter and return template on ContextResult."""
+        ctx_file = tmp_path / "context.md"
+        ctx_file.write_text(
+            "---\n"
+            "name: Test Biz\n"
+            "template:\n"
+            "  draft:\n"
+            '    - Executive Summary: "Overview."\n'
+            '    - Key Findings: "Details."\n'
+            "  final:\n"
+            '    - Recommendations: "Actions."\n'
+            "  context_usage: >\n"
+            "    Use context for recommendations only.\n"
+            "---\n"
+            "# Actual content\n"
+            "Body text here.\n"
+        )
+        result = load_full_context(ctx_file)
+        assert result.status == ContextStatus.LOADED
+        assert result.template is not None
+        assert result.template.name == "Test Biz"
+        assert len(result.template.draft_sections) == 2
+        assert result.template.draft_sections[0][0] == "Executive Summary"
+        assert len(result.template.final_sections) == 1
+        assert "recommendations" in result.template.context_usage.lower()
+        # Body content should be the part after ---
+        assert "Body text here" in result.content
+
+    def test_no_yaml_frontmatter_returns_no_template(self, tmp_path):
+        """Files without YAML frontmatter should have template=None."""
+        ctx_file = tmp_path / "context.md"
+        ctx_file.write_text("# Plain content\nNo YAML here.")
+        result = load_full_context(ctx_file)
+        assert result.status == ContextStatus.LOADED
+        assert result.template is None
+
+    def test_malformed_yaml_returns_no_template(self, tmp_path):
+        """Malformed YAML should degrade gracefully to template=None."""
+        ctx_file = tmp_path / "context.md"
+        ctx_file.write_text(
+            "---\n"
+            "name: [invalid yaml\n"
+            "---\n"
+            "# Content\n"
+        )
+        result = load_full_context(ctx_file)
+        assert result.status == ContextStatus.LOADED
+        assert result.template is None
+
+    def test_yaml_without_template_key_returns_no_template(self, tmp_path):
+        """YAML frontmatter without 'template' key should have template=None."""
+        ctx_file = tmp_path / "context.md"
+        ctx_file.write_text(
+            "---\n"
+            "name: Some Biz\n"
+            "author: Test\n"
+            "---\n"
+            "# Content body\n"
+        )
+        result = load_full_context(ctx_file)
+        assert result.status == ContextStatus.LOADED
+        assert result.template is None
+        # Body should still be parsed correctly
+        assert "Content body" in result.content
+
+    def test_cache_preserves_template(self, tmp_path):
+        """Cached ContextResult should retain the template."""
+        ctx_file = tmp_path / "context.md"
+        ctx_file.write_text(
+            "---\n"
+            "name: Cached\n"
+            "template:\n"
+            "  draft:\n"
+            '    - Summary: "Brief."\n'
+            "  final:\n"
+            '    - Advice: "Act."\n'
+            "  context_usage: Use wisely.\n"
+            "---\n"
+            "Body.\n"
+        )
+        cache: dict[str, ContextResult] = {}
+        result1 = load_full_context(ctx_file, cache=cache)
+        result2 = load_full_context(ctx_file, cache=cache)
+        assert result1.template is not None
+        assert result1 is result2  # Same cached object
+
+
+class TestParseTemplate:
+    """Tests for _parse_template() helper."""
+
+    def test_valid_yaml_returns_template(self):
+        """Valid YAML frontmatter should return body and template."""
+        raw = (
+            "---\n"
+            "name: Test\n"
+            "template:\n"
+            "  draft:\n"
+            '    - Summary: "Overview."\n'
+            "  final:\n"
+            '    - Advice: "Act."\n'
+            "  context_usage: Use context.\n"
+            "---\n"
+            "Body content.\n"
+        )
+        body, template = _parse_template(raw)
+        assert template is not None
+        assert template.name == "Test"
+        assert template.draft_sections == (("Summary", "Overview."),)
+        assert template.final_sections == (("Advice", "Act."),)
+        assert template.context_usage == "Use context."
+        assert "Body content" in body
+
+    def test_no_frontmatter_returns_none(self):
+        """No --- delimiters should return (raw, None)."""
+        raw = "# Just content\nNo YAML."
+        body, template = _parse_template(raw)
+        assert template is None
+        assert body == raw
+
+    def test_missing_closing_delimiter(self):
+        """Missing closing --- should return (raw, None)."""
+        raw = "---\nname: test\nno closing delimiter"
+        body, template = _parse_template(raw)
+        assert template is None
+        assert body == raw
+
+    def test_malformed_yaml_returns_none(self):
+        """Invalid YAML should return (raw, None), never crash."""
+        raw = "---\n{{bad yaml\n---\nBody."
+        body, template = _parse_template(raw)
+        assert template is None
+        assert body == raw
+
+    def test_yaml_without_template_key(self):
+        """YAML with no 'template' key returns body and None template."""
+        raw = "---\nname: Test\nauthor: Me\n---\nBody."
+        body, template = _parse_template(raw)
+        assert template is None
+        assert "Body" in body
+
+    def test_invalid_section_structure(self):
+        """Non-dict section items should degrade to None template."""
+        raw = (
+            "---\n"
+            "name: Bad\n"
+            "template:\n"
+            "  draft:\n"
+            "    - just a string\n"
+            "  final: []\n"
+            "  context_usage: ok\n"
+            "---\n"
+            "Body.\n"
+        )
+        body, template = _parse_template(raw)
+        assert template is None
+        assert "Body" in body
+
+    def test_template_not_a_dict(self):
+        """template: 'string' should degrade to None template."""
+        raw = "---\nname: Bad\ntemplate: not a dict\n---\nBody."
+        body, template = _parse_template(raw)
+        assert template is None
+
+    def test_empty_draft_and_final(self):
+        """Empty draft and final lists should produce empty tuples."""
+        raw = (
+            "---\n"
+            "name: Minimal\n"
+            "template:\n"
+            "  draft: []\n"
+            "  final: []\n"
+            "  context_usage: none\n"
+            "---\n"
+            "Body.\n"
+        )
+        body, template = _parse_template(raw)
+        assert template is not None
+        assert template.draft_sections == ()
+        assert template.final_sections == ()
+
+    def test_missing_context_usage_defaults_to_empty(self):
+        """Missing context_usage should default to empty string."""
+        raw = (
+            "---\n"
+            "name: Test\n"
+            "template:\n"
+            "  draft:\n"
+            '    - Summary: "Brief."\n'
+            "  final: []\n"
+            "---\n"
+            "Body.\n"
+        )
+        body, template = _parse_template(raw)
+        assert template is not None
+        assert template.context_usage == ""
+
+    def test_frozen_template(self):
+        """ReportTemplate should be immutable."""
+        import dataclasses
+        raw = (
+            "---\n"
+            "name: Frozen\n"
+            "template:\n"
+            "  draft:\n"
+            '    - A: "a"\n'
+            "  final: []\n"
+            "---\n"
+            "Body.\n"
+        )
+        _, template = _parse_template(raw)
+        assert template is not None
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            template.name = "changed"
 
 
 class TestContextResultReturnTypes:

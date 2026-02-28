@@ -74,6 +74,38 @@ class TestContextResultContent:
         assert result.source == "context.md"
 
 
+class TestContextResultTemplate:
+    """Template field on ContextResult."""
+
+    def test_loaded_without_template_has_none(self):
+        result = ContextResult.loaded("text")
+        assert result.template is None
+
+    def test_loaded_with_template(self):
+        from research_agent.context_result import ReportTemplate
+        tmpl = ReportTemplate(
+            name="Test",
+            draft_sections=(("A", "a"),),
+            final_sections=(("B", "b"),),
+            context_usage="Use wisely.",
+        )
+        result = ContextResult.loaded("text", template=tmpl)
+        assert result.template is tmpl
+        assert result.template.name == "Test"
+
+    def test_not_configured_has_no_template(self):
+        result = ContextResult.not_configured()
+        assert result.template is None
+
+    def test_empty_has_no_template(self):
+        result = ContextResult.empty()
+        assert result.template is None
+
+    def test_failed_has_no_template(self):
+        result = ContextResult.failed("error")
+        assert result.template is None
+
+
 class TestContextResultValidation:
     """Factory methods enforce correct field combinations."""
 
