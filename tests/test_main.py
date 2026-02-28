@@ -8,13 +8,15 @@ from unittest.mock import patch
 import pytest
 
 from research_agent.cli import (
-    get_auto_save_path,
     list_reports,
-    sanitize_filename,
     show_costs,
+)
+from research_agent.report_store import (
     REPORTS_DIR,
-    _OLD_FORMAT,
     _NEW_FORMAT,
+    _OLD_FORMAT,
+    get_auto_save_path,
+    sanitize_filename,
 )
 from research_agent.modes import ResearchMode
 
@@ -98,14 +100,17 @@ class TestListReports:
     """Tests for list_reports()."""
 
     def test_missing_directory(self, tmp_path, capsys):
-        with patch("research_agent.cli.REPORTS_DIR", tmp_path / "nonexistent"):
+        nonexistent = tmp_path / "nonexistent"
+        with patch("research_agent.report_store.REPORTS_DIR", nonexistent), \
+             patch("research_agent.cli.REPORTS_DIR", nonexistent):
             list_reports()
         assert "No reports directory found" in capsys.readouterr().out
 
     def test_empty_directory(self, tmp_path, capsys):
         reports = tmp_path / "reports"
         reports.mkdir()
-        with patch("research_agent.cli.REPORTS_DIR", reports):
+        with patch("research_agent.report_store.REPORTS_DIR", reports), \
+             patch("research_agent.cli.REPORTS_DIR", reports):
             list_reports()
         assert "No saved reports" in capsys.readouterr().out
 
@@ -113,7 +118,7 @@ class TestListReports:
         reports = tmp_path / "reports"
         reports.mkdir()
         (reports / "2026-02-03_183703_graphql_vs_rest.md").write_text("test")
-        with patch("research_agent.cli.REPORTS_DIR", reports):
+        with patch("research_agent.report_store.REPORTS_DIR", reports):
             list_reports()
         output = capsys.readouterr().out
         assert "Saved reports (1):" in output
@@ -124,7 +129,7 @@ class TestListReports:
         reports = tmp_path / "reports"
         reports.mkdir()
         (reports / "graphql_vs_rest_2026-02-03_183703056652.md").write_text("test")
-        with patch("research_agent.cli.REPORTS_DIR", reports):
+        with patch("research_agent.report_store.REPORTS_DIR", reports):
             list_reports()
         output = capsys.readouterr().out
         assert "Saved reports (1):" in output
@@ -136,7 +141,7 @@ class TestListReports:
         reports.mkdir()
         (reports / "codebase_review.md").write_text("test")
         (reports / "2026-02-03_183703_query.md").write_text("test")
-        with patch("research_agent.cli.REPORTS_DIR", reports):
+        with patch("research_agent.report_store.REPORTS_DIR", reports):
             list_reports()
         output = capsys.readouterr().out
         assert "Saved reports (2):" in output
@@ -147,7 +152,8 @@ class TestListReports:
         reports = tmp_path / "reports"
         reports.mkdir()
         (reports / ".DS_Store").write_text("junk")
-        with patch("research_agent.cli.REPORTS_DIR", reports):
+        with patch("research_agent.report_store.REPORTS_DIR", reports), \
+             patch("research_agent.cli.REPORTS_DIR", reports):
             list_reports()
         assert "No saved reports" in capsys.readouterr().out
 
