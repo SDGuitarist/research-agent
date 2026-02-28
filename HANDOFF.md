@@ -1,46 +1,57 @@
-# Handoff: Template-per-Context — Compound Phase Complete
+# Handoff: Flexible Context System — Session 1 Complete
 
 ## Current State
 
 **Project:** Research Agent
-**Phase:** Compound complete — cycle 20 fully closed
+**Phase:** Work (Session 1 of 2 complete)
 **Branch:** `main`
 **Date:** February 27, 2026
+**Plan:** `docs/plans/2026-02-27-feat-flexible-context-system-plan.md`
 
 ---
 
 ## What Was Done This Session
 
-### Compound Documentation
-- Created `docs/solutions/logic-errors/defensive-yaml-frontmatter-parsing.md`
-- Documents all 8 fixes (075-082) grouped by theme: parsing correctness, security, legacy cleanup, code quality
-- Key pattern documented: every new data source needs its own sanitize-at-boundary call
-- Edge case documented: template-only context files (`("", template)` interaction between fix 075 and 079)
-- Cross-references linked to 5 existing solution docs
-- Prevention section includes checklist for adding new frontmatter fields
-- Risk resolution section addresses the flagged fix interaction from fix-batched phase
+### Session 1: Generic Prompts + Tests
 
-### Files Changed
-- `docs/solutions/logic-errors/defensive-yaml-frontmatter-parsing.md` — new
+Replaced all hardcoded business-domain language in pipeline prompts with generic terms:
+
+1. `summarize.py:99-101` — `KEY QUOTES` → `KEY EVIDENCE`, `TONE` → `PERSPECTIVE`
+2. `synthesize.py:220` — "Business context" → "Research context" (template-present path)
+3. `synthesize.py:225` — "Business context" → "Research context" (quick mode fallback)
+4. `synthesize.py:498-501` — Domain-specific fallback → generic "ground recommendations in the user's situation"
+5. `synthesize.py:612` — System prompt "business context" → "research context"
+6. `decompose.py:111` — "user's business" → "user's context"
+7. `context_result.py:26` — Docstring "business context" → "research context"
+8. `summarize.py:171,222` — Docstrings updated for new field names
+9. `tests/test_summarize.py` — Updated assertions for KEY EVIDENCE/PERSPECTIVE
+
+### Acceptance Criteria Met
+- `grep -rn "business" research_agent/ --include="*.py"` returns zero results
+- All 754 tests pass
+- No "marketing", "persuasion", "positioning", or "threats" in any `.py` file
+
+### Commit
+- `10a8b75` — `feat(prompts): replace business-domain language with generic terms`
 
 ---
 
 ## Three Questions
 
-1. **Hardest pattern to extract from the fixes?** Articulating why fixes 075 and 079 compose correctly despite both modifying `_parse_template()`'s return path. Fix 075 says "empty body is valid" and fix 079 says "empty sections are not valid" — these look contradictory until you see they address different axes (content vs structure).
+1. **Hardest implementation decision in this session?** None — this was a straightforward find-and-replace session. The hard decisions were made in the plan (e.g., "PERSPECTIVE" vs "METHODOLOGY").
 
-2. **What did you consider documenting but left out, and why?** A full audit of every `sanitize_content()` call site. The existing `non-idempotent-sanitization-double-encode.md` solution already established the "trace the data flow" rule, which is more durable than a static inventory.
+2. **What did you consider changing but left alone, and why?** The test_agent.py files use `ContextResult.loaded("Business context")` as test data values. These aren't prompt text — they're just string payloads for the context system. Changing them would be cosmetic with no behavioral impact, and they're Session 2's territory (context.py changes).
 
-3. **What might future sessions miss that this solution doesn't cover?** If a new frontmatter field contains structured data (nested dict, list of URLs), `sanitize_content()` on its string representation may not be sufficient. Current fields are all plain strings, so not a problem yet.
+3. **Least confident about going into review?** Whether "PERSPECTIVE" produces better structured extraction than "TONE" in deep mode. Plan recommends spot-checking after implementation. This is Session 2+ validation.
 
 ---
 
 ## Next Phase
 
-Cycle 20 is complete (brainstorm → plan → work → review → fix-batched → compound). Ready for a new cycle when needed.
+Session 2: Auto-Detect Fix + Legacy Cleanup + Bug Fix + Tests
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. Start a new cycle — /workflows:brainstorm for the next feature or improvement.
+Read docs/plans/2026-02-27-feat-flexible-context-system-plan.md Session 2. Implement Session 2: Auto-Detect Fix + Legacy Cleanup + Bug Fix + Tests. Relevant files: context.py, tests/test_context.py, tests/test_agent.py, research_context.md. Do only Session 2 — commit and stop.
 ```
