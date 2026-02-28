@@ -311,8 +311,7 @@ class TestSynthesizeReport:
         call_args = mock_client.messages.stream.call_args
         user_content = call_args.kwargs["messages"][0]["content"]
 
-        assert "Competitive Implications" in user_content
-        assert "Positioning Advice" in user_content
+        assert "analytical and recommendation sections" in user_content
         assert "objective and context-free" in user_content
 
     def test_synthesize_report_passes_max_tokens_to_api(
@@ -775,8 +774,8 @@ class TestTemplateDrivenFinal:
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "Competitive Implications and Positioning Advice only" in prompt
 
-    def test_no_template_uses_legacy_context_sections(self):
-        """Without template, context should trigger legacy section list."""
+    def test_no_template_uses_generic_sections(self):
+        """Without template, context should use generic section list (no PFE sections)."""
         client = _make_streaming_client("Final sections")
         synthesize_final(
             client, "query", "draft", [], SAMPLE_SUMMARIES,
@@ -785,7 +784,8 @@ class TestTemplateDrivenFinal:
         )
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
-        assert "9. **Competitive Implications**" in prompt
+        assert "Limitations & Gaps" in prompt
+        assert "Competitive Implications" not in prompt
 
 
 class TestTemplateDrivenReport:

@@ -112,16 +112,14 @@ def _build_final_sections(
         has_skeptic: Whether skeptic findings are available.
         draft_count: Number of draft sections (for section numbering).
     """
-    parts = []
-    n = draft_count
-    for heading, description in template.final_sections:
-        n += 1
-        parts.append(f"{n}. **{heading}** — {description}")
+    sections = list(template.final_sections)
     if has_skeptic:
-        n += 1
-        parts.append(f"{n}. **Adversarial Analysis** — Synthesize the skeptic review findings.")
-    n += 1
-    parts.append(f"{n}. **Limitations & Gaps** — What sources don't cover, confidence levels.")
+        sections.append(("Adversarial Analysis", "Synthesize the skeptic review findings."))
+    sections.append(("Limitations & Gaps", "What sources don't cover, confidence levels."))
+    parts = [
+        f"{i}. **{heading}** — {description}"
+        for i, (heading, description) in enumerate(sections, draft_count + 1)
+    ]
     parts.append("## Sources — All referenced URLs with [Source N] notation.")
     return "\n".join(parts)
 
@@ -224,8 +222,8 @@ def synthesize_report(
             )
         else:
             context_instruction = (
-                "\n\nBusiness context is provided in <research_context>. Use it only for "
-                "Competitive Implications and Positioning Advice sections. Keep factual "
+                "\n\nBusiness context is provided in <research_context>. Use it for "
+                "analytical and recommendation sections. Keep factual "
                 "analysis objective and context-free."
             )
 
@@ -498,9 +496,9 @@ def synthesize_final(
             context_instruction = template.context_usage
         else:
             context_instruction = (
-                "Use the business context in <research_context> for Competitive Implications "
-                "and Positioning Advice sections. Reference specific competitive positioning, "
-                "threats, opportunities, and actionable recommendations tailored to the business."
+                "Use the business context in <research_context> for analytical and "
+                "recommendation sections. Reference specific positioning, threats, "
+                "opportunities, and actionable recommendations tailored to the business."
             )
 
     # Skeptic findings block
@@ -545,33 +543,14 @@ def synthesize_final(
             "Focus only on what the available sources can directly answer."
         )
 
-    # Build section list based on template, context, and skeptic findings
+    # Build section list based on template and skeptic findings
     if template and template.final_sections:
         draft_count = len(template.draft_sections)
         section_list = _build_final_sections(
             template, has_skeptic=bool(skeptic_findings), draft_count=draft_count,
         )
-    elif context:
-        # Legacy: business-intelligence report without template
-        if skeptic_findings:
-            section_list = (
-                "9. **Competitive Implications** — What findings mean for the reader. "
-                "Threats, opportunities, gaps.\n"
-                "10. **Positioning Advice** — 3-5 actionable angles based on findings.\n"
-                "11. **Adversarial Analysis** — Synthesize the skeptic review findings.\n"
-                "12. **Limitations & Gaps** — What sources don't cover, confidence levels.\n"
-                "## Sources — All referenced URLs with [Source N] notation."
-            )
-        else:
-            section_list = (
-                "9. **Competitive Implications** — What findings mean for the reader. "
-                "Threats, opportunities, gaps.\n"
-                "10. **Positioning Advice** — 3-5 actionable angles based on findings.\n"
-                "11. **Limitations & Gaps** — What sources don't cover, confidence levels.\n"
-                "## Sources — All referenced URLs with [Source N] notation."
-            )
     else:
-        # Generic report: skip business-specific sections
+        # Generic report: no template-specific sections
         if skeptic_findings:
             section_list = (
                 "5. **Adversarial Analysis** — Synthesize the skeptic review findings.\n"
