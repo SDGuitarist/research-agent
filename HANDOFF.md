@@ -1,57 +1,50 @@
-# Handoff: P2 Triage — Critique & Synthesize (Complete)
+# Handoff: P3 Fix Batch — 083, 084, 088 (Complete)
 
 ## Current State
 
 **Project:** Research Agent
-**Phase:** Compound complete — cycle finished
+**Phase:** Fix complete — P3 todos resolved
 **Branch:** `main`
 **Date:** February 28, 2026
-**Plan:** `docs/plans/2026-02-28-refactor-p2-triage-critique-synthesize-plan.md`
-**Review:** `docs/reviews/p2-triage-critique-synthesize/REVIEW-SUMMARY.md`
+**Commit:** `be38bb0`
 
 ---
 
 ## What Was Done This Session
 
-### Fix Phase
+### Fix Phase — P3 Todos
 
-1. **Fixed 085 (P2)**: Replaced stale "Section 11" references with section names in `synthesize.py` docstring and prompts
-2. **Fixed 087 (P2)**: Widened `from_parsed` type hint from `dict[str, int]` to `dict[str, int | str]` in `critique.py`
-3. **Fixed 086 (P3)**: Renamed `test_skips_section_11_when_no_findings` to `test_skips_adversarial_analysis_when_no_findings` with updated assertion
-4. **All 764 tests pass**
-5. **Committed**: `a802b3d`
+1. **083 (f-string logging)**: Already fixed in a prior commit — marked done
+2. **084 (YAML frontmatter size limit)**: Added 8 KB size check before `yaml.safe_load()` in `context.py:_parse_template()` + test in `test_context.py`
+3. **088 (_DEFAULT_FINAL_START coupling)**: Added test assertion `_DEFAULT_FINAL_START == 5` in `test_synthesize.py` with comment explaining the coupling
+4. **All 766 tests pass**
+5. **Committed and pushed**: `be38bb0`
 
-### Compound Phase
+### Files Changed
 
-Documented learnings in `docs/solutions/logic-errors/stale-references-and-type-hint-fixes.md` with:
-- Problem/root cause analysis
-- Solution details for all 3 fixes
-- Prevention strategies (use section names not numbers, semantic test names, type hints matching data flow, grep for stale refs during refactoring)
-- Risk resolution (LLM prompt ambiguity)
-- Cross-references to 4 related solution docs
-
-### Remaining Todos
-
-- **088 (P3)**: `_DEFAULT_FINAL_START = 5` implicit coupling — accepted as-is per all review agents; deferred
+- `research_agent/context.py` — added size limit guard
+- `tests/test_context.py` — added oversized YAML test
+- `tests/test_synthesize.py` — added `_DEFAULT_FINAL_START` import and assertion test
+- `todos/083-*`, `todos/084-*`, `todos/088-*` — marked done
 
 ---
 
 ## Three Questions
 
-1. **Hardest fix in this batch?** The test assertion update for 086. The original assertion `"11. **Adversarial Analysis**" not in prompt` passed vacuously. The replacement `"**Adversarial Analysis**" not in prompt.split("Skip")[0]` is more precise — it checks the section list portion only, not the skip instruction.
+1. **Hardest fix in this batch?** 084 — deciding to use `len(yaml_block.encode())` for byte-accurate sizing rather than `len(yaml_block)` which counts characters. Multi-byte characters in YAML values could undercount with character length.
 
-2. **What did you consider fixing differently, and why didn't you?** Considered making prompt section numbers dynamic (Option B in todo 085) by passing computed numbers as f-string variables. Rejected because section names are more stable and readable in prompt text — the LLM doesn't need the number to find the section.
+2. **What did you consider fixing differently, and why didn't you?** For 088, considered Option A (extracting draft sections into a tuple constant and deriving the number). Went with Option B (test assertion) because it's minimal, the generic path is stable, and a larger refactor would touch prompt construction for no practical benefit.
 
-3. **Least confident about going into the next batch or compound phase?** Whether the `_DEFAULT_FINAL_START = 5` coupling (088) will bite later. If someone adds a 5th generic draft section, the constant silently produces wrong numbering. The compound doc notes this as an open risk.
+3. **Least confident about going into the next batch or compound phase?** Whether there are other P3 todos remaining that should be batched together before starting a compound doc.
 
 ---
 
 ## Next Phase
 
-Cycle complete. Next work should start a new brainstorm/plan cycle for a new feature or address remaining P3 todos (083, 084, 088).
+All known P3 todos (083, 084, 088) are resolved. Next work should start a new brainstorm/plan cycle for a new feature, or check for any remaining open todos.
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. Start a new brainstorm/plan cycle for the next feature, or review remaining P3 todos (083, 084, 088) in todos/ to decide what to tackle next.
+Read HANDOFF.md. Check todos/ for any remaining open items. If none, start a new brainstorm/plan cycle for the next feature.
 ```
