@@ -73,8 +73,7 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             # Configure mocks
             mock_search.return_value = mock_search_results[:2]  # pass1=2
@@ -112,8 +111,7 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = mock_search_results[:2]
             mock_refine.return_value = "refined query"
@@ -156,8 +154,7 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             # Pass 1 returns results 1-2
             pass1_results = mock_search_results[:2]
@@ -206,8 +203,7 @@ class TestResearchAgentQuickMode:
              patch("research_agent.agent.summarize_all") as mock_summarize, \
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             # Pass 1 succeeds, Pass 2 fails
             mock_search.side_effect = [
@@ -258,8 +254,7 @@ class TestResearchAgentStandardMode:
              patch("research_agent.agent.synthesize_final") as mock_final, \
              patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
              patch("research_agent.agent.load_full_context") as mock_full_ctx, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url=f"https://ex{i}.com", snippet="S")
@@ -306,8 +301,7 @@ class TestResearchAgentStandardMode:
              patch("research_agent.agent.synthesize_final") as mock_final, \
              patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
              patch("research_agent.agent.load_full_context") as mock_full_ctx, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             search_results = [
                 SearchResult(title="R", url=f"https://ex{i}.com", snippet=f"Snippet {i}")
@@ -367,8 +361,7 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.synthesize_final") as mock_final, \
              patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
              patch("research_agent.agent.load_full_context") as mock_full_ctx, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url=f"https://ex{i}.com", snippet="S")
@@ -415,8 +408,7 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.synthesize_final") as mock_final, \
              patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
              patch("research_agent.agent.load_full_context") as mock_full_ctx, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url=f"https://ex{i}.com", snippet="S")
@@ -468,8 +460,7 @@ class TestResearchAgentDeepMode:
              patch("research_agent.agent.synthesize_final") as mock_final, \
              patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
              patch("research_agent.agent.load_full_context") as mock_full_ctx, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             # Pass 1 results
             pass1_results = [
@@ -521,8 +512,7 @@ class TestResearchAgentErrorHandling:
         """Pass 1 failure should raise ResearchError."""
         from research_agent.errors import SearchError
 
-        with patch("research_agent.agent.search") as mock_search, \
-             patch("builtins.print"):
+        with patch("research_agent.agent.search") as mock_search:
 
             mock_search.side_effect = SearchError("Search failed completely")
 
@@ -537,8 +527,7 @@ class TestResearchAgentErrorHandling:
         with patch("research_agent.agent.search") as mock_search, \
              patch("research_agent.agent.refine_query") as mock_refine, \
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url="https://ex.com", snippet="S")
@@ -559,8 +548,7 @@ class TestResearchAgentErrorHandling:
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
              patch("research_agent.agent.cascade_recover", new_callable=AsyncMock, return_value=[]) as mock_cascade, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url="https://ex.com", snippet="S")
@@ -615,8 +603,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.synthesize_final") as mock_final, \
              patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
              patch("research_agent.agent.load_full_context") as mock_full_ctx, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = base_mocks["search_results"]
             mock_refine.return_value = "refined query"
@@ -658,8 +645,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock) as mock_insufficient, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = base_mocks["search_results"]
             mock_refine.return_value = "refined query"
@@ -704,8 +690,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.synthesize_final") as mock_final, \
              patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
              patch("research_agent.agent.load_full_context") as mock_full_ctx, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = base_mocks["search_results"]
             mock_refine.return_value = "refined query"
@@ -753,8 +738,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock) as mock_insufficient, \
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             quick_summaries = base_mocks["summaries"][:3]
             mock_search.return_value = base_mocks["search_results"][:3]
@@ -797,8 +781,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.synthesize_final") as mock_final, \
              patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
              patch("research_agent.agent.load_full_context") as mock_full_ctx, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             # Pass 1 and Pass 2 results
             mock_search.side_effect = [
@@ -847,8 +830,7 @@ class TestResearchAgentRelevanceGate:
              patch("research_agent.agent.synthesize_final") as mock_final, \
              patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
              patch("research_agent.agent.load_full_context") as mock_full_ctx, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = base_mocks["search_results"]
             mock_refine.return_value = "specifically refined query"
@@ -893,8 +875,7 @@ class TestResearchAgentContext:
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.load_full_context") as mock_load_context, \
              patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_ctx_dir.is_dir.return_value = False
 
@@ -943,8 +924,7 @@ class TestResearchAgentContext:
              patch("research_agent.agent.synthesize_report") as mock_synthesize, \
              patch("research_agent.agent.load_full_context") as mock_load_context, \
              patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_ctx_dir.is_dir.return_value = False
 
@@ -1001,7 +981,6 @@ class TestResearchAgentAutoDetect:
             "evaluate": patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock),
             "synthesize": patch("research_agent.agent.synthesize_report", return_value="Report"),
             "sleep": patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock),
-            "print": patch("builtins.print"),
         }
 
     @pytest.mark.asyncio
@@ -1010,7 +989,6 @@ class TestResearchAgentAutoDetect:
         patches = self._build_quick_patches()
         with patches["search"], patches["refine"], patches["fetch"], \
              patches["extract"], patches["synthesize"], patches["sleep"], \
-             patches["print"], \
              patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
              patch("research_agent.agent.auto_detect_context") as mock_detect, \
              patch("research_agent.agent.load_full_context") as mock_load_ctx, \
@@ -1047,7 +1025,7 @@ class TestResearchAgentAutoDetect:
         patches = self._build_quick_patches()
         with patches["search"], patches["refine"], patches["fetch"], \
              patches["extract"], patches["synthesize"] as mock_synth, \
-             patches["sleep"], patches["print"], \
+             patches["sleep"], \
              patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
              patch("research_agent.agent.auto_detect_context") as mock_detect, \
              patch("research_agent.agent.load_full_context") as mock_load_ctx, \
@@ -1081,7 +1059,6 @@ class TestResearchAgentAutoDetect:
         patches = self._build_quick_patches()
         with patches["search"], patches["refine"], patches["fetch"], \
              patches["extract"], patches["synthesize"], patches["sleep"], \
-             patches["print"], \
              patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
              patch("research_agent.agent.auto_detect_context") as mock_detect, \
              patch("research_agent.agent.load_full_context") as mock_load_ctx, \
@@ -1113,7 +1090,6 @@ class TestResearchAgentAutoDetect:
         patches = self._build_quick_patches()
         with patches["search"], patches["refine"], patches["fetch"], \
              patches["extract"], patches["synthesize"], patches["sleep"], \
-             patches["print"], \
              patch("research_agent.agent.CONTEXTS_DIR") as mock_ctx_dir, \
              patch("research_agent.agent.auto_detect_context") as mock_detect, \
              patch("research_agent.agent.load_full_context") as mock_load_ctx, \
@@ -1156,8 +1132,7 @@ class TestResearchAgentStructuredSummaries:
              patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
              patch("research_agent.agent.load_full_context") as mock_full_ctx, \
              patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url=f"https://ex{i}.com", snippet="S")
@@ -1208,8 +1183,7 @@ class TestResearchAgentStructuredSummaries:
              patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
              patch("research_agent.agent.load_full_context") as mock_full_ctx, \
              patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url=f"https://ex{i}.com", snippet="S")
@@ -1289,8 +1263,7 @@ class TestResearchAgentGapCheck:
              patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
              patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
              patch("research_agent.agent.synthesize_report") as mock_synth, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url=f"https://ex{i}.com", snippet="S")
@@ -1335,8 +1308,7 @@ class TestResearchAgentGapCheck:
 
         with patch("research_agent.agent.search") as mock_search, \
              patch("research_agent.agent.load_schema", return_value=schema_result), \
-             patch("research_agent.agent.detect_stale", return_value=[]), \
-             patch("builtins.print"):
+             patch("research_agent.agent.detect_stale", return_value=[]):
 
             agent = ResearchAgent(
                 api_key="test-key", mode=ResearchMode.quick(),
@@ -1374,8 +1346,7 @@ class TestResearchAgentGapCheck:
              patch("research_agent.agent.load_schema", return_value=schema_result), \
              patch("research_agent.agent.detect_stale", return_value=[stale_gap]), \
              patch("research_agent.agent.select_batch", return_value=(stale_gap,)), \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url="https://ex1.com", snippet="S")
@@ -1427,8 +1398,7 @@ class TestResearchAgentGapCheck:
              patch("research_agent.agent.load_schema", return_value=schema_result), \
              patch("research_agent.agent.detect_stale", return_value=[]), \
              patch("research_agent.agent.select_batch", return_value=gaps), \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url="https://ex1.com", snippet="S")
@@ -1486,8 +1456,7 @@ class TestResearchAgentGapCheck:
              patch("research_agent.agent.load_schema", return_value=schema_result), \
              patch("research_agent.agent.detect_stale", return_value=stale_gaps), \
              patch("research_agent.agent.select_batch", return_value=batch_of_3) as mock_batch, \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url="https://ex1.com", snippet="S")
@@ -1537,8 +1506,7 @@ class TestResearchAgentGapCheck:
              patch("research_agent.agent.load_full_context", return_value=ContextResult.not_configured()), \
              patch("research_agent.agent.synthesize_report") as mock_synth, \
              patch("research_agent.agent.load_schema", return_value=schema_result), \
-             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock), \
-             patch("builtins.print"):
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
                 SearchResult(title="R", url="https://ex1.com", snippet="S")
@@ -1845,8 +1813,7 @@ class TestCoverageGapRetry:
             reasoning="No evidence",
         )
 
-        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
-             patch("builtins.print"):
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap):
             result = await agent._try_coverage_retry(
                 "test query", [], evaluation, ["test query"],
             )
@@ -1867,8 +1834,7 @@ class TestCoverageGapRetry:
             reasoning="Niche topic",
         )
 
-        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
-             patch("builtins.print"):
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap):
             result = await agent._try_coverage_retry(
                 "test query", [], evaluation, ["test query"],
             )
@@ -1889,8 +1855,7 @@ class TestCoverageGapRetry:
             reasoning="Gap found",
         )
 
-        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
-             patch("builtins.print"):
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap):
             result = await agent._try_coverage_retry(
                 "test query", [], evaluation, ["test query"],
             )
@@ -1918,8 +1883,7 @@ class TestCoverageGapRetry:
         ]
 
         with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
-             patch("research_agent.agent.search", return_value=duplicate_results), \
-             patch("builtins.print"):
+             patch("research_agent.agent.search", return_value=duplicate_results):
             result = await agent._try_coverage_retry(
                 "test query", existing, evaluation, ["test query"],
             )
@@ -1960,8 +1924,7 @@ class TestCoverageGapRetry:
         with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
              patch("research_agent.agent.search", return_value=new_results), \
              patch.object(agent, "_fetch_extract_summarize", new_callable=AsyncMock, return_value=new_summaries), \
-             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=retry_eval), \
-             patch("builtins.print"):
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=retry_eval):
             result = await agent._try_coverage_retry(
                 "test query", existing, evaluation, ["test query"],
             )
@@ -1994,8 +1957,7 @@ class TestCoverageGapRetry:
 
         with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
              patch("research_agent.agent.search", return_value=new_results), \
-             patch.object(agent, "_fetch_extract_summarize", new_callable=AsyncMock, side_effect=ResearchError("fetch failed")), \
-             patch("builtins.print"):
+             patch.object(agent, "_fetch_extract_summarize", new_callable=AsyncMock, side_effect=ResearchError("fetch failed")):
             result = await agent._try_coverage_retry(
                 "test query", [], evaluation, ["test query"],
             )
@@ -2018,8 +1980,7 @@ class TestCoverageGapRetry:
 
         tried = ["original query", "refined query", "sub query one"]
 
-        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap) as mock_identify, \
-             patch("builtins.print"):
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap) as mock_identify:
             await agent._try_coverage_retry(
                 "original query", [], evaluation, tried,
             )
@@ -2055,8 +2016,7 @@ class TestCoverageGapRetry:
         with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
              patch("research_agent.agent.search", side_effect=[SearchError("timeout"), new_results]), \
              patch.object(agent, "_fetch_extract_summarize", new_callable=AsyncMock, return_value=new_summaries), \
-             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=new_eval), \
-             patch("builtins.print"):
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=new_eval):
             result = await agent._try_coverage_retry(
                 "test query", [], evaluation, ["test query"],
             )
@@ -2085,8 +2045,7 @@ class TestCoverageGapRetry:
              patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
              patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
              patch("research_agent.agent.load_full_context", return_value=ContextResult.loaded("ctx")), \
-             patch("research_agent.agent.synthesize_final", return_value="Full Report"), \
-             patch("builtins.print"):
+             patch("research_agent.agent.synthesize_final", return_value="Full Report"):
             mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
 
             result = await agent._evaluate_and_synthesize(
@@ -2114,8 +2073,7 @@ class TestCoverageGapRetry:
              patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
              patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
              patch("research_agent.agent.load_full_context", return_value=ContextResult.loaded("ctx")), \
-             patch("research_agent.agent.synthesize_final", return_value="Short Report"), \
-             patch("builtins.print"):
+             patch("research_agent.agent.synthesize_final", return_value="Short Report"):
             mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
 
             result = await agent._evaluate_and_synthesize(
@@ -2144,8 +2102,7 @@ class TestCoverageGapRetry:
              patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
              patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
              patch("research_agent.agent.load_full_context", return_value=ContextResult.loaded("ctx")), \
-             patch("research_agent.agent.synthesize_final", return_value="Full Report"), \
-             patch("builtins.print"):
+             patch("research_agent.agent.synthesize_final", return_value="Full Report"):
             mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
 
             await agent._evaluate_and_synthesize(
@@ -2169,8 +2126,7 @@ class TestCoverageGapRetry:
 
         with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=no_findings_eval), \
              patch.object(agent, "_try_coverage_retry", new_callable=AsyncMock) as mock_retry, \
-             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No Data"), \
-             patch("builtins.print"):
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No Data"):
 
             await agent._evaluate_and_synthesize(
                 "test query", summaries, "refined",
@@ -2201,8 +2157,7 @@ class TestCoverageGapRetry:
 
         with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=insufficient_eval), \
              patch.object(agent, "_try_coverage_retry", new_callable=AsyncMock) as mock_retry, \
-             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No Data"), \
-             patch("builtins.print"):
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No Data"):
 
             await agent._evaluate_and_synthesize(
                 "test query", summaries, "refined",

@@ -198,10 +198,10 @@ class ResearchAgent:
             logger.warning("Self-critique failed: %s", e)
 
     def _next_step(self, message: str) -> None:
-        """Print next step header with auto-incrementing counter."""
+        """Log next step header with auto-incrementing counter."""
         self._step_num += 1
         elapsed = time.monotonic() - self._start_time
-        print(f"\n[{self._step_num}/{self._step_total}] {message} ({elapsed:.1f}s)")
+        logger.info("[%d/%d] %s (%.1fs)", self._step_num, self._step_total, message, elapsed)
 
     def research(self, query: str) -> str:
         """Perform research on a query and return a markdown report."""
@@ -244,7 +244,7 @@ class ResearchAgent:
             )
             if detected is not None:
                 effective_context_path = detected
-                print(f"      Auto-detected context: {detected.stem}")
+                logger.info("Auto-detected context: %s", detected.stem)
             else:
                 # contexts/ exists but nothing matched — skip context
                 effective_no_context = True
@@ -290,12 +290,12 @@ class ResearchAgent:
                 sub_queries = decomposition.sub_queries
                 reasoning = decomposition.reasoning
                 if reasoning:
-                    print(f"      {reasoning}")
-                print(f"      Decomposed into {len(sub_queries)} sub-queries:")
+                    logger.info("%s", reasoning)
+                logger.info("Decomposed into %d sub-queries:", len(sub_queries))
                 for sq in sub_queries:
-                    print(f"      \u2192 {sq}")
+                    logger.info("  → %s", sq)
             else:
-                print(f"      Simple query \u2014 skipping decomposition")
+                logger.info("Simple query — skipping decomposition")
 
         # Pre-research gap check (if schema configured)
         if self.schema_path:
@@ -314,13 +314,13 @@ class ResearchAgent:
                     return self._already_covered_response(schema_result)
                 research_batch = select_batch(candidates, self.cycle_config.max_gaps_per_run)
                 unknown_count = sum(1 for g in candidates if g.status == GapStatus.UNKNOWN)
-                print(f"      Gap schema: {len(research_batch)} gaps to research "
-                      f"({len(stale)} stale, {unknown_count} unknown)")
+                logger.info("Gap schema: %d gaps to research (%d stale, %d unknown)",
+                            len(research_batch), len(stale), unknown_count)
                 self._current_schema_result = schema_result
                 self._current_research_batch = research_batch
 
         self._next_step(f"Searching for: {query}")
-        print(f"      Mode: {self.mode.name} ({self.mode.max_sources} sources, {self.mode.search_passes} passes)")
+        logger.info("Mode: %s (%d sources, %d passes)", self.mode.name, self.mode.max_sources, self.mode.search_passes)
 
         if self.mode.is_deep:
             return await self._research_deep(query, decomposition, critique_context)
@@ -374,13 +374,13 @@ class ResearchAgent:
         new_results = []
         for sq, sq_results in completed:
             if not sq_results:
-                print(f"      \u2192 \"{sq}\": failed, continuing")
+                logger.info("→ \"%s\": failed, continuing", sq)
                 continue
             new = [r for r in sq_results if r.url not in seen_urls]
             for r in new:
                 seen_urls.add(r.url)
             new_results.extend(new)
-            print(f"      \u2192 \"{sq}\": {len(sq_results)} results ({len(new)} new)")
+            logger.info("→ \"%s\": %d results (%d new)", sq, len(sq_results), len(new))
 
         return new_results
 
@@ -400,7 +400,7 @@ class ResearchAgent:
         if not quiet:
             self._next_step(f"Fetching {len(results)} pages...")
         pages = await fetch_urls(urls_to_fetch) if urls_to_fetch else []
-        print(f"      Successfully fetched {len(pages)} pages ({len(prefetched)} from search cache)")
+        logger.info("Successfully fetched %d pages (%d from search cache)", len(pages), len(prefetched))
 
         if not pages and not prefetched:
             raise ResearchError("Could not fetch any pages")
@@ -439,7 +439,7 @@ class ResearchAgent:
                 parts.append(f"{full_count} via cascade")
             if snippet_count:
                 parts.append(f"{snippet_count} snippet fallbacks")
-            print(f"      Cascade recovered: {', '.join(parts)}")
+            logger.info("Cascade recovered: %s", ", ".join(parts))
 
         all_contents = prefetched + extracted + cascade_contents
         seen_content_urls: set[str] = set()
@@ -449,8 +449,8 @@ class ResearchAgent:
                 seen_content_urls.add(c.url)
                 contents.append(c)
         if len(contents) < len(all_contents):
-            print(f"      Deduplicated: {len(all_contents)} \u2192 {len(contents)} unique pages")
-        print(f"      Extracted content from {len(contents)} pages")
+            logger.info("Deduplicated: %d → %d unique pages", len(all_contents), len(contents))
+        logger.info("Extracted content from %d pages", len(contents))
 
         if not contents:
             raise ResearchError("Could not extract content from any pages")
@@ -465,7 +465,7 @@ class ResearchAgent:
             structured=structured,
             max_chunks=max_chunks,
         )
-        print(f"      Generated {len(summaries)} summaries")
+        logger.info("Generated %d summaries", len(summaries))
 
         if not summaries:
             raise ResearchError("Could not generate any summaries")
@@ -514,16 +514,16 @@ class ResearchAgent:
             "Coverage gap: %s (%s) \u2014 %s",
             gap.gap_type, gap.description, gap.retry_recommendation,
         )
-        print(f"      Coverage gap: {gap.gap_type} \u2014 {gap.retry_recommendation}")
+        logger.info("Coverage gap: %s — %s", gap.gap_type, gap.retry_recommendation)
 
         if gap.retry_recommendation != "RETRY" or not gap.retry_queries:
             if gap.retry_recommendation == "MAYBE_RETRY":
-                print(f"      Skipping retry (conservative \u2014 MAYBE_RETRY)")
+                logger.info("Skipping retry (conservative — MAYBE_RETRY)")
             return None
 
-        print(f"      Retrying with {len(gap.retry_queries)} new queries:")
+        logger.info("Retrying with %d new queries:", len(gap.retry_queries))
         for rq in gap.retry_queries:
-            print(f"        \u2192 {rq}")
+            logger.info("  → %s", rq)
 
         # Search retry queries in parallel (reuses _search_sub_queries)
         seen_urls = {s.url for s in existing_summaries}
@@ -532,7 +532,7 @@ class ResearchAgent:
         )
 
         if not retry_results:
-            print(f"      No new results from retry queries")
+            logger.info("No new results from retry queries")
             return None
 
         # Fetch, extract, summarize new results (quiet -- no step headers)
@@ -546,7 +546,7 @@ class ResearchAgent:
 
         # Score ONLY new summaries (preserve existing scores)
         combined = existing_summaries + new_summaries
-        print(f"      Retry added {len(new_summaries)} summaries (total: {len(combined)})")
+        logger.info("Retry added %d summaries (total: %d)", len(new_summaries), len(combined))
 
         retry_eval = await evaluate_sources(
             query=query,
@@ -578,7 +578,7 @@ class ResearchAgent:
             decision = "insufficient_data"
             rationale = f"Only {total_survived}/{total_scored} sources passed after retry"
 
-        print(f"      Merged decision: {decision} ({total_survived}/{total_scored} sources passed)")
+        logger.info("Merged decision: %s (%d/%d sources passed)", decision, total_survived, total_scored)
 
         merged_eval = RelevanceEvaluation(
             decision=decision,
@@ -649,7 +649,6 @@ class ResearchAgent:
         if self.mode.is_quick:
             label = "short report" if limited_sources else "report"
             self._next_step(f"Synthesizing {label} with {self.mode.model}...")
-            print()  # blank line before streaming
 
             report = synthesize_report(
                 self.client, query, surviving,
@@ -671,7 +670,6 @@ class ResearchAgent:
         template = self._run_context.template
 
         self._next_step("Generating draft analysis...")
-        print()  # blank line before streaming
         draft = await asyncio.to_thread(
             synthesize_draft, self.client, query, surviving,
             model=self.mode.model,
@@ -688,21 +686,20 @@ class ResearchAgent:
                 )
                 total_critical = sum(f.critical_count for f in findings)
                 total_concern = sum(f.concern_count for f in findings)
-                print(f"      3 skeptic passes complete ({total_critical} critical, {total_concern} concerns)")
+                logger.info("3 skeptic passes complete (%d critical, %d concerns)", total_critical, total_concern)
             else:
                 finding = await run_skeptic_combined(
                     self.async_client, draft, research_context,
                     model=self.mode.model,
                 )
                 findings = [finding]
-                print(f"      Combined skeptic pass complete ({finding.critical_count} critical, {finding.concern_count} concerns)")
+                logger.info("Combined skeptic pass complete (%d critical, %d concerns)", finding.critical_count, finding.concern_count)
         except SkepticError as e:
             logger.warning(f"Skeptic review failed: {e}, continuing without it")
-            print(f"      Skeptic review failed, continuing with standard synthesis")
+            logger.info("Skeptic review failed, continuing with standard synthesis")
             findings = []
 
         self._next_step(f"Synthesizing final report with {self.mode.model}...")
-        print()  # blank line before streaming
 
         result = await asyncio.to_thread(
             synthesize_final,
@@ -735,12 +732,12 @@ class ResearchAgent:
     ) -> str:
         """Quick/standard mode: refine query using snippets before fetching."""
         # Search pass 1
-        print(f"      Original query: {query}")
+        logger.info("Original query: %s", query)
         try:
             pass1_results = await asyncio.to_thread(
                 search, query, self.mode.pass1_sources
             )
-            print(f"      Pass 1 found {len(pass1_results)} results")
+            logger.info("Pass 1 found %d results", len(pass1_results))
         except SearchError as e:
             raise ResearchError(f"Search failed: {e}")
 
@@ -761,9 +758,9 @@ class ResearchAgent:
             refine_query, self.client, query, snippets, model=self.mode.model
         )
         if refined_query == query:
-            print(f"      Query refinement skipped (using original query)")
+            logger.info("Query refinement skipped (using original query)")
         else:
-            print(f"      Refined query: {refined_query}")
+            logger.info("Refined query: %s", refined_query)
 
         # Search pass 2 with refined query
         try:
@@ -771,14 +768,14 @@ class ResearchAgent:
                 search, refined_query, self.mode.pass2_sources
             )
             new_results = [r for r in pass2_results if r.url not in seen_urls]
-            print(f"      Refined pass found {len(pass2_results)} results ({len(new_results)} new)")
+            logger.info("Refined pass found %d results (%d new)", len(pass2_results), len(new_results))
         except SearchError as e:
             logger.warning(f"Pass 2 search failed: {e}, continuing with existing results")
-            print(f"      Refined pass failed, continuing with existing results")
+            logger.info("Refined pass failed, continuing with existing results")
             new_results = []
 
         all_results = pass1_results + new_results
-        print(f"      Total: {len(all_results)} unique sources")
+        logger.info("Total: %d unique sources", len(all_results))
 
         # Fetch -> extract -> cascade -> summarize
         summaries = await self._fetch_extract_summarize(all_results)
@@ -803,7 +800,7 @@ class ResearchAgent:
             results = await asyncio.to_thread(
                 search, query, self.mode.pass1_sources
             )
-            print(f"      Found {len(results)} results")
+            logger.info("Found %d results", len(results))
         except SearchError as e:
             raise ResearchError(f"Search failed: {e}")
 
@@ -831,9 +828,9 @@ class ResearchAgent:
             refine_query, self.client, query, summary_texts, model=self.mode.model
         )
         if refined_query == query:
-            print(f"      Query refinement skipped (using original query)")
+            logger.info("Query refinement skipped (using original query)")
         else:
-            print(f"      Refined query: {refined_query}")
+            logger.info("Refined query: %s", refined_query)
 
         # Search pass 2 (reuses shared pipeline in quiet mode)
         try:
@@ -841,7 +838,7 @@ class ResearchAgent:
                 search, refined_query, self.mode.pass2_sources
             )
             new_results = [r for r in pass2_results if r.url not in seen_urls]
-            print(f"      Pass 2 found {len(pass2_results)} results ({len(new_results)} new)")
+            logger.info("Pass 2 found %d results (%d new)", len(pass2_results), len(new_results))
 
             if new_results:
                 try:
@@ -849,16 +846,16 @@ class ResearchAgent:
                         new_results, structured=True, max_chunks=5, quiet=True,
                     )
                     summaries.extend(new_summaries)
-                    print(f"      Total summaries: {len(summaries)}")
+                    logger.info("Total summaries: %d", len(summaries))
                 except (ResearchError, APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
                     logger.warning(f"Pass 2 processing failed: {e}, continuing with pass 1 results")
-                    print(f"      Pass 2 failed, continuing with {len(summaries)} summaries")
+                    logger.info("Pass 2 failed, continuing with %d summaries", len(summaries))
             else:
-                print("      No new unique URLs from pass 2")
+                logger.info("No new unique URLs from pass 2")
 
         except SearchError as e:
             logger.warning(f"Pass 2 search failed: {e}, continuing with pass 1 results")
-            print(f"      Pass 2 search failed, continuing with {len(summaries)} summaries")
+            logger.info("Pass 2 search failed, continuing with %d summaries", len(summaries))
 
         tried = self._collect_tried_queries(query, refined_query, decomposition)
 
