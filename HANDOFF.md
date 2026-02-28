@@ -1,46 +1,63 @@
-# Handoff: Compound Phase Complete
+# Handoff: Template-per-Context YAML Headers — Review Phase Complete
 
 ## Current State
 
 **Project:** Research Agent
-**Phase:** Compound complete — background-research-agents cycle fully documented
+**Phase:** Review complete — ready for fix-batched
 **Branch:** `main`
-**Date:** February 26, 2026
+**Date:** February 27, 2026
 
 ---
 
 ## What Was Done This Session
 
-Wrote compound solution doc: `docs/solutions/architecture/iterative-review-second-pass-patterns.md`
+Ran `/workflows:review` on the template-per-context YAML headers implementation (3 commits: 5752f82, eb3d838, e734b57).
 
-Documented 5 patterns from the second 9-agent review cycle:
-1. **Complete the sanitization boundary** — documented boundary ≠ implemented boundary
-2. **Module-level mutable state** — 6-agent consensus on cache refactor
-3. **Close API parity gaps** — CLI-first features accumulate API debt
-4. **Right-size models for sub-tasks** — Haiku for classification, short-circuit for degenerate cases
-5. **Cross-agent consensus predicts severity** — 3+ agents flagging = real architectural concern
+### Review Agents Used (7 total)
+- security-sentinel, architecture-strategist, kieran-python-reviewer
+- performance-oracle, code-simplicity-reviewer, agent-native-reviewer
+- learnings-researcher (searched docs/solutions/ for institutional patterns)
 
-Also documented: risk resolution table, what second pass caught vs first, metrics, cross-references to 4 existing solution docs.
+### Findings: 10 total (2 P1, 6 P2, 2 P3)
+
+**P1 (Blocks Merge):**
+- `075` — `body if body else raw` fallback leaks YAML syntax into prompts
+- `076` — YAML delimiter `find("---", 3)` edge case with embedded `---`
+
+**P2 (Should Fix):**
+- `077` — Template field values unsanitized in LLM prompts
+- `078` — Remove legacy PFE-specific fallback branches (18 lines)
+- `079` — Validate non-empty sections in `_parse_template()`
+- `080` — Export ReportTemplate/ContextResult from `__init__.py`
+- `081` — Replace mutable counter with enumerate in `_build_final_sections`
+- `082` — Bare `list` type hint on `_parse_sections`
+
+**P3 (Nice-to-Have):**
+- `083` — f-string logging consistency
+- `084` — Optional YAML frontmatter size limit
+
+### Files Created
+- `docs/reviews/template-per-context/REVIEW-SUMMARY.md` — Full synthesis report
+- `todos/075-084` — 10 todo files with problem statements, solutions, and acceptance criteria
+
+---
 
 ## Three Questions
 
-1. **Hardest pattern to extract from the fixes?** Pattern 1 (complete the sanitization boundary). The first cycle's solution doc explicitly listed `context.py: load_context()` as the sanitization site — but the implementation returned raw content. The pattern is that documented boundaries can be wrong.
+1. **Hardest judgment call in this review?** Whether the `elif context` legacy branch should be kept for backward compatibility or removed as dead PFE-specific code. Decided: remove it — the hardcoded section names are the exact coupling this feature eliminates.
 
-2. **What did you consider documenting but left out, and why?** The 19 P3 findings. They're tracked in REVIEW-SUMMARY.md and don't represent reusable patterns.
+2. **What did you consider flagging but chose not to, and why?** "No programmatic way to inject ReportTemplate without a file" — it's a feature request for agent-native parity, not a bug in the current CLI use case.
 
-3. **What might future sessions miss that this solution doesn't cover?** When to stop reviewing. This cycle showed a second full review found 38 new issues. No heuristic exists for "reviewed enough." Pragmatic answer: review until P1 count hits zero.
+3. **What might this review have missed?** Template validated against only one input shape (PFE). A second context file with different structure could surface edge cases not caught by the empty-sections validation (todo 079).
+
+---
 
 ## Next Phase
 
-**Cycle complete.** The background-research-agents feature has been through:
-- Brainstorm → Plan → Work → Review (first pass) → Fix → Review (second pass, 9 agents) → Fix → Compound
-
-Options for next session:
-- **New feature** — Pick up next item from backlog
-- **Cleanup** — Address remaining P3 items from review
+**Fix-batched** — Fix P1 findings (075, 076), then P2 findings (077-082).
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. The background-research-agents cycle is complete (brainstorm → plan → work → review → fix → compound). Pick the next feature or task.
+Read docs/reviews/template-per-context/REVIEW-SUMMARY.md. Run /fix-batched on todos 075-082 (P1 and P2 findings from the template-per-context review). P1s first: 075 (body fallback leaks YAML), 076 (YAML delimiter edge case). Then P2s: 077 (sanitize template fields), 078 (remove legacy PFE fallbacks), 079 (validate non-empty sections), 080 (export types), 081 (mutable counter), 082 (bare list type hint). Relevant files: research_agent/context.py, research_agent/synthesize.py, research_agent/__init__.py. Run tests after each batch.
 ```
