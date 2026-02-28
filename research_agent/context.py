@@ -15,7 +15,6 @@ from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONTEXT_PATH = Path("research_context.md")
 CONTEXTS_DIR = Path("contexts")
 
 def _parse_sections(raw_sections: list[dict[str, str]]) -> tuple[tuple[str, str], ...]:
@@ -169,14 +168,16 @@ def load_full_context(
     """Load the complete research context file.
 
     Args:
-        context_path: Path to context file (defaults to research_context.md)
+        context_path: Path to context file (None returns not_configured)
         cache: Optional per-run cache dict (from new_context_cache()).
             If provided, avoids redundant disk reads within a run.
 
     Returns:
         ContextResult with status indicating outcome.
     """
-    path = context_path or DEFAULT_CONTEXT_PATH
+    if context_path is None:
+        return ContextResult.not_configured()
+    path = context_path
     source = str(path)
     if cache is not None and source in cache:
         return cache[source]
@@ -260,13 +261,6 @@ def auto_detect_context(
     available = list_available_contexts()
     if not available:
         return None
-
-    # Short-circuit: if only one context file exists, use it without LLM call
-    if len(available) == 1:
-        name = available[0][0]
-        path = CONTEXTS_DIR / f"{name}.md"
-        logger.info("Auto-detect: single context '%s' — using without LLM call", name)
-        return path
 
     # Build a numbered list of context files with sanitized previews
     safe_query = sanitize_content(query)
@@ -417,7 +411,7 @@ def _summarize_patterns(passing_critiques: list[dict]) -> str:
         parts.append("All dimensions averaging above 3.5. Maintain current quality.")
 
     summary = " ".join(parts)
-    return sanitize_content(summary)
+    return summary
 
 
 def load_critique_history(

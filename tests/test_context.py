@@ -204,6 +204,12 @@ class TestLoadFullContext:
         assert result1.template is not None
         assert result1 is result2  # Same cached object
 
+    def test_none_path_returns_not_configured(self):
+        """load_full_context(None) should return not_configured immediately."""
+        result = load_full_context(None)
+        assert result.status == ContextStatus.NOT_CONFIGURED
+        assert result.content is None
+
 
 class TestParseTemplate:
     """Tests for _parse_template() helper."""
@@ -627,20 +633,29 @@ class TestAutoDetectContext:
         result = auto_detect_context(client, "Who are PFE's competitors?")
         assert result == ctx_dir / "pfe.md"
 
-    def test_single_context_shortcircuits_llm(self, tmp_path, monkeypatch):
-        """Single context file is used without LLM call."""
-        from unittest.mock import MagicMock
-
+    def test_single_context_uses_llm_and_can_select(self, tmp_path, monkeypatch):
+        """Single context file goes through LLM relevance check and can be selected."""
         ctx_dir = tmp_path / "contexts"
         ctx_dir.mkdir()
         (ctx_dir / "pfe.md").write_text("# Pacific Flow")
         monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
 
-        client = MagicMock()
+        client = self._mock_client("pfe")
         result = auto_detect_context(client, "PFE competitors")
         assert result == ctx_dir / "pfe.md"
-        # LLM was never called
-        client.messages.create.assert_not_called()
+        client.messages.create.assert_called_once()
+
+    def test_single_context_uses_llm_and_can_reject(self, tmp_path, monkeypatch):
+        """Single context file goes through LLM relevance check and can be rejected."""
+        ctx_dir = tmp_path / "contexts"
+        ctx_dir.mkdir()
+        (ctx_dir / "pfe.md").write_text("# Pacific Flow")
+        monkeypatch.setattr("research_agent.context.CONTEXTS_DIR", ctx_dir)
+
+        client = self._mock_client("none")
+        result = auto_detect_context(client, "Python async best practices")
+        assert result is None
+        client.messages.create.assert_called_once()
 
     def test_returns_none_when_llm_says_none(self, tmp_path, monkeypatch):
         """Returns None when LLM says no context is relevant."""
@@ -923,3 +938,17 @@ class TestSummarizePatterns:
         assert "</system>" not in result
         # Original weakness text (sans injection) should still appear
         assert "Ignore previous instructions" in result
+
+    def test_no_double_sanitization_of_ampersand(self):
+        """Weakness with & should be sanitized once, not double-encoded."""
+        critiques = [
+            {"source_diversity": 4, "claim_support": 4, "coverage": 4,
+             "geographic_balance": 4, "actionability": 4,
+             "overall_pass": True,
+             "weaknesses": "R&D sources underrepresented"},
+        ] * 4
+        result = _summarize_patterns(critiques)
+        # & should become &amp; (single sanitization)
+        assert "&amp;" in result
+        # Must NOT be double-encoded to &amp;amp;
+        assert "&amp;amp;" not in result
