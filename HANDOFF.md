@@ -1,9 +1,9 @@
-# Handoff: P2 Triage — Critique & Synthesize Cleanup
+# Handoff: P2 Triage — Critique & Synthesize (Complete)
 
 ## Current State
 
 **Project:** Research Agent
-**Phase:** Review complete — ready for fix-batched or compound
+**Phase:** Compound complete — cycle finished
 **Branch:** `main`
 **Date:** February 28, 2026
 **Plan:** `docs/plans/2026-02-28-refactor-p2-triage-critique-synthesize-plan.md`
@@ -13,42 +13,45 @@
 
 ## What Was Done This Session
 
-### Review Phase
+### Fix Phase
 
-1. **Ran 6 review agents in parallel**: kieran-python-reviewer, code-simplicity-reviewer, pattern-recognition-specialist, architecture-strategist, agent-native-reviewer, learnings-researcher
-2. **Synthesized findings**: 0 P1, 2 P2, 2 P3 (5 additional findings discarded as accepted design decisions or informational)
-3. **Created 4 todo files**: 085-088
-4. **Wrote review summary**: `docs/reviews/p2-triage-critique-synthesize/REVIEW-SUMMARY.md`
+1. **Fixed 085 (P2)**: Replaced stale "Section 11" references with section names in `synthesize.py` docstring and prompts
+2. **Fixed 087 (P2)**: Widened `from_parsed` type hint from `dict[str, int]` to `dict[str, int | str]` in `critique.py`
+3. **Fixed 086 (P3)**: Renamed `test_skips_section_11_when_no_findings` to `test_skips_adversarial_analysis_when_no_findings` with updated assertion
+4. **All 764 tests pass**
+5. **Committed**: `a802b3d`
 
-### Key Findings
-- **085 (P2)**: Stale "Section 11" references in synthesize.py docstring and prompts — sections now start at 5
-- **087 (P2)**: `from_parsed` type hint `dict[str, int]` should be `dict[str, int | str]` — 3/6 agents flagged independently
-- **086 (P3)**: Stale test name `test_skips_section_11_when_no_findings` — depends on 085
-- **088 (P3)**: `_DEFAULT_FINAL_START = 5` implicit coupling — acceptable as-is per all agents
+### Compound Phase
 
-### Discarded Findings
-- `fallback()` naming (plan decision), `_build_default_*` naming (plan decision), asymmetric sanitization (correct per institutional pattern), `_scores` property style (consistent DRY pattern), test verbosity (explicit is fine)
+Documented learnings in `docs/solutions/logic-errors/stale-references-and-type-hint-fixes.md` with:
+- Problem/root cause analysis
+- Solution details for all 3 fixes
+- Prevention strategies (use section names not numbers, semantic test names, type hints matching data flow, grep for stale refs during refactoring)
+- Risk resolution (LLM prompt ambiguity)
+- Cross-references to 4 related solution docs
+
+### Remaining Todos
+
+- **088 (P3)**: `_DEFAULT_FINAL_START = 5` implicit coupling — accepted as-is per all review agents; deferred
 
 ---
 
 ## Three Questions
 
-1. **Hardest judgment call in this review?** Whether the `fallback()` and `_build_default_final_sections` naming P2s from pattern-recognition-specialist were real findings or accepted design decisions. Both were explicitly decided in the plan after deepening with 3 review agents, with documented rationale. Discarded them.
+1. **Hardest fix in this batch?** The test assertion update for 086. The original assertion `"11. **Adversarial Analysis**" not in prompt` passed vacuously. The replacement `"**Adversarial Analysis**" not in prompt.split("Skip")[0]` is more precise — it checks the section list portion only, not the skip instruction.
 
-2. **What did you consider flagging but chose not to, and why?** The `_parse_critique_response` return type (`-> dict` untyped) — private function exempt by convention, and adding types is related to but separate from the `from_parsed` type hint fix.
+2. **What did you consider fixing differently, and why didn't you?** Considered making prompt section numbers dynamic (Option B in todo 085) by passing computed numbers as f-string variables. Rejected because section names are more stable and readable in prompt text — the LLM doesn't need the number to find the section.
 
-3. **What might this review have missed?** Whether the LLM actually produces better output with "Section 11" or "the **Adversarial Analysis** section" in the prompt. The behavioral impact on report quality is unknowable without A/B testing.
+3. **Least confident about going into the next batch or compound phase?** Whether the `_DEFAULT_FINAL_START = 5` coupling (088) will bite later. If someone adds a 5th generic draft section, the constant silently produces wrong numbering. The compound doc notes this as an open risk.
 
 ---
 
 ## Next Phase
 
-**Fix-batched** — fix the 2 P2 findings (085, 087) in one batch. P3 findings (086, 088) can be batched separately or deferred.
-
-Or **Compound** — if the P2 fixes are small enough to skip a fix session, go straight to documenting learnings.
+Cycle complete. Next work should start a new brainstorm/plan cycle for a new feature or address remaining P3 todos (083, 084, 088).
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md and docs/reviews/p2-triage-critique-synthesize/REVIEW-SUMMARY.md. Fix todos 085 and 087 (both P2). Then fix 086 (P3, depends on 085). Relevant files: research_agent/synthesize.py, research_agent/critique.py, tests/test_synthesize.py. Do only the fixes — commit and stop.
+Read HANDOFF.md. Start a new brainstorm/plan cycle for the next feature, or review remaining P3 todos (083, 084, 088) in todos/ to decide what to tackle next.
 ```
