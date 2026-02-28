@@ -20,13 +20,13 @@ feed_forward:
 ### Key Improvements
 1. **Added `list_contexts` tool** — agent-native reviewer found the `context` parameter on `run_research` is unusable without a discovery tool (CRITICAL gap)
 2. **Fixed architectural layering** — extracting shared code (`REPORTS_DIR`, `get_auto_save_path`) from `cli.py` to a new `report_store.py`, eliminating the mcp→cli dependency flagged by 3 reviewers
-3. **Corrected test regression scope** — actual count is 63 references (not 81): test_main.py has 0 (not 20), test_coverage.py has 2 (missing from original plan)
+3. **Corrected test regression scope** — actual count is 57 references (not 81): test_main.py has 0 (not 20), test_agent.py has 42 (not 46), test_coverage.py has 0 (not 2)
 4. **Added security hardening** — `.md` extension whitelist, null byte rejection, query length limit, filename character whitelist, HTTP binding warning
-5. **Adopted FastMCP patterns** — `ToolError` for errors, `mcp.test_client()` for testing, `"http"` transport string, sync `def` for non-async tools, `__main__.py` entry point
+5. **Adopted FastMCP patterns** — `ToolError` for errors, `mcp.test_client()` for testing, `"http"` transport string, sync `def` for non-async tools
 6. **Restructured to 3 sessions** — merged print-to-logging (production + tests) into one session, keeping test suite green after each file
 
 ### Corrections to Original Plan
-- Test count: 63 references (not 81) — test_main.py: 0, test_agent.py: 46, test_synthesize.py: 15, test_coverage.py: 2
+- Test count: 57 references (not 81) — test_main.py: 0, test_agent.py: 42, test_synthesize.py: 15, test_coverage.py: 0
 - Transport string: `"http"` (fastmcp uses `"http"`, not `"streamable-http"`)
 - Dependency: `fastmcp>=2.0,<4.0` (not `mcp>=1.26.0`)
 - Tools: 5 (not 4) — added `list_contexts`
@@ -59,7 +59,6 @@ The research agent is CLI-only. Users who work inside Claude Code, Cursor, or Cl
 research_agent/
 ├── mcp_server.py    ← NEW: thin MCP wrapper (~120-140 lines)
 ├── report_store.py  ← NEW: extracted from cli.py (~30 lines)
-├── __main_mcp__.py  ← NEW: python -m entry point (~3 lines)
 ├── __init__.py      ← existing public API (unchanged)
 ├── agent.py         ← FIX: 43 print() → logging (stdout contamination)
 ├── relevance.py     ← FIX: 3 print() → logging
@@ -173,11 +172,11 @@ finally:
 
 | File | Actual `builtins.print` mocks | Plan originally claimed |
 |------|------|------|
-| `test_agent.py` | 46 | 46 |
+| `test_agent.py` | **42** | ~~46~~ |
 | `test_synthesize.py` | 15 | 15 |
 | `test_main.py` | **0** | ~~20~~ |
-| `test_coverage.py` | **2** | ~~not mentioned~~ |
-| **Total** | **63** | ~~81~~ |
+| `test_coverage.py` | **0** | ~~not mentioned~~ |
+| **Total** | **57** | ~~81~~ |
 
 ### Brainstorm Correction: No Cache Leak
 
@@ -386,13 +385,12 @@ Both transports log to stderr. Never configure a stdout handler. The MCP server 
 - [ ] All 558+ existing tests pass after print-to-logging conversion
 - [ ] New MCP server tests use `mcp.test_client()` and cover all tools + error paths
 - [ ] `.env` loading works (API keys found when `.env` file exists)
-- [ ] `python -m research_agent.mcp_server` works as an alternative entry point
 
 ## Dependencies & Risks
 
 **New dependency:** `fastmcp>=2.0,<4.0` added to `pyproject.toml`. Requires Python >=3.10 (already our minimum). Verify no conflicts with existing deps (`anthropic`, `httpx`, `httpcore`).
 
-**Risk: Test regression size.** 63 test references to print() must be updated (corrected from 81). This is mechanical but error-prone. Converting each file's production code + tests together keeps the suite green throughout.
+**Risk: Test regression size.** 57 test references to print() must be updated (corrected from 81). This is mechanical but error-prone. Converting each file's production code + tests together keeps the suite green throughout.
 
 **Risk: Streaming UX change.** Converting synthesize.py's `print()` to `sys.stderr.write()` changes where streaming output appears (stdout → stderr). For terminal users, this is invisible (both go to the terminal). For users piping stdout, this is a behavior change. Document in release notes.
 
@@ -410,7 +408,7 @@ Both transports log to stderr. Never configure a stdout handler. The MCP server 
 
 **Step 1: `agent.py` + `test_agent.py`**
 - `research_agent/agent.py` — 43 `print()` → `logger.info()` (agent.py already has `logger = logging.getLogger(__name__)`)
-- `tests/test_agent.py` — 46 references: change `mock.patch("builtins.print")` → assert on logger or remove print assertions
+- `tests/test_agent.py` — 42 references: change `mock.patch("builtins.print")` → assert on logger or remove print assertions
 - Run `pytest tests/test_agent.py -v` — must pass
 
 **Step 2: `synthesize.py` + `test_synthesize.py`**
@@ -419,9 +417,8 @@ Both transports log to stderr. Never configure a stdout handler. The MCP server 
 - `tests/test_synthesize.py` — 15 references: change print mocks to stderr write mocks
 - Run `pytest tests/test_synthesize.py -v` — must pass
 
-**Step 3: `relevance.py` + `test_coverage.py` + CLI logging**
+**Step 3: `relevance.py` + CLI logging**
 - `research_agent/relevance.py` — 3 `print()` → `logger.info()`
-- `tests/test_coverage.py` — 2 references: update print mocks
 - `research_agent/cli.py` — Add logging configuration at `main()` startup:
   ```python
   handler = logging.StreamHandler(sys.stderr)
@@ -436,7 +433,7 @@ Both transports log to stderr. Never configure a stdout handler. The MCP server 
 
 ### Session 2: MCP Server Implementation
 
-**Goal:** Create `report_store.py`, `mcp_server.py`, `__main_mcp__.py`, and update `pyproject.toml` + `cli.py`.
+**Goal:** Create `report_store.py`, `mcp_server.py`, and update `pyproject.toml` + `cli.py`.
 
 **Step 1: Extract `report_store.py` from `cli.py`**
 
@@ -489,13 +486,18 @@ async def run_research(
         query: The research question to investigate.
         mode: Research depth — "quick" (4 sources, ~$0.12),
               "standard" (10 sources, ~$0.35), or "deep" (12 sources, 2-pass, ~$0.85).
-        context: Optional context name matching a file in contexts/.
+        context: Three-way behavior:
+                 - Omit (default None): auto-detect context from contexts/ dir
+                   (costs 1 extra API call to scan available files).
+                 - "none" (string): skip context loading entirely — no extra API call.
+                 - "<name>" (e.g., "pfe"): load a specific context file from contexts/<name>.yaml.
                  Use list_contexts to see available names.
-                 Use "none" to skip context. Omit to auto-detect.
     """
     from fastmcp.exceptions import ToolError
     from research_agent import ResearchError, run_research_async
     from research_agent.report_store import get_auto_save_path, REPORTS_DIR
+    from research_agent.safe_io import atomic_write
+    from research_agent.errors import StateError
 
     if len(query) > MAX_QUERY_LENGTH:
         raise ToolError(
@@ -506,7 +508,9 @@ async def run_research(
     try:
         result = await run_research_async(query, mode=mode, context=context)
     except ResearchError as e:
-        raise ToolError(str(e))
+        # Strip absolute filesystem paths to avoid leaking server directory structure
+        msg = re.sub(r'(/Users/|/home/)\S+', '<path>', str(e))
+        raise ToolError(msg)
     except Exception:
         logger.exception("Unexpected error in run_research")
         # Server boundary catch-all. Don't expose raw exception message
@@ -525,9 +529,9 @@ async def run_research(
         try:
             save_path = get_auto_save_path(query)
             save_path.parent.mkdir(parents=True, exist_ok=True)
-            save_path.write_text(result.report)
+            atomic_write(save_path, result.report)
             saved_to = save_path.name
-        except OSError as e:
+        except (OSError, StateError) as e:
             logger.warning("Auto-save failed: %s", e)
 
     # Format metadata header
@@ -680,20 +684,12 @@ if __name__ == "__main__":
     main()
 ```
 
-**Step 3: Create `research_agent/__main_mcp__.py`** (optional, for `python -m` usage)
-
-```python
-"""Allow running as: python -m research_agent.mcp_server"""
-from research_agent.mcp_server import main
-main()
-```
-
-**Step 4: Update `pyproject.toml`**
+**Step 3: Update `pyproject.toml`**
 - Add `"fastmcp>=2.0,<4.0"` to `dependencies`
 - Add `research-agent-mcp = "research_agent.mcp_server:main"` to `[project.scripts]`
 
-**Estimated changes:** ~200 lines (new files + pyproject.toml + cli.py refactor)
-**Commits:** One per step (~4 commits)
+**Estimated changes:** ~190 lines (new files + pyproject.toml + cli.py refactor)
+**Commits:** One per step (~3 commits)
 
 ### Session 3: MCP Server Tests
 
