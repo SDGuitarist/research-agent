@@ -3,8 +3,11 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
+from research_agent.context_result import ReportTemplate
 from research_agent.synthesize import (
     _build_sources_context,
+    _build_draft_sections,
+    _build_final_sections,
     _format_skeptic_findings,
     synthesize_report,
     synthesize_draft,
@@ -14,6 +17,22 @@ from research_agent.skeptic import SkepticFinding
 from research_agent.summarize import Summary
 from research_agent.errors import SynthesisError
 from research_agent.token_budget import truncate_to_budget
+
+
+# Reusable test template
+PFE_TEMPLATE = ReportTemplate(
+    name="Pacific Flow Entertainment",
+    draft_sections=(
+        ("Executive Summary", "2-3 paragraph overview of key findings."),
+        ("Company Overview", "Factual: founding, location, team size."),
+        ("Service Portfolio", "Services offered, pricing if found."),
+    ),
+    final_sections=(
+        ("Competitive Implications", "Threats, opportunities, gaps."),
+        ("Positioning Advice", "3-5 actionable angles."),
+    ),
+    context_usage="Use context for Competitive Implications and Positioning Advice only.",
+)
 
 
 class TestBuildSourcesContext:
@@ -374,25 +393,26 @@ class TestSynthesizeDraft:
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "<research_context>" not in prompt
 
-    def test_instructs_business_sections_with_context(self):
-        """Draft with business context should specify sections 1-8."""
+    def test_instructs_template_sections_when_template_provided(self):
+        """Draft with template should use template's draft sections."""
         client = _make_streaming_client("Draft content")
-        synthesize_draft(client, "test query", SAMPLE_SUMMARIES, has_context=True)
+        synthesize_draft(client, "test query", SAMPLE_SUMMARIES, template=PFE_TEMPLATE)
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
-        assert "sections 1-8" in prompt.lower() or "sections (sections 1-8)" in prompt.lower()
+        assert "Executive Summary" in prompt
+        assert "Company Overview" in prompt
+        assert "Service Portfolio" in prompt
         assert "Do NOT include Competitive Implications" in prompt
 
-    def test_instructs_generic_sections_without_context(self):
-        """Draft without business context should use generic technical template."""
+    def test_instructs_generic_sections_without_template(self):
+        """Draft without template should use generic technical template."""
         client = _make_streaming_client("Draft content")
-        synthesize_draft(client, "test query", SAMPLE_SUMMARIES, has_context=False)
+        synthesize_draft(client, "test query", SAMPLE_SUMMARIES, template=None)
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "Key Findings" in prompt
         assert "Technical Details" in prompt
         assert "Company Overview" not in prompt
-        assert "Buyer Psychology" not in prompt
 
     def test_sanitizes_query(self):
         """Should sanitize the query in the prompt."""
@@ -677,3 +697,126 @@ class TestCritiqueGuidanceParam:
         prompt = call_args[1]["messages"][0]["content"]
         assert "<critique_guidance>" in prompt
         assert "Improve source diversity scores" in prompt
+
+
+class TestBuildDraftSections:
+    """Tests for _build_draft_sections() helper."""
+
+    def test_formats_numbered_sections(self):
+        """Should produce numbered section list from template."""
+        result = _build_draft_sections(PFE_TEMPLATE)
+        assert "1. **Executive Summary**" in result
+        assert "2. **Company Overview**" in result
+        assert "3. **Service Portfolio**" in result
+
+    def test_excludes_final_sections(self):
+        """Should mention final sections in the 'Do NOT include' line."""
+        result = _build_draft_sections(PFE_TEMPLATE)
+        assert "Competitive Implications" in result
+        assert "Positioning Advice" in result
+
+    def test_includes_balance_instruction(self):
+        """Should include the balance instruction."""
+        result = _build_draft_sections(PFE_TEMPLATE)
+        assert "balanced coverage" in result
+
+
+class TestBuildFinalSections:
+    """Tests for _build_final_sections() helper."""
+
+    def test_numbers_from_draft_count(self):
+        """Section numbers should continue from draft count."""
+        result = _build_final_sections(PFE_TEMPLATE, has_skeptic=False, draft_count=3)
+        assert "4. **Competitive Implications**" in result
+        assert "5. **Positioning Advice**" in result
+        assert "6. **Limitations & Gaps**" in result
+
+    def test_includes_adversarial_when_skeptic(self):
+        """Should include Adversarial Analysis when skeptic findings present."""
+        result = _build_final_sections(PFE_TEMPLATE, has_skeptic=True, draft_count=3)
+        assert "Adversarial Analysis" in result
+
+    def test_excludes_adversarial_when_no_skeptic(self):
+        """Should NOT include Adversarial Analysis without skeptic findings."""
+        result = _build_final_sections(PFE_TEMPLATE, has_skeptic=False, draft_count=3)
+        assert "Adversarial Analysis" not in result
+
+    def test_always_includes_sources(self):
+        """Sources section should always be present."""
+        result = _build_final_sections(PFE_TEMPLATE, has_skeptic=False, draft_count=3)
+        assert "## Sources" in result
+
+
+class TestTemplateDrivenFinal:
+    """Tests for template-driven synthesize_final()."""
+
+    def test_uses_template_sections(self):
+        """Template sections should appear in the prompt."""
+        client = _make_streaming_client("Final sections")
+        synthesize_final(
+            client, "query", "draft", [], SAMPLE_SUMMARIES,
+            template=PFE_TEMPLATE,
+        )
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "Competitive Implications" in prompt
+        assert "Positioning Advice" in prompt
+        assert "Limitations & Gaps" in prompt
+
+    def test_template_context_usage_in_final(self):
+        """Template context_usage should be used as context instruction."""
+        client = _make_streaming_client("Final sections")
+        synthesize_final(
+            client, "query", "draft", [], SAMPLE_SUMMARIES,
+            context="Business info",
+            template=PFE_TEMPLATE,
+        )
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "Competitive Implications and Positioning Advice only" in prompt
+
+    def test_no_template_uses_legacy_context_sections(self):
+        """Without template, context should trigger legacy section list."""
+        client = _make_streaming_client("Final sections")
+        synthesize_final(
+            client, "query", "draft", [], SAMPLE_SUMMARIES,
+            context="Business info",
+            template=None,
+        )
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "9. **Competitive Implications**" in prompt
+
+
+class TestTemplateDrivenReport:
+    """Tests for template-driven synthesize_report()."""
+
+    def test_template_context_usage_in_report(self):
+        """Template context_usage should override default context instruction."""
+        client = _make_streaming_client("Report content")
+        with patch("builtins.print"):
+            synthesize_report(
+                client=client,
+                query="test query",
+                summaries=SAMPLE_SUMMARIES,
+                context="Business info",
+                template=PFE_TEMPLATE,
+            )
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "Competitive Implications and Positioning Advice only" in prompt
+
+    def test_no_template_uses_default_context_instruction(self):
+        """Without template, default context instruction should be used."""
+        client = _make_streaming_client("Report content")
+        with patch("builtins.print"):
+            synthesize_report(
+                client=client,
+                query="test query",
+                summaries=SAMPLE_SUMMARIES,
+                context="Business info",
+                template=None,
+            )
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "objective and context-free" in prompt

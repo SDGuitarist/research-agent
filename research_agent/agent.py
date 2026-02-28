@@ -660,6 +660,7 @@ class ResearchAgent:
                 dropped_count=dropped_count,
                 total_count=total_count,
                 context=self._run_context.content,
+                template=self._run_context.template,
             )
             if self.schema_path and self._current_research_batch:
                 self._update_gap_states(evaluation.decision)
@@ -667,13 +668,14 @@ class ResearchAgent:
 
         # Standard/deep mode: draft -> skeptic -> final synthesis
         research_context = self._run_context.content
+        template = self._run_context.template
 
         self._next_step("Generating draft analysis...")
         print()  # blank line before streaming
         draft = await asyncio.to_thread(
             synthesize_draft, self.client, query, surviving,
             model=self.mode.model,
-            has_context=bool(research_context),
+            template=template,
         )
 
         self._next_step("Running skeptic review...")
@@ -713,6 +715,7 @@ class ResearchAgent:
             total_count=total_count,
             is_deep=self.mode.is_deep,
             critique_guidance=critique_context,
+            template=template,
         )
         await asyncio.to_thread(
             self._run_critique,

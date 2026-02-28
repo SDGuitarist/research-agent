@@ -15,6 +15,7 @@ from anthropic import (
     RateLimitError,
 )
 
+from .context_result import ReportTemplate
 from .modes import DEFAULT_MODEL
 from .summarize import Summary
 from .errors import SynthesisError
@@ -76,6 +77,55 @@ BALANCE_INSTRUCTION = (
 
 
 
+def _build_draft_sections(template: ReportTemplate) -> str:
+    """Format template draft sections into a numbered instruction list."""
+    lines = []
+    excluded = [s[0] for s in template.final_sections]
+    excluded_str = ", ".join(excluded)
+    lines.append(
+        f"Write ONLY the factual analysis sections of a research report. "
+        f"Do NOT include {excluded_str}, Adversarial Analysis, "
+        f"Limitations & Gaps, or Sources sections — those will be generated separately.\n"
+    )
+    lines.append("Sections to produce:")
+    for i, (heading, description) in enumerate(template.draft_sections, 1):
+        lines.append(f"{i}. **{heading}** — {description}")
+    lines.append("")
+    lines.append(
+        "Omit a section only if no source data supports it. "
+        "Ground all claims in source evidence. "
+        "Cite sources using [Source N] notation.\n"
+    )
+    lines.append(BALANCE_INSTRUCTION)
+    return "\n".join(lines)
+
+
+def _build_final_sections(
+    template: ReportTemplate,
+    has_skeptic: bool,
+    draft_count: int,
+) -> str:
+    """Format template final sections + auto-appended structural sections.
+
+    Args:
+        template: Report template with final_sections.
+        has_skeptic: Whether skeptic findings are available.
+        draft_count: Number of draft sections (for section numbering).
+    """
+    parts = []
+    n = draft_count
+    for heading, description in template.final_sections:
+        n += 1
+        parts.append(f"{n}. **{heading}** — {description}")
+    if has_skeptic:
+        n += 1
+        parts.append(f"{n}. **Adversarial Analysis** — Synthesize the skeptic review findings.")
+    n += 1
+    parts.append(f"{n}. **Limitations & Gaps** — What sources don't cover, confidence levels.")
+    parts.append("## Sources — All referenced URLs with [Source N] notation.")
+    return "\n".join(parts)
+
+
 def _build_limited_disclaimer(total_count: int, dropped_count: int) -> str:
     """Build the limited sources disclaimer."""
     survived_count = max(0, total_count - dropped_count)
@@ -97,6 +147,7 @@ def synthesize_report(
     dropped_count: int = 0,
     total_count: int = 0,
     context: str | None = None,
+    template: ReportTemplate | None = None,
 ) -> str:
     """
     Synthesize a research report from summaries.
@@ -166,11 +217,17 @@ def synthesize_report(
     context_block = build_context_block(context)
     context_instruction = ""
     if context:
-        context_instruction = (
-            "\n\nBusiness context is provided in <research_context>. Use it only for "
-            "Competitive Implications and Positioning Advice sections. Keep factual "
-            "analysis objective and context-free."
-        )
+        if template and template.context_usage:
+            context_instruction = (
+                f"\n\nBusiness context is provided in <research_context>. "
+                f"{template.context_usage}"
+            )
+        else:
+            context_instruction = (
+                "\n\nBusiness context is provided in <research_context>. Use it only for "
+                "Competitive Implications and Positioning Advice sections. Keep factual "
+                "analysis objective and context-free."
+            )
 
     # Build the prompt with clear data boundaries
     prompt = f"""Based on the source summaries below, write a research report answering this query:
@@ -257,13 +314,13 @@ def synthesize_draft(
     summaries: list[Summary],
     model: str = DEFAULT_MODEL,
     max_tokens: int = 4000,
-    has_context: bool = False,
+    template: ReportTemplate | None = None,
 ) -> str:
     """Produce the factual analysis sections of a research report.
 
     No context is injected — keeps factual sections uncolored.
-    When has_context is True, uses business-intelligence sections (1-8).
-    When False, uses a generic technical report structure.
+    When template is provided, uses its draft sections.
+    When None, uses a generic technical report structure.
     Streams to stdout so the user sees progress.
 
     Args:
@@ -272,7 +329,7 @@ def synthesize_draft(
         summaries: List of source summaries
         model: Model to use for synthesis
         max_tokens: Maximum tokens for the response
-        has_context: Whether research context is configured
+        template: Report template from context file YAML frontmatter
 
     Returns:
         Markdown string of draft sections
@@ -286,25 +343,8 @@ def synthesize_draft(
     sources_text = _build_sources_context(summaries)
     safe_query = sanitize_content(query)
 
-    if has_context:
-        draft_instructions = (
-            "Write ONLY the factual analysis sections (sections 1-8) of a research report. "
-            "Do NOT include Competitive Implications, Positioning Advice, Adversarial Analysis, "
-            "Limitations & Gaps, or Sources sections — those will be generated separately.\n\n"
-            "Sections to produce:\n"
-            "1. **Executive Summary** — 2-3 paragraph overview of key findings.\n"
-            "2. **Company Overview** — Factual: founding, location, team size, years in business.\n"
-            "3. **Service Portfolio** — Factual: services offered, pricing if found, packages.\n"
-            "4. **Marketing Positioning** — Brand voice, taglines, unique selling propositions.\n"
-            "5. **Messaging Theme Analysis** — 3-5 persuasion patterns. Quote exact phrases.\n"
-            "6. **Buyer Psychology** — Fears, desires, emotional triggers in marketing.\n"
-            "7. **Content & Marketing Tactics** — SEO, social media, review strategy.\n"
-            "8. **Business Model Analysis** — Revenue structure, pricing, competitive moats.\n\n"
-            "Omit a section only if no source data supports it. "
-            "Ground all claims in source evidence. "
-            "Cite sources using [Source N] notation.\n\n"
-            f"{BALANCE_INSTRUCTION}"
-        )
+    if template and template.draft_sections:
+        draft_instructions = _build_draft_sections(template)
     else:
         draft_instructions = (
             "Write the factual analysis sections of a research report. "
@@ -401,6 +441,7 @@ def synthesize_final(
     total_count: int = 0,
     is_deep: bool = False,
     critique_guidance: str | None = None,
+    template: ReportTemplate | None = None,
 ) -> str:
     """Produce sections 9-12/13 informed by skeptic analysis.
 
@@ -453,11 +494,14 @@ def synthesize_final(
     context_block = build_context_block(context)
     context_instruction = ""
     if context:
-        context_instruction = (
-            "Use the business context in <research_context> for Competitive Implications "
-            "and Positioning Advice sections. Reference specific competitive positioning, "
-            "threats, opportunities, and actionable recommendations tailored to the business."
-        )
+        if template and template.context_usage:
+            context_instruction = template.context_usage
+        else:
+            context_instruction = (
+                "Use the business context in <research_context> for Competitive Implications "
+                "and Positioning Advice sections. Reference specific competitive positioning, "
+                "threats, opportunities, and actionable recommendations tailored to the business."
+            )
 
     # Skeptic findings block
     skeptic_block = ""
@@ -501,9 +545,14 @@ def synthesize_final(
             "Focus only on what the available sources can directly answer."
         )
 
-    # Build section list based on context availability and skeptic findings
-    if context:
-        # Business-intelligence report: include competitive analysis sections
+    # Build section list based on template, context, and skeptic findings
+    if template and template.final_sections:
+        draft_count = len(template.draft_sections)
+        section_list = _build_final_sections(
+            template, has_skeptic=bool(skeptic_findings), draft_count=draft_count,
+        )
+    elif context:
+        # Legacy: business-intelligence report without template
         if skeptic_findings:
             section_list = (
                 "9. **Competitive Implications** — What findings mean for the reader. "
