@@ -53,13 +53,13 @@ def _parse_template(raw: str) -> tuple[str, ReportTemplate | None]:
     if not stripped.startswith("---"):
         return (raw, None)
 
-    # Find the closing --- delimiter
-    end = stripped.find("---", 3)
+    # Find the closing --- delimiter (must be on its own line)
+    end = stripped.find("\n---", 3)
     if end == -1:
         return (raw, None)
 
     yaml_block = stripped[3:end]
-    body = stripped[end + 3:].lstrip("\n")
+    body = stripped[end + 4:].lstrip("\n")
 
     try:
         data = yaml.safe_load(yaml_block)
@@ -69,7 +69,7 @@ def _parse_template(raw: str) -> tuple[str, ReportTemplate | None]:
 
     if not isinstance(data, dict) or "template" not in data:
         # Valid YAML but no template key — return body without template
-        return (body if body else raw, None)
+        return (body, None)
 
     try:
         tmpl = data["template"]
@@ -97,11 +97,11 @@ def _parse_template(raw: str) -> tuple[str, ReportTemplate | None]:
             final_sections=final_sections,
             context_usage=context_usage,
         )
-        return (body if body else raw, template)
+        return (body, template)
 
     except (ValueError, TypeError, AttributeError) as e:
         logger.warning("Invalid template structure in YAML frontmatter: %s", e)
-        return (body if body else raw, None)
+        return (body, None)
 
 
 def new_context_cache() -> dict[str, ContextResult]:

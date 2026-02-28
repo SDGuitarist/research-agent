@@ -314,6 +314,56 @@ class TestParseTemplate:
         assert template is not None
         assert template.context_usage == ""
 
+    def test_frontmatter_only_file_does_not_leak_yaml(self):
+        """File with only frontmatter (no body) should return empty body, not raw YAML."""
+        raw = (
+            "---\n"
+            "name: Template Only\n"
+            "template:\n"
+            "  draft:\n"
+            '    - Summary: "Overview."\n'
+            "  final: []\n"
+            "  context_usage: Use context.\n"
+            "---\n"
+        )
+        body, template = _parse_template(raw)
+        assert template is not None
+        assert body == ""
+        assert "---" not in body
+        assert "template:" not in body
+
+    def test_yaml_without_template_key_empty_body(self):
+        """YAML frontmatter with no template key and no body returns empty string."""
+        raw = "---\nname: Test\nauthor: Me\n---\n"
+        body, template = _parse_template(raw)
+        assert template is None
+        assert body == ""
+
+    def test_yaml_with_embedded_separator(self):
+        """YAML content containing --- should not split on the wrong delimiter."""
+        raw = (
+            "---\n"
+            "name: Test\n"
+            "description: \"line1 --- line2\"\n"
+            "template:\n"
+            "  draft:\n"
+            '    - Summary: "Brief."\n'
+            "  final: []\n"
+            "---\n"
+            "Body content.\n"
+        )
+        body, template = _parse_template(raw)
+        assert template is not None
+        assert template.name == "Test"
+        assert "Body content" in body
+
+    def test_empty_frontmatter_returns_none(self):
+        """Empty frontmatter (---\\n---) should return body and None template."""
+        raw = "---\n---\nBody content."
+        body, template = _parse_template(raw)
+        assert template is None
+        assert "Body content" in body
+
     def test_frozen_template(self):
         """ReportTemplate should be immutable."""
         import dataclasses
