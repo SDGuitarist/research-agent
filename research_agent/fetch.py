@@ -161,11 +161,9 @@ class _SSRFSafeBackend(httpcore.AsyncNetworkBackend):
         await self._inner.sleep(seconds)
 
 
-# Per-run DNS validation cache — cleared at the start of each fetch_urls() call
-_dns_cache: dict[str, bool] = {}
-
-
-async def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
+async def _resolve_and_validate_host(
+    hostname: str, port: int = 443, dns_cache: dict[str, bool] | None = None,
+) -> bool:
     """
     Resolve hostname via async DNS and validate all resolved IPs are safe.
 
@@ -173,12 +171,12 @@ async def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
     opening a connection. The _SSRFSafeBackend provides defense-in-depth
     by re-validating at TCP connect time.
 
-    Results are cached per-run to avoid redundant DNS lookups for the
-    same domain across multiple URLs.
+    Results are cached per-run (via dns_cache parameter) to avoid
+    redundant DNS lookups for the same domain across multiple URLs.
     """
     cache_key = f"{hostname}:{port}"
-    if cache_key in _dns_cache:
-        return _dns_cache[cache_key]
+    if dns_cache is not None and cache_key in dns_cache:
+        return dns_cache[cache_key]
 
     try:
         loop = asyncio.get_running_loop()
@@ -187,7 +185,8 @@ async def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
         )
 
         if not addrinfo:
-            _dns_cache[cache_key] = False
+            if dns_cache is not None:
+                dns_cache[cache_key] = False
             return False
 
         # Check each resolved IP
@@ -195,18 +194,23 @@ async def _resolve_and_validate_host(hostname: str, port: int = 443) -> bool:
             ip_str = sockaddr[0]
             if _is_private_ip(ip_str):
                 logger.warning(f"Blocked private IP {ip_str} for hostname {hostname}")
-                _dns_cache[cache_key] = False
+                if dns_cache is not None:
+                    dns_cache[cache_key] = False
                 return False
 
-        _dns_cache[cache_key] = True
+        if dns_cache is not None:
+            dns_cache[cache_key] = True
         return True
     except (socket.gaierror, socket.herror, OSError):
         # DNS resolution failed
-        _dns_cache[cache_key] = False
+        if dns_cache is not None:
+            dns_cache[cache_key] = False
         return False
 
 
-async def _is_safe_url(url: str) -> bool:
+async def _is_safe_url(
+    url: str, dns_cache: dict[str, bool] | None = None,
+) -> bool:
     """
     Validate URL to prevent SSRF attacks.
 
@@ -234,7 +238,7 @@ async def _is_safe_url(url: str) -> bool:
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
 
         # Pre-flight DNS validation (defense-in-depth with _SSRFSafeBackend)
-        if not await _resolve_and_validate_host(host, port):
+        if not await _resolve_and_validate_host(host, port, dns_cache=dns_cache):
             return False
 
         return True
@@ -246,6 +250,7 @@ async def _fetch_single(
     client: httpx.AsyncClient,
     url: str,
     semaphore: asyncio.Semaphore,
+    dns_cache: dict[str, bool] | None = None,
 ) -> FetchedPage | None:
     """Fetch a single URL with SSRF-safe redirect handling and size limits.
 
@@ -253,7 +258,7 @@ async def _fetch_single(
     Uses streaming to enforce response size limits before reading into memory.
     """
     # Pre-flight SSRF check on the original URL
-    if not await _is_safe_url(url):
+    if not await _is_safe_url(url, dns_cache=dns_cache):
         return None
 
     async with semaphore:
@@ -267,7 +272,7 @@ async def _fetch_single(
                         if not location:
                             return None
                         redirect_url = str(response.url.join(location))
-                        if not await _is_safe_url(redirect_url):
+                        if not await _is_safe_url(redirect_url, dns_cache=dns_cache):
                             logger.warning(
                                 "Blocked redirect to unsafe URL: %s", redirect_url
                             )
@@ -359,7 +364,7 @@ async def fetch_urls(
     Returns:
         List of successfully fetched pages
     """
-    _dns_cache.clear()
+    dns_cache: dict[str, bool] = {}
     semaphore = asyncio.Semaphore(max_concurrent)
 
     transport = httpx.AsyncHTTPTransport(
@@ -374,7 +379,7 @@ async def fetch_urls(
         headers=_get_random_headers(),
         transport=transport,
     ) as client:
-        tasks = [_fetch_single(client, url, semaphore) for url in urls]
+        tasks = [_fetch_single(client, url, semaphore, dns_cache=dns_cache) for url in urls]
         results = await asyncio.gather(*tasks)
 
     return [r for r in results if r is not None]
