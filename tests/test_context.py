@@ -281,8 +281,8 @@ class TestParseTemplate:
         body, template = _parse_template(raw)
         assert template is None
 
-    def test_empty_draft_and_final(self):
-        """Empty draft and final lists should produce empty tuples."""
+    def test_empty_draft_and_final_rejects_template(self):
+        """Empty draft and final lists should reject the template (no sections)."""
         raw = (
             "---\n"
             "name: Minimal\n"
@@ -294,9 +294,25 @@ class TestParseTemplate:
             "Body.\n"
         )
         body, template = _parse_template(raw)
+        assert template is None
+        assert "Body" in body
+
+    def test_empty_draft_with_valid_final_still_returns_template(self):
+        """Empty draft but valid final should still return a template."""
+        raw = (
+            "---\n"
+            "name: Partial\n"
+            "template:\n"
+            "  draft: []\n"
+            "  final:\n"
+            '    - Advice: "Act."\n'
+            "---\n"
+            "Body.\n"
+        )
+        body, template = _parse_template(raw)
         assert template is not None
         assert template.draft_sections == ()
-        assert template.final_sections == ()
+        assert len(template.final_sections) == 1
 
     def test_missing_context_usage_defaults_to_empty(self):
         """Missing context_usage should default to empty string."""
@@ -356,6 +372,32 @@ class TestParseTemplate:
         assert template is not None
         assert template.name == "Test"
         assert "Body content" in body
+
+    def test_template_fields_are_sanitized(self):
+        """Template fields with < and & should be escaped."""
+        raw = (
+            "---\n"
+            "name: \"Test & Co\"\n"
+            "template:\n"
+            "  draft:\n"
+            '    - "<script>alert": "desc & more"\n'
+            "  final:\n"
+            '    - "A < B": "x & y"\n'
+            "  context_usage: \"Use for <context> & analysis.\"\n"
+            "---\n"
+            "Body.\n"
+        )
+        body, template = _parse_template(raw)
+        assert template is not None
+        assert "&amp;" in template.name
+        assert "<" not in template.name or "&lt;" in template.name
+        # Check draft section heading is sanitized
+        heading, desc = template.draft_sections[0]
+        assert "<script>" not in heading
+        assert "&amp;" in desc
+        # Check context_usage is sanitized
+        assert "<context>" not in template.context_usage
+        assert "&amp;" in template.context_usage
 
     def test_empty_frontmatter_returns_none(self):
         """Empty frontmatter (---\\n---) should return body and None template."""

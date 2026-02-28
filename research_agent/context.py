@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONTEXT_PATH = Path("research_context.md")
 CONTEXTS_DIR = Path("contexts")
 
-def _parse_sections(raw_sections: list) -> tuple[tuple[str, str], ...]:
+def _parse_sections(raw_sections: list[dict[str, str]]) -> tuple[tuple[str, str], ...]:
     """Convert a list of {heading: description} dicts to a tuple of pairs.
 
     Each element in raw_sections should be a single-key dict like:
@@ -81,15 +81,27 @@ def _parse_template(raw: str) -> tuple[str, ReportTemplate | None]:
         if not isinstance(draft_raw, list) or not isinstance(final_raw, list):
             raise ValueError("draft and final must be lists")
 
-        draft_sections = _parse_sections(draft_raw)
-        final_sections = _parse_sections(final_raw)
+        draft_sections = tuple(
+            (sanitize_content(h), sanitize_content(d))
+            for h, d in _parse_sections(draft_raw)
+        )
+        final_sections = tuple(
+            (sanitize_content(h), sanitize_content(d))
+            for h, d in _parse_sections(final_raw)
+        )
         context_usage = tmpl.get("context_usage", "")
         if not isinstance(context_usage, str):
             raise ValueError("context_usage must be a string")
+        context_usage = sanitize_content(context_usage)
+
+        if not draft_sections and not final_sections:
+            logger.warning("Template has no sections defined — ignoring")
+            return (body, None)
 
         name = data.get("name", "")
         if not isinstance(name, str):
             name = str(name)
+        name = sanitize_content(name)
 
         template = ReportTemplate(
             name=name,
