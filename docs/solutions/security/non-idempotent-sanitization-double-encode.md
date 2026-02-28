@@ -130,6 +130,10 @@ considering if the sanitization boundary grows more complex.
 
 ## Cross-References
 
+- [Domain-Agnostic Pipeline Design](../architecture/domain-agnostic-pipeline-design.md) —
+  Cycle 22 resolved the last double-sanitization: write-time sanitization in `critique.py`
+  was removed, keeping only the read-time boundary in `_summarize_patterns()`. Also
+  documents the transitional issue with existing YAML files on disk.
 - [SSRF Bypass via Proxy Services](ssrf-bypass-via-proxy-services.md) — related
   security boundary issue in cascade fallback
 - [Domain Matching Substring Bypass](domain-matching-substring-bypass.md) — another

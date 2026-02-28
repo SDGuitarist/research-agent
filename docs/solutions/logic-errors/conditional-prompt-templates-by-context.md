@@ -92,6 +92,10 @@ This is a specific case of a general rule: **prompt templates should be paramete
 
 ## Related Documentation
 
+- [Domain-Agnostic Pipeline Design](../architecture/domain-agnostic-pipeline-design.md) —
+  Cycle 22 completed the work this solution started: all "business" language in prompts
+  was replaced with generic "research" language, and extraction fields were generalized.
+  This solution gates on context *presence*; that one ensures neutral language for any context.
 - [`docs/solutions/logic-errors/adversarial-verification-pipeline.md`](adversarial-verification-pipeline.md) — Cycle 16: the draft→skeptic→final pipeline this fix modifies
 - `research_agent/synthesize.py` — Both template paths
-- `research_agent/context.py` — Business context loading
+- `research_agent/context.py` — Context loading (no longer called "business context")
