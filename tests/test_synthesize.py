@@ -108,12 +108,11 @@ class TestSynthesizeReport:
         ])
         mock_client.messages.stream.return_value = mock_stream
 
-        with patch("builtins.print"):  # Suppress streaming output
-            result = synthesize_report(
-                client=mock_client,
-                query="test query",
-                summaries=sample_summaries,
-            )
+        result = synthesize_report(
+            client=mock_client,
+            query="test query",
+            summaries=sample_summaries,
+        )
 
         assert "# Research Report" in result
         assert "Key findings" in result
@@ -173,13 +172,12 @@ class TestSynthesizeReport:
         mock_stream = mock_anthropic_stream([])  # Empty stream
         mock_client.messages.stream.return_value = mock_stream
 
-        with patch("builtins.print"):
-            with pytest.raises(SynthesisError, match="empty response"):
-                synthesize_report(
-                    client=mock_client,
-                    query="test query",
-                    summaries=sample_summaries,
-                )
+        with pytest.raises(SynthesisError, match="empty response"):
+            synthesize_report(
+                client=mock_client,
+                query="test query",
+                summaries=sample_summaries,
+            )
 
     def test_synthesize_report_uses_mode_instructions(
         self, sample_summaries, mock_anthropic_stream
@@ -191,13 +189,12 @@ class TestSynthesizeReport:
 
         custom_instructions = "Write a brief 100 word summary."
 
-        with patch("builtins.print"):
-            synthesize_report(
-                client=mock_client,
-                query="test query",
-                summaries=sample_summaries,
-                mode_instructions=custom_instructions,
-            )
+        synthesize_report(
+            client=mock_client,
+            query="test query",
+            summaries=sample_summaries,
+            mode_instructions=custom_instructions,
+        )
 
         call_args = mock_client.messages.stream.call_args
         messages = call_args.kwargs["messages"]
@@ -213,12 +210,11 @@ class TestSynthesizeReport:
         mock_stream = mock_anthropic_stream(["Report content"])
         mock_client.messages.stream.return_value = mock_stream
 
-        with patch("builtins.print"):
-            synthesize_report(
-                client=mock_client,
-                query="<malicious>query</malicious>",
-                summaries=sample_summaries,
-            )
+        synthesize_report(
+            client=mock_client,
+            query="<malicious>query</malicious>",
+            summaries=sample_summaries,
+        )
 
         call_args = mock_client.messages.stream.call_args
         messages = call_args.kwargs["messages"]
@@ -235,13 +231,12 @@ class TestSynthesizeReport:
         mock_stream = mock_anthropic_stream(["Report content"])
         mock_client.messages.stream.return_value = mock_stream
 
-        with patch("builtins.print"):
-            synthesize_report(
-                client=mock_client,
-                query="test query",
-                summaries=sample_summaries,
-                context="We are a guitar entertainment company.",
-            )
+        synthesize_report(
+            client=mock_client,
+            query="test query",
+            summaries=sample_summaries,
+            context="We are a guitar entertainment company.",
+        )
 
         call_args = mock_client.messages.stream.call_args
         user_content = call_args.kwargs["messages"][0]["content"]
@@ -257,13 +252,12 @@ class TestSynthesizeReport:
         mock_stream = mock_anthropic_stream(["Report content"])
         mock_client.messages.stream.return_value = mock_stream
 
-        with patch("builtins.print"):
-            synthesize_report(
-                client=mock_client,
-                query="test query",
-                summaries=sample_summaries,
-                context=None,
-            )
+        synthesize_report(
+            client=mock_client,
+            query="test query",
+            summaries=sample_summaries,
+            context=None,
+        )
 
         call_args = mock_client.messages.stream.call_args
         user_content = call_args.kwargs["messages"][0]["content"]
@@ -279,13 +273,12 @@ class TestSynthesizeReport:
         mock_stream = mock_anthropic_stream(["Report content"])
         mock_client.messages.stream.return_value = mock_stream
 
-        with patch("builtins.print"):
-            synthesize_report(
-                client=mock_client,
-                query="test query",
-                summaries=sample_summaries,
-                context="&lt;script&gt;alert('xss')&lt;/script&gt;",
-            )
+        synthesize_report(
+            client=mock_client,
+            query="test query",
+            summaries=sample_summaries,
+            context="&lt;script&gt;alert('xss')&lt;/script&gt;",
+        )
 
         call_args = mock_client.messages.stream.call_args
         user_content = call_args.kwargs["messages"][0]["content"]
@@ -302,13 +295,12 @@ class TestSynthesizeReport:
         mock_stream = mock_anthropic_stream(["Report content"])
         mock_client.messages.stream.return_value = mock_stream
 
-        with patch("builtins.print"):
-            synthesize_report(
-                client=mock_client,
-                query="test query",
-                summaries=sample_summaries,
-                context="Our company does X.",
-            )
+        synthesize_report(
+            client=mock_client,
+            query="test query",
+            summaries=sample_summaries,
+            context="Our company does X.",
+        )
 
         call_args = mock_client.messages.stream.call_args
         user_content = call_args.kwargs["messages"][0]["content"]
@@ -324,13 +316,12 @@ class TestSynthesizeReport:
         mock_stream = mock_anthropic_stream(["Report content"])
         mock_client.messages.stream.return_value = mock_stream
 
-        with patch("builtins.print"):
-            synthesize_report(
-                client=mock_client,
-                query="test query",
-                summaries=sample_summaries,
-                max_tokens=8000,
-            )
+        synthesize_report(
+            client=mock_client,
+            query="test query",
+            summaries=sample_summaries,
+            max_tokens=8000,
+        )
 
         call_args = mock_client.messages.stream.call_args
         assert call_args.kwargs["max_tokens"] == 8000
@@ -626,12 +617,11 @@ class TestSynthesizeBudgetEnforcement:
             mock_budget.return_value = BudgetAllocation(
                 allocations={"sources": 100}, pruned=[], total=100
             )
-            with patch("builtins.print"):
-                synthesize_report(
-                    client=client,
-                    query="test query",
-                    summaries=SAMPLE_SUMMARIES,
-                )
+            synthesize_report(
+                client=client,
+                query="test query",
+                summaries=SAMPLE_SUMMARIES,
+            )
         mock_budget.assert_called_once()
         call_kwargs = mock_budget.call_args
         assert call_kwargs.kwargs["max_tokens"] == 100_000
@@ -666,13 +656,12 @@ class TestSynthesizeBudgetEnforcement:
                 total=550,
             )
             mock_truncate.return_value = "truncated context"
-            with patch("builtins.print"):
-                synthesize_report(
-                    client=client,
-                    query="test query",
-                    summaries=SAMPLE_SUMMARIES,
-                    context="Very long context " * 100,
-                )
+            synthesize_report(
+                client=client,
+                query="test query",
+                summaries=SAMPLE_SUMMARIES,
+                context="Very long context " * 100,
+            )
         # truncate_to_budget should be called for context, not sources
         mock_truncate.assert_called_once()
         call_args = mock_truncate.call_args
@@ -685,15 +674,14 @@ class TestCritiqueGuidanceParam:
     def test_none_produces_no_guidance_block(self):
         """critique_guidance=None should not add critique guidance block."""
         client = _make_streaming_client("## Competitive Implications\nContent")
-        with patch("builtins.print"):
-            result = synthesize_final(
-                client=client,
-                query="test",
-                draft="## Executive Summary\nDraft",
-                skeptic_findings=[],
-                summaries=SAMPLE_SUMMARIES,
-                critique_guidance=None,
-            )
+        result = synthesize_final(
+            client=client,
+            query="test",
+            draft="## Executive Summary\nDraft",
+            skeptic_findings=[],
+            summaries=SAMPLE_SUMMARIES,
+            critique_guidance=None,
+        )
         call_args = client.messages.stream.call_args
         prompt = call_args[1]["messages"][0]["content"]
         assert "<critique_guidance>" not in prompt
@@ -701,15 +689,14 @@ class TestCritiqueGuidanceParam:
     def test_provided_adds_guidance_block(self):
         """critique_guidance should inject critique_guidance block into prompt."""
         client = _make_streaming_client("## Competitive Implications\nContent")
-        with patch("builtins.print"):
-            result = synthesize_final(
-                client=client,
-                query="test",
-                draft="## Executive Summary\nDraft",
-                skeptic_findings=[],
-                summaries=SAMPLE_SUMMARIES,
-                critique_guidance="Improve source diversity scores",
-            )
+        result = synthesize_final(
+            client=client,
+            query="test",
+            draft="## Executive Summary\nDraft",
+            skeptic_findings=[],
+            summaries=SAMPLE_SUMMARIES,
+            critique_guidance="Improve source diversity scores",
+        )
         call_args = client.messages.stream.call_args
         prompt = call_args[1]["messages"][0]["content"]
         assert "<critique_guidance>" in prompt
@@ -838,14 +825,13 @@ class TestTemplateDrivenReport:
     def test_template_context_usage_in_report(self):
         """Template context_usage should override default context instruction."""
         client = _make_streaming_client("Report content")
-        with patch("builtins.print"):
-            synthesize_report(
-                client=client,
-                query="test query",
-                summaries=SAMPLE_SUMMARIES,
-                context="Business info",
-                template=PFE_TEMPLATE,
-            )
+        synthesize_report(
+            client=client,
+            query="test query",
+            summaries=SAMPLE_SUMMARIES,
+            context="Business info",
+            template=PFE_TEMPLATE,
+        )
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "Competitive Implications and Positioning Advice only" in prompt
@@ -853,14 +839,13 @@ class TestTemplateDrivenReport:
     def test_no_template_uses_default_context_instruction(self):
         """Without template, default context instruction should be used."""
         client = _make_streaming_client("Report content")
-        with patch("builtins.print"):
-            synthesize_report(
-                client=client,
-                query="test query",
-                summaries=SAMPLE_SUMMARIES,
-                context="Business info",
-                template=None,
-            )
+        synthesize_report(
+            client=client,
+            query="test query",
+            summaries=SAMPLE_SUMMARIES,
+            context="Business info",
+            template=None,
+        )
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "objective and context-free" in prompt

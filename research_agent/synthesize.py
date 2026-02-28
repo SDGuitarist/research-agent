@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from typing import TYPE_CHECKING
 
 import httpx
@@ -277,10 +278,12 @@ Write the report now:"""
     )
 
     try:
-        # Print disclaimer before streaming so user sees it immediately
+        # Write disclaimer before streaming so user sees it immediately.
+        # Uses sys.stderr (not logger) to preserve streaming UX: logger would
+        # add prefixes to each chunk, breaking the continuous output display.
         if limited_sources and limited_disclaimer:
-            print(limited_disclaimer)
-            print()  # Blank line before report content
+            sys.stderr.write(limited_disclaimer + "\n\n")
+            sys.stderr.flush()
 
         # Use streaming for longer responses
         chunks: list[str] = []
@@ -294,9 +297,11 @@ Write the report now:"""
         ) as stream:
             for text in stream.text_stream:
                 chunks.append(text)
-                print(text, end="", flush=True)
+                sys.stderr.write(text)
+                sys.stderr.flush()
 
-        print()  # Newline after streaming
+        sys.stderr.write("\n")
+        sys.stderr.flush()
         result = "".join(chunks).strip()
         if not result:
             raise SynthesisError("Model returned empty response")
@@ -408,9 +413,11 @@ Write the factual analysis sections now:"""
         ) as stream:
             for text in stream.text_stream:
                 chunks.append(text)
-                print(text, end="", flush=True)
+                sys.stderr.write(text)
+                sys.stderr.flush()
 
-        print()  # Newline after streaming
+        sys.stderr.write("\n")
+        sys.stderr.flush()
         result = "".join(chunks).strip()
         if not result:
             raise SynthesisError("Draft synthesis returned empty response")
@@ -621,8 +628,8 @@ Continue the report now:"""
 
     try:
         if limited_sources and limited_disclaimer:
-            print(limited_disclaimer)
-            print()
+            sys.stderr.write(limited_disclaimer + "\n\n")
+            sys.stderr.flush()
 
         chunks: list[str] = []
         with client.messages.stream(
@@ -634,9 +641,11 @@ Continue the report now:"""
         ) as stream:
             for text in stream.text_stream:
                 chunks.append(text)
-                print(text, end="", flush=True)
+                sys.stderr.write(text)
+                sys.stderr.flush()
 
-        print()  # Newline after streaming
+        sys.stderr.write("\n")
+        sys.stderr.flush()
         result = "".join(chunks).strip()
         if not result:
             raise SynthesisError("Final synthesis returned empty response")
