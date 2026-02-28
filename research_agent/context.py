@@ -60,6 +60,14 @@ def _parse_template(raw: str) -> tuple[str, ReportTemplate | None]:
     yaml_block = stripped[3:end]
     body = stripped[end + 4:].lstrip("\n")
 
+    MAX_YAML_FRONTMATTER_BYTES = 8192  # 8 KB
+    if len(yaml_block.encode()) > MAX_YAML_FRONTMATTER_BYTES:
+        logger.warning(
+            "YAML frontmatter exceeds size limit (%d bytes)",
+            len(yaml_block.encode()),
+        )
+        return (raw, None)
+
     try:
         data = yaml.safe_load(yaml_block)
     except yaml.YAMLError as e:

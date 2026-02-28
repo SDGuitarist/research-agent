@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p3
 issue_id: "084"
 tags: [code-review, security, defense-in-depth]

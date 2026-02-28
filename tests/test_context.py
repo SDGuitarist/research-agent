@@ -430,6 +430,16 @@ class TestParseTemplate:
         with pytest.raises(dataclasses.FrozenInstanceError):
             template.name = "changed"
 
+    def test_oversized_yaml_frontmatter_returns_raw(self):
+        """YAML frontmatter exceeding 8 KB should be rejected."""
+        big_value = "x" * 9000
+        raw = (
+            f"---\ntemplate:\n  name: big\n  filler: {big_value}\n---\nBody.\n"
+        )
+        body, template = _parse_template(raw)
+        assert body == raw
+        assert template is None
+
 
 class TestContextResultReturnTypes:
     """Tests verifying ContextResult return types from all loaders."""

@@ -9,6 +9,7 @@ from research_agent.synthesize import (
     _build_default_final_sections,
     _build_draft_sections,
     _build_final_sections,
+    _DEFAULT_FINAL_START,
     _format_skeptic_findings,
     synthesize_report,
     synthesize_draft,
@@ -779,6 +780,14 @@ class TestBuildDefaultFinalSections:
         assert "Adversarial Analysis" not in result
         assert "5. **Limitations & Gaps**" in result
         assert "## Sources" in result
+
+    def test_default_final_start_matches_generic_draft_count(self):
+        """_DEFAULT_FINAL_START must be 5 (4 generic draft sections + 1).
+
+        If you add or remove a generic draft section in synthesize_draft's
+        else-branch, update _DEFAULT_FINAL_START to match.
+        """
+        assert _DEFAULT_FINAL_START == 5
 
 
 class TestTemplateDrivenFinal:
