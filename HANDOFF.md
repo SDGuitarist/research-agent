@@ -1,73 +1,69 @@
-# Handoff: Flexible Context System — Cycle Complete
+# Handoff: P2 Triage — Critique & Synthesize Cleanup
 
 ## Current State
 
 **Project:** Research Agent
-**Phase:** Compound complete — cycle 22 finished
+**Phase:** Plan complete (deepened) — ready for Work
 **Branch:** `main`
 **Date:** February 28, 2026
-**Plan:** `docs/plans/2026-02-27-feat-flexible-context-system-plan.md`
+**Plan:** `docs/plans/2026-02-28-refactor-p2-triage-critique-synthesize-plan.md`
 
 ---
 
-## What Was Done This Session (Compound Phase)
+## What Was Done This Session
 
-1. **Created solution doc:** `docs/solutions/architecture/domain-agnostic-pipeline-design.md`
-   - Documents 5 patterns: generic extraction fields, context-relative language, explicit None over hidden defaults, always-run relevance gate, sanitize at consumption not write
-   - Includes Risk Resolution table tracking 3 flagged risks through the cycle
-   - Documents transitional issue with existing YAML critique files on disk
-   - Three Questions answered
+1. **Compound phase** for flexible-context-system (cycle 22) — solution doc written, cross-references updated
+2. **Brainstorm** for P2 triage cycle — 3 accumulated review findings scoped
+3. **Plan** with SpecFlow analysis — 14 gaps identified, critical design questions resolved (filename format, sanitization policy, helper approach)
+4. **Deepened plan** with 3 review agents — 7 improvements incorporated (dropped `to_dict`, renamed `defaults` → `fallback`, tightened types, found missed test assertions)
 
-2. **Updated cross-references in existing solution docs:**
-   - `docs/solutions/security/non-idempotent-sanitization-double-encode.md` — added cross-reference to new cycle 22 doc for the write-time vs read-time boundary resolution
-   - `docs/solutions/logic-errors/conditional-prompt-templates-by-context.md` — added cross-reference explaining how cycle 22 completes the work this doc started
-
-3. **Updated HANDOFF.md** — this file
-
-### Prior Phase Risk
-
-> "Existing YAML critique files on disk still contain write-time-sanitized strings (e.g., `&amp;` instead of `&`). When read back, `_summarize_patterns` will double-encode them."
-
-**Addressed:** Documented as a known transitional issue in the solution doc. Self-healing — files cycle out within ~10 critiques. No migration needed.
+### Commits
+- `364235d` — `docs(compound): document flexible-context-system cycle learnings`
+- `7ca07bf` — `docs(plan): P2 triage — critique & synthesize cleanup`
 
 ---
 
-## Full Cycle Summary (Brainstorm → Plan → Work → Review → Fix → Compound)
+## Plan Summary (2 Sessions)
 
-| Phase | Output | Key Decision |
-|-------|--------|-------------|
-| Brainstorm | `docs/brainstorms/2026-02-26-flexible-context-system-brainstorm.md` | Three-layer approach: prompts, defaults, auto-detect |
-| Plan | `docs/plans/2026-02-27-feat-flexible-context-system-plan.md` | Defer dynamic template generation (brainstorm risk) |
-| Work (2 sessions) | Commits `10a8b75`, `60a185a` | "PERSPECTIVE" over "METHODOLOGY" for extraction fields |
-| Review | `docs/reviews/flexible-context-system/REVIEW-SUMMARY.md` | 0 P1, 3 P2, 6 P3 — no merge blockers |
-| Fix | Commits `80d27ad`, `341a3ab` | Remove write-time sanitization, keep read-time |
-| Compound | `docs/solutions/architecture/domain-agnostic-pipeline-design.md` | One doc covering all 5 patterns |
+### Session 1: Remove `query_domain` + Centralize Dimensions (~80 lines)
+- Delete `query_domain` field from `CritiqueResult` and all 13 usage sites
+- Add `from_parsed()` and `fallback()` classmethods
+- Replace 3 direct construction sites with classmethods
+- Use `dataclasses.asdict()` + 3 lines in `save_critique` (no `to_dict()`)
+- Convert 12 test sites from positional to keyword construction
+- Update 2 filename assertion tests (`test_yaml_roundtrip`, `test_empty_domain_uses_unknown`)
 
-All 757 tests pass. Net -210 lines.
+### Session 2: Extract Default Section List Helper (~30 lines)
+- Add `_build_default_final_sections(has_skeptic: bool)` helper
+- Replace inline string blocks in `synthesize_final`
+- Add direct unit tests for the helper
+
+### Key Decisions (from deepening)
+- `fallback()` not `defaults()` — matches `ContextResult` state-name convention
+- `_build_default_final_sections` not `_build_generic_*` — follows `_default_critique` naming
+- `dataclasses.asdict()` not `to_dict()` — one call site, simpler
+- `from_parsed` validates missing keys with `ValueError`
+- `parsed: dict[str, int]` — tightened type hint
+- `critique-{timestamp}.yaml` — hyphen separator preserved for glob compatibility
 
 ---
 
-## Three Questions (Compound Phase)
+## Feed-Forward Risk
 
-1. **Hardest pattern to extract from the fixes?** The relationship between this cycle's "use neutral language for any context" and the prior conditional-prompt-templates solution's "gate domain-specific sections on context presence." They're complementary layers (presence-gating + language-neutrality) but could easily be conflated into one pattern. Kept them as separate docs with cross-references.
-
-2. **What did you consider documenting but left out, and why?** A prompt-language style guide ("always use 'research context' not 'business context'"). Left it out because the grep-based acceptance criterion (`grep -rn "business" research_agent/ --include="*.py"` returns zero) is a more durable check than a prose guide that nobody will re-read.
-
-3. **What might future sessions miss that this solution doesn't cover?** Context files themselves can define domain-specific template sections. The pipeline is now agnostic, but a bad context file (e.g., "Buyer Psychology" section used for a technical query) will still produce confusing output. There's no validation that a context file's template sections make sense for the query.
+> **Least confident:** Whether `dataclasses.asdict()` includes or excludes the `@property` computed fields (`overall_pass`, `mean_score`). It excludes them — only dataclass fields are included — so the manual additions in `save_critique` are required. Verify this during implementation.
 
 ---
 
 ## Next Phase
 
-Cycle 22 is complete. Ready for a new brainstorm cycle when the next feature is identified.
+**Work** — implement Session 1.
 
 ### Prompt for Next Session
 
 ```
-The flexible-context-system cycle is complete. All docs are in:
-- Solution: docs/solutions/architecture/domain-agnostic-pipeline-design.md
-- Review: docs/reviews/flexible-context-system/REVIEW-SUMMARY.md
-- Plan: docs/plans/2026-02-27-feat-flexible-context-system-plan.md
+Read docs/plans/2026-02-28-refactor-p2-triage-critique-synthesize-plan.md. Implement Session 1: Remove query_domain + Centralize Dimensions. Relevant files: research_agent/critique.py, research_agent/context.py, tests/test_critique.py, tests/test_results.py, tests/test_public_api.py, tests/test_synthesize.py, tests/test_context.py.
 
-Ready for a new /workflows:brainstorm when you have the next feature.
+Feed-Forward risk: verify dataclasses.asdict() excludes @property fields before using it in save_critique.
+
+Do only Session 1. After committing, stop and say DONE. Do NOT proceed to Session 2.
 ```
