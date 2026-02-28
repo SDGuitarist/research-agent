@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 from research_agent.context_result import ReportTemplate
 from research_agent.synthesize import (
     _build_sources_context,
+    _build_default_final_sections,
     _build_draft_sections,
     _build_final_sections,
     _format_skeptic_findings,
@@ -516,6 +517,22 @@ class TestSynthesizeFinal:
         # No skeptic_findings block
         assert "<skeptic_findings>" not in prompt
 
+    def test_generic_skeptic_path_includes_adversarial_section(self):
+        """Generic path with skeptic findings should list Adversarial Analysis."""
+        findings = [
+            SkepticFinding(lens="combined", checklist="C",
+                          critical_count=0, concern_count=1),
+        ]
+        client = _make_streaming_client("Final sections")
+        synthesize_final(
+            client, "query", "draft", findings, SAMPLE_SUMMARIES,
+            template=None,
+        )
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "5. **Adversarial Analysis**" in prompt
+        assert "6. **Limitations & Gaps**" in prompt
+
     def test_deep_mode_requests_three_subsections(self):
         """Deep mode should request three subsections in Section 11."""
         findings = [
@@ -743,6 +760,24 @@ class TestBuildFinalSections:
     def test_always_includes_sources(self):
         """Sources section should always be present."""
         result = _build_final_sections(PFE_TEMPLATE, has_skeptic=False, draft_count=3)
+        assert "## Sources" in result
+
+
+class TestBuildDefaultFinalSections:
+    """Tests for _build_default_final_sections() helper."""
+
+    def test_with_skeptic(self):
+        """Should include Adversarial Analysis at position 5."""
+        result = _build_default_final_sections(has_skeptic=True)
+        assert "5. **Adversarial Analysis**" in result
+        assert "6. **Limitations & Gaps**" in result
+        assert "## Sources" in result
+
+    def test_without_skeptic(self):
+        """Should skip Adversarial Analysis, Limitations at position 5."""
+        result = _build_default_final_sections(has_skeptic=False)
+        assert "Adversarial Analysis" not in result
+        assert "5. **Limitations & Gaps**" in result
         assert "## Sources" in result
 
 

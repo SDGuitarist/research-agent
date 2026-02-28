@@ -124,6 +124,21 @@ def _build_final_sections(
     return "\n".join(parts)
 
 
+_DEFAULT_FINAL_START = 5  # Assumes 4 generic draft sections
+
+
+def _build_default_final_sections(has_skeptic: bool) -> str:
+    """Build final section list for reports without a template."""
+    parts = []
+    n = _DEFAULT_FINAL_START
+    if has_skeptic:
+        parts.append(f"{n}. **Adversarial Analysis** — Synthesize the skeptic review findings.")
+        n += 1
+    parts.append(f"{n}. **Limitations & Gaps** — What sources don't cover, confidence levels.")
+    parts.append("## Sources — All referenced URLs with [Source N] notation.")
+    return "\n".join(parts)
+
+
 def _build_limited_disclaimer(total_count: int, dropped_count: int) -> str:
     """Build the limited sources disclaimer."""
     survived_count = max(0, total_count - dropped_count)
@@ -550,18 +565,9 @@ def synthesize_final(
             template, has_skeptic=bool(skeptic_findings), draft_count=draft_count,
         )
     else:
-        # Generic report: no template-specific sections
-        if skeptic_findings:
-            section_list = (
-                "5. **Adversarial Analysis** — Synthesize the skeptic review findings.\n"
-                "6. **Limitations & Gaps** — What sources don't cover, confidence levels.\n"
-                "## Sources — All referenced URLs with [Source N] notation."
-            )
-        else:
-            section_list = (
-                "5. **Limitations & Gaps** — What sources don't cover, confidence levels.\n"
-                "## Sources — All referenced URLs with [Source N] notation."
-            )
+        section_list = _build_default_final_sections(
+            has_skeptic=bool(skeptic_findings),
+        )
 
     # Lessons applied block (from critique history)
     lessons_block = ""
