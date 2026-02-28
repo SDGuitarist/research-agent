@@ -219,9 +219,9 @@ class TestRunSkepticEvidence:
 
     @pytest.mark.asyncio
     async def test_includes_context_when_provided(self):
-        """Should include business context block when provided."""
+        """Should include research context block when provided."""
         client = _make_async_client("[Observation] ok")
-        await run_skeptic_evidence(client, "draft", synthesis_context="My business")
+        await run_skeptic_evidence(client, "draft", synthesis_context="My context")
         call_args = client.messages.create.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "<research_context>" in prompt

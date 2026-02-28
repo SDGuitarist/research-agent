@@ -20,7 +20,7 @@ from research_agent.context import (
 from research_agent.context_result import ContextResult, ContextStatus, ReportTemplate
 
 
-SAMPLE_CONTEXT = """# Business Context
+SAMPLE_CONTEXT = """# Research Context
 
 **Owner:** Test User
 

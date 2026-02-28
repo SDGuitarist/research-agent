@@ -20,7 +20,7 @@ class ReportTemplate:
     """Report section template parsed from context file YAML frontmatter.
 
     Attributes:
-        name: Display name for the context (e.g. "Pacific Flow Entertainment").
+        name: Display name for the context (e.g. "My Research Context").
         draft_sections: Ordered (heading, description) pairs for draft pass.
         final_sections: Ordered (heading, description) pairs for final pass.
         context_usage: Instruction for how to use research context in synthesis.

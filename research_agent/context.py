@@ -342,12 +342,14 @@ def _validate_critique_yaml(data: dict) -> bool:
         if isinstance(val, bool) or not isinstance(val, int) or not (1 <= val <= 5):
             return False
 
-    # Check text fields are strings and within length limit
+    # Check text fields are strings (or absent) and within length limit
     for field in ("weaknesses", "suggestions", "query_domain"):
         val = data.get(field)
-        if val is not None and not isinstance(val, str):
+        if val is None:
+            continue
+        if not isinstance(val, str):
             return False
-        if isinstance(val, str) and len(val) > 200:
+        if len(val) > 200:
             return False
 
     # overall_pass must be bool
@@ -449,11 +451,11 @@ def load_critique_history(
         try:
             data = yaml.safe_load(f.read_text())
         except (yaml.YAMLError, OSError):
-            logger.debug(f"Skipping corrupt critique file: {f}")
+            logger.debug("Skipping corrupt critique file: %s", f)
             continue
 
         if not _validate_critique_yaml(data):
-            logger.debug(f"Skipping invalid critique file: {f}")
+            logger.debug("Skipping invalid critique file: %s", f)
             continue
 
         valid_critiques.append(data)

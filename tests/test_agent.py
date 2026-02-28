@@ -285,7 +285,7 @@ class TestResearchAgentStandardMode:
                 )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
-            mock_full_ctx.return_value = ContextResult.loaded("Business context")
+            mock_full_ctx.return_value = ContextResult.loaded("Research context")
             mock_final.return_value = "Standard Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
@@ -334,7 +334,7 @@ class TestResearchAgentStandardMode:
                 )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
-            mock_full_ctx.return_value = ContextResult.loaded("Business context")
+            mock_full_ctx.return_value = ContextResult.loaded("Research context")
             mock_final.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
@@ -394,7 +394,7 @@ class TestResearchAgentDeepMode:
                 )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
-            mock_full_ctx.return_value = ContextResult.loaded("Business context")
+            mock_full_ctx.return_value = ContextResult.loaded("Research context")
             mock_final.return_value = "Deep Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
@@ -444,7 +444,7 @@ class TestResearchAgentDeepMode:
                 )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
-            mock_full_ctx.return_value = ContextResult.loaded("Business context")
+            mock_full_ctx.return_value = ContextResult.loaded("Research context")
             mock_final.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
@@ -503,7 +503,7 @@ class TestResearchAgentDeepMode:
                 )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
-            mock_full_ctx.return_value = ContextResult.loaded("Business context")
+            mock_full_ctx.return_value = ContextResult.loaded("Research context")
             mock_final.return_value = "Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
@@ -636,7 +636,7 @@ class TestResearchAgentRelevanceGate:
                 )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
-            mock_full_ctx.return_value = ContextResult.loaded("Business context")
+            mock_full_ctx.return_value = ContextResult.loaded("Research context")
             mock_final.return_value = "# Full Research Report\n\nComprehensive content."
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
@@ -729,7 +729,7 @@ class TestResearchAgentRelevanceGate:
             )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
-            mock_full_ctx.return_value = ContextResult.loaded("Business context")
+            mock_full_ctx.return_value = ContextResult.loaded("Research context")
             mock_final.return_value = "# Limited Report\n\nBased on limited sources."
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
@@ -822,7 +822,7 @@ class TestResearchAgentRelevanceGate:
                 )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
-            mock_full_ctx.return_value = ContextResult.loaded("Business context")
+            mock_full_ctx.return_value = ContextResult.loaded("Research context")
             mock_final.return_value = "# Deep Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
@@ -867,7 +867,7 @@ class TestResearchAgentRelevanceGate:
                 )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
-            mock_full_ctx.return_value = ContextResult.loaded("Business context")
+            mock_full_ctx.return_value = ContextResult.loaded("Research context")
             mock_final.return_value = "# Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
@@ -933,7 +933,7 @@ class TestResearchAgentContext:
 
     @pytest.mark.asyncio
     async def test_agent_works_when_context_missing(self):
-        """Agent should work normally when no business context file exists."""
+        """Agent should work normally when no research context file exists."""
         with patch("research_agent.agent.search") as mock_search, \
              patch("research_agent.agent.refine_query") as mock_refine, \
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
@@ -1183,7 +1183,7 @@ class TestResearchAgentStructuredSummaries:
                 )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = [MagicMock(lens="evidence_alignment", checklist="[Observation] Test", critical_count=0, concern_count=0)]
-            mock_full_ctx.return_value = ContextResult.loaded("Business context")
+            mock_full_ctx.return_value = ContextResult.loaded("Research context")
             mock_final.return_value = "Deep Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
@@ -1235,7 +1235,7 @@ class TestResearchAgentStructuredSummaries:
                 )
             mock_draft.return_value = "## 1. Executive Summary\nDraft content"
             mock_skeptic.return_value = MagicMock(lens="combined", checklist="[Observation] Test", critical_count=0, concern_count=1)
-            mock_full_ctx.return_value = ContextResult.loaded("Business context")
+            mock_full_ctx.return_value = ContextResult.loaded("Research context")
             mock_final.return_value = "Standard Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())

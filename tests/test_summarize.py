@@ -458,7 +458,7 @@ class TestStructuredSummaries:
     """Tests for structured summary format (Cycle 10 Step 4)."""
 
     @pytest.mark.asyncio
-    async def test_structured_true_uses_facts_quotes_tone_prompt(self):
+    async def test_structured_true_uses_facts_evidence_perspective_prompt(self):
         """structured=True should use FACTS/KEY EVIDENCE/PERSPECTIVE prompt format."""
         mock_client = AsyncMock()
         mock_response = MagicMock()
