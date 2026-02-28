@@ -1,50 +1,63 @@
-# Handoff: P3 Fix Batch — 083, 084, 088 (Complete)
+# Handoff: All P3 Todos Complete
 
 ## Current State
 
 **Project:** Research Agent
-**Phase:** Fix complete — P3 todos resolved
+**Phase:** All review todos resolved — ready for new feature cycle
 **Branch:** `main`
 **Date:** February 28, 2026
-**Commit:** `be38bb0`
+**Commits:** `be38bb0`, `225a293`
 
 ---
 
 ## What Was Done This Session
 
-### Fix Phase — P3 Todos
+### Batch 1 — Todos 083, 084, 088
 
-1. **083 (f-string logging)**: Already fixed in a prior commit — marked done
-2. **084 (YAML frontmatter size limit)**: Added 8 KB size check before `yaml.safe_load()` in `context.py:_parse_template()` + test in `test_context.py`
-3. **088 (_DEFAULT_FINAL_START coupling)**: Added test assertion `_DEFAULT_FINAL_START == 5` in `test_synthesize.py` with comment explaining the coupling
-4. **All 766 tests pass**
-5. **Committed and pushed**: `be38bb0`
+1. **083 (f-string logging in context.py)**: Already fixed in a prior commit — marked done
+2. **084 (YAML frontmatter size limit)**: Added 8 KB size check before `yaml.safe_load()` in `context.py:_parse_template()` + test
+3. **088 (_DEFAULT_FINAL_START coupling)**: Added test assertion `_DEFAULT_FINAL_START == 5` in `test_synthesize.py`
+4. **Committed**: `be38bb0`
+
+### Batch 2 — Todos 050, 051, 052, 053
+
+5. **050 (f-string logging in coverage.py)**: Fixed 4 f-string logger calls in `query_validation.py` (code was extracted there from coverage.py)
+6. **051 (retry query character validation)**: Added search operator blocking (`site:`, `inurl:`, etc.), 120-char length cap, non-printable character stripping to `validate_query_list()` + 3 tests
+7. **052 (magic overlap thresholds)**: Already fixed in prior session (named constant `MAX_TRIED_OVERLAP`) — marked done
+8. **053 (tried_queries duplication)**: Already fixed in prior session (`_collect_tried_queries` helper) — marked done
+9. **Committed**: `225a293`
 
 ### Files Changed
 
-- `research_agent/context.py` — added size limit guard
-- `tests/test_context.py` — added oversized YAML test
-- `tests/test_synthesize.py` — added `_DEFAULT_FINAL_START` import and assertion test
-- `todos/083-*`, `todos/084-*`, `todos/088-*` — marked done
+- `research_agent/context.py` — YAML size limit guard
+- `research_agent/query_validation.py` — %-style logging, search operator blocking, length cap, non-printable stripping
+- `tests/test_context.py` — oversized YAML test
+- `tests/test_coverage.py` — search operator, length cap, non-printable tests
+- `tests/test_synthesize.py` — `_DEFAULT_FINAL_START` assertion
+- `todos/050-*`, `todos/051-*`, `todos/052-*`, `todos/053-*`, `todos/083-*`, `todos/084-*`, `todos/088-*` — all marked done
+
+### Test Count
+
+769 tests, all passing.
 
 ---
 
 ## Three Questions
 
-1. **Hardest fix in this batch?** 084 — deciding to use `len(yaml_block.encode())` for byte-accurate sizing rather than `len(yaml_block)` which counts characters. Multi-byte characters in YAML values could undercount with character length.
+1. **Hardest fix in this batch?** 051 — deciding where to add search operator blocking. It belongs in `validate_query_list()` (shared validation) rather than `_validate_retry_queries()` (coverage-specific wrapper), so both decompose and coverage paths get the protection.
 
-2. **What did you consider fixing differently, and why didn't you?** For 088, considered Option A (extracting draft sections into a tuple constant and deriving the number). Went with Option B (test assertion) because it's minimal, the generic path is stable, and a larger refactor would touch prompt construction for no practical benefit.
+2. **What did you consider fixing differently, and why didn't you?** Considered adding the search operator check only to the coverage path since decompose queries come from Claude's own analysis (not from potentially-injected content). Put it in the shared path anyway because defense-in-depth costs nothing here.
 
-3. **Least confident about going into the next batch or compound phase?** Whether there are other P3 todos remaining that should be batched together before starting a compound doc.
+3. **Least confident about going into the next batch or compound phase?** Nothing — all pending todos are resolved. The codebase is clean for a new feature cycle.
 
 ---
 
 ## Next Phase
 
-All known P3 todos (083, 084, 088) are resolved. Next work should start a new brainstorm/plan cycle for a new feature, or check for any remaining open todos.
+All review todos (P1 through P3) are resolved. No pending items remain. Next work should start a new brainstorm/plan cycle for a new feature.
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. Check todos/ for any remaining open items. If none, start a new brainstorm/plan cycle for the next feature.
+Read HANDOFF.md. Start a new brainstorm/plan cycle for the next feature.
 ```
