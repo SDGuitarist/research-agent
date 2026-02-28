@@ -56,7 +56,7 @@ class CritiqueResult:
     suggestions: str
 
     @classmethod
-    def from_parsed(cls, parsed: dict[str, int], weaknesses: str, suggestions: str) -> "CritiqueResult":
+    def from_parsed(cls, parsed: dict[str, int | str], weaknesses: str, suggestions: str) -> "CritiqueResult":
         """Construct from LLM-parsed scores dict.
 
         Text fields are passed separately because sanitization

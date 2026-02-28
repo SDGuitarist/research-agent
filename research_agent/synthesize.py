@@ -456,16 +456,16 @@ def synthesize_final(
     critique_guidance: str | None = None,
     template: ReportTemplate | None = None,
 ) -> str:
-    """Produce sections 9-12/13 informed by skeptic analysis.
+    """Produce final analytical sections informed by skeptic analysis.
 
-    Receives draft (sections 1-8), skeptic findings, and synthesis context.
-    Streams sections 9+ to stdout.
+    Receives draft (factual analysis sections), skeptic findings, and
+    synthesis context.  Streams final sections to stdout.
     Returns the combined full report (draft + final sections).
 
     Args:
         client: Anthropic client
         query: Original research query
-        draft: Sections 1-8 markdown from synthesize_draft
+        draft: Factual analysis markdown from synthesize_draft
         skeptic_findings: List of SkepticFinding objects (empty if skeptic failed)
         summaries: Source summaries for citation references
         model: Model for synthesis
@@ -474,7 +474,7 @@ def synthesize_final(
         limited_sources: If True, shorter report with disclaimer
         dropped_count: Sources dropped by relevance gate
         total_count: Total sources evaluated
-        is_deep: True for deep mode (three subsections in Section 11)
+        is_deep: True for deep mode (three subsections in Adversarial Analysis)
 
     Returns:
         Full report: draft + final sections
@@ -527,7 +527,7 @@ def synthesize_final(
         if is_deep:
             skeptic_instruction = (
                 "The <skeptic_findings> contain adversarial reviews from three lenses. "
-                "For Section 11 (Adversarial Analysis), create three subsections:\n"
+                "For the **Adversarial Analysis** section, create three subsections:\n"
                 "### Evidence Alignment Skeptic\n"
                 "### Timing & Stakes Skeptic\n"
                 "### Strategic Frame Skeptic\n"
@@ -539,13 +539,13 @@ def synthesize_final(
         else:
             skeptic_instruction = (
                 "The <skeptic_findings> contain an adversarial review. "
-                "For Section 11 (Adversarial Analysis), summarize the key challenges "
+                "For the **Adversarial Analysis** section, summarize the key challenges "
                 "and explain how the final recommendations address them.\n\n"
                 "Any finding rated [Critical Finding] MUST be explicitly addressed in "
                 "your recommendations. Do not ignore critical findings."
             )
     else:
-        # No skeptic findings — skip Section 11
+        # No skeptic findings — skip Adversarial Analysis
         skeptic_instruction = "Skip the Adversarial Analysis section (no skeptic review was performed)."
 
     # Limited sources handling

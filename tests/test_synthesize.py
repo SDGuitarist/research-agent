@@ -502,7 +502,7 @@ class TestSynthesizeFinal:
         assert "<skeptic_findings>" in prompt
         assert "Test finding" in prompt
 
-    def test_skips_section_11_when_no_findings(self):
+    def test_skips_adversarial_analysis_when_no_findings(self):
         """Should instruct to skip Adversarial Analysis when findings is empty."""
         client = _make_streaming_client("Final sections")
         synthesize_final(
@@ -510,8 +510,8 @@ class TestSynthesizeFinal:
         )
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
-        # Should NOT list Adversarial Analysis as a section to write
-        assert "11. **Adversarial Analysis**" not in prompt
+        # Section list before "Skip" should NOT mention Adversarial Analysis
+        assert "**Adversarial Analysis**" not in prompt.split("Skip")[0]
         # Should instruct to skip it
         assert "Skip the Adversarial Analysis" in prompt
         # No skeptic_findings block
