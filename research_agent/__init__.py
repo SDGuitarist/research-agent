@@ -8,15 +8,19 @@ import os
 from .agent import ResearchAgent
 from .cli import get_reports
 from .context import list_available_contexts, load_critique_history, resolve_context_path
+from .context_result import ContextResult, ContextStatus, ReportTemplate
 from .critique import CritiqueResult, critique_report_file
 from .errors import ResearchError
 from .modes import ResearchMode
 from .results import ModeInfo, ReportInfo, ResearchResult
 
 __all__ = [
+    "ContextResult",
+    "ContextStatus",
     "CritiqueResult",
     "ModeInfo",
     "ReportInfo",
+    "ReportTemplate",
     "ResearchAgent",
     "ResearchError",
     "ResearchMode",

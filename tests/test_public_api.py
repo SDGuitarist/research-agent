@@ -44,9 +44,12 @@ class TestVersion:
 class TestAll:
     def test_all_contains_expected_names(self):
         expected = {
+            "ContextResult",
+            "ContextStatus",
             "CritiqueResult",
             "ModeInfo",
             "ReportInfo",
+            "ReportTemplate",
             "ResearchAgent",
             "ResearchError",
             "ResearchMode",
