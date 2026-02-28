@@ -3,7 +3,7 @@
 ## Current State
 
 **Project:** Research Agent
-**Phase:** Plan complete (deepened) — ready for Work
+**Phase:** Work — Session 1 complete, Session 2 pending
 **Branch:** `main`
 **Date:** February 28, 2026
 **Plan:** `docs/plans/2026-02-28-refactor-p2-triage-critique-synthesize-plan.md`
@@ -12,58 +12,54 @@
 
 ## What Was Done This Session
 
-1. **Compound phase** for flexible-context-system (cycle 22) — solution doc written, cross-references updated
-2. **Brainstorm** for P2 triage cycle — 3 accumulated review findings scoped
-3. **Plan** with SpecFlow analysis — 14 gaps identified, critical design questions resolved (filename format, sanitization policy, helper approach)
-4. **Deepened plan** with 3 review agents — 7 improvements incorporated (dropped `to_dict`, renamed `defaults` → `fallback`, tightened types, found missed test assertions)
+### Session 1: Remove `query_domain` + Centralize Dimensions
+
+1. **Removed `query_domain`** from `CritiqueResult` dataclass, docstring, parser field loop, both prompt templates, both construction sites, `_default_critique`, slug logic in `save_critique`, YAML serialization, and `_validate_critique_yaml` in `context.py`
+2. **Added `from_parsed()` and `fallback()` classmethods** to `CritiqueResult` — centralized dimension construction using `DIMENSIONS` tuple
+3. **Replaced 3 construction sites** with classmethods (`evaluate_report`, `critique_report_file`, `_default_critique` → inlined as `fallback()`)
+4. **Updated `save_critique`** to use `dataclasses.asdict()` + manual computed property additions
+5. **Converted all 12 test sites** from positional to keyword `CritiqueResult(...)` construction
+6. **Updated test assertions**: filename pattern (`critique-{timestamp}.yaml`), removed `query_domain` from mock data and validation fixtures
+7. **Added 4 new tests**: `from_parsed` (valid, missing key, extra keys) and `fallback`
+8. **Verified feed-forward risk**: confirmed `dataclasses.asdict()` excludes `@property` fields — manual additions for `overall_pass`, `mean_score`, `timestamp` are required
 
 ### Commits
-- `364235d` — `docs(compound): document flexible-context-system cycle learnings`
-- `7ca07bf` — `docs(plan): P2 triage — critique & synthesize cleanup`
+- `3ef62ea` — `refactor(critique): remove query_domain, add factory classmethods`
+
+### Files Changed (6)
+- `research_agent/critique.py` — field removal, classmethods, `dataclasses.asdict()`
+- `research_agent/context.py` — removed `query_domain` from validation loop
+- `tests/test_critique.py` — keyword construction, new factory tests
+- `tests/test_context.py` — removed `query_domain` from test data
+- `tests/test_results.py` — keyword construction
+- `tests/test_public_api.py` — keyword construction
+
+### Acceptance Criteria Met
+- [x] `grep -rn "query_domain" research_agent/ --include="*.py"` returns zero results
+- [x] `DIMENSIONS` tuple is the single source of truth for score field names
+- [x] No positional `CritiqueResult(...)` construction in tests
+- [x] All 761 tests pass
 
 ---
 
-## Plan Summary (2 Sessions)
+## Three Questions
 
-### Session 1: Remove `query_domain` + Centralize Dimensions (~80 lines)
-- Delete `query_domain` field from `CritiqueResult` and all 13 usage sites
-- Add `from_parsed()` and `fallback()` classmethods
-- Replace 3 direct construction sites with classmethods
-- Use `dataclasses.asdict()` + 3 lines in `save_critique` (no `to_dict()`)
-- Convert 12 test sites from positional to keyword construction
-- Update 2 filename assertion tests (`test_yaml_roundtrip`, `test_empty_domain_uses_unknown`)
+1. **Hardest implementation decision in this session?** Whether to clean up the `QUERY_DOMAIN` references in the mock LLM response strings in tests. The parser now ignores them, so they're harmless — but leaving stale references in mock data could confuse a future reader. Chose to remove them for clarity.
 
-### Session 2: Extract Default Section List Helper (~30 lines)
-- Add `_build_default_final_sections(has_skeptic: bool)` helper
-- Replace inline string blocks in `synthesize_final`
-- Add direct unit tests for the helper
+2. **What did you consider changing but left alone, and why?** The `_parse_critique_response` docstring still shows `QUERY_DOMAIN: ...` in its expected format block. This is technically stale, but the function is about parsing Claude's raw response — and Claude may still emit that line from the prompt format it learned. The docstring documents what *might* appear, not what we extract. Left it to avoid over-editing documentation that isn't actively misleading.
 
-### Key Decisions (from deepening)
-- `fallback()` not `defaults()` — matches `ContextResult` state-name convention
-- `_build_default_final_sections` not `_build_generic_*` — follows `_default_critique` naming
-- `dataclasses.asdict()` not `to_dict()` — one call site, simpler
-- `from_parsed` validates missing keys with `ValueError`
-- `parsed: dict[str, int]` — tightened type hint
-- `critique-{timestamp}.yaml` — hyphen separator preserved for glob compatibility
-
----
-
-## Feed-Forward Risk
-
-> **Least confident:** Whether `dataclasses.asdict()` includes or excludes the `@property` computed fields (`overall_pass`, `mean_score`). It excludes them — only dataclass fields are included — so the manual additions in `save_critique` are required. Verify this during implementation.
+3. **Least confident about going into review?** The `_make_critique` helper in `test_context.py` still generates filenames with the old `critique-{slug}_{ts}.yaml` format — which is correct for test data representing existing on-disk files. But if future tests use this helper expecting the new filename format, they'll get the old one. This helper is for writing test fixture YAML, not for testing `save_critique` itself, so it should be fine.
 
 ---
 
 ## Next Phase
 
-**Work** — implement Session 1.
+**Work** — implement Session 2.
 
 ### Prompt for Next Session
 
 ```
-Read docs/plans/2026-02-28-refactor-p2-triage-critique-synthesize-plan.md. Implement Session 1: Remove query_domain + Centralize Dimensions. Relevant files: research_agent/critique.py, research_agent/context.py, tests/test_critique.py, tests/test_results.py, tests/test_public_api.py, tests/test_synthesize.py, tests/test_context.py.
+Read docs/plans/2026-02-28-refactor-p2-triage-critique-synthesize-plan.md. Implement Session 2: Extract Default Section List Helper. Relevant files: research_agent/synthesize.py, tests/test_synthesize.py.
 
-Feed-Forward risk: verify dataclasses.asdict() excludes @property fields before using it in save_critique.
-
-Do only Session 1. After committing, stop and say DONE. Do NOT proceed to Session 2.
+Do only Session 2. After committing, stop and say DONE. Do NOT proceed to review.
 ```
