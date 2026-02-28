@@ -23,7 +23,11 @@ class TestResearchResult:
         assert result.critique is None
 
     def test_critique_field_populated(self):
-        cr = CritiqueResult(4, 3, 5, 2, 4, "weak", "try harder", "music")
+        cr = CritiqueResult(
+            source_diversity=4, claim_support=3, coverage=5,
+            geographic_balance=2, actionability=4,
+            weaknesses="weak", suggestions="try harder",
+        )
         result = ResearchResult(
             report="# Report",
             query="test",

@@ -343,7 +343,7 @@ def _validate_critique_yaml(data: dict) -> bool:
             return False
 
     # Check text fields are strings (or absent) and within length limit
-    for field in ("weaknesses", "suggestions", "query_domain"):
+    for field in ("weaknesses", "suggestions"):
         val = data.get(field)
         if val is None:
             continue

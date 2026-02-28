@@ -758,7 +758,7 @@ class TestAutoDetectContext:
 def _make_critique(
     meta_dir, slug="test", ts=1000000,
     scores=None, weaknesses="", suggestions="",
-    domain="music", overall_pass=True,
+    overall_pass=True,
 ):
     """Write a critique YAML file and return its path."""
     s = scores or {"source_diversity": 4, "claim_support": 3, "coverage": 4,
@@ -767,7 +767,6 @@ def _make_critique(
         **s,
         "weaknesses": weaknesses,
         "suggestions": suggestions,
-        "query_domain": domain,
         "overall_pass": overall_pass,
         "mean_score": sum(s.values()) / len(s),
         "timestamp": ts,
@@ -782,7 +781,7 @@ class TestValidateCritiqueYaml:
         data = {
             "source_diversity": 3, "claim_support": 4, "coverage": 3,
             "geographic_balance": 2, "actionability": 5,
-            "weaknesses": "ok", "suggestions": "ok", "query_domain": "test",
+            "weaknesses": "ok", "suggestions": "ok",
             "overall_pass": True, "mean_score": 3.4, "timestamp": 1,
         }
         assert _validate_critique_yaml(data) is True
@@ -791,7 +790,7 @@ class TestValidateCritiqueYaml:
         data = {
             "source_diversity": 6, "claim_support": 3, "coverage": 3,
             "geographic_balance": 3, "actionability": 3,
-            "weaknesses": "", "suggestions": "", "query_domain": "",
+            "weaknesses": "", "suggestions": "",
             "overall_pass": True,
         }
         assert _validate_critique_yaml(data) is False
@@ -800,7 +799,7 @@ class TestValidateCritiqueYaml:
         data = {
             "source_diversity": 0, "claim_support": 3, "coverage": 3,
             "geographic_balance": 3, "actionability": 3,
-            "weaknesses": "", "suggestions": "", "query_domain": "",
+            "weaknesses": "", "suggestions": "",
             "overall_pass": True,
         }
         assert _validate_critique_yaml(data) is False
@@ -817,7 +816,7 @@ class TestValidateCritiqueYaml:
         data = {
             "source_diversity": True, "claim_support": 3, "coverage": 3,
             "geographic_balance": 3, "actionability": 3,
-            "weaknesses": "", "suggestions": "", "query_domain": "",
+            "weaknesses": "", "suggestions": "",
             "overall_pass": True,
         }
         assert _validate_critique_yaml(data) is False
@@ -830,7 +829,7 @@ class TestValidateCritiqueYaml:
         data = {
             "source_diversity": 3, "claim_support": 3, "coverage": 3,
             "geographic_balance": 3, "actionability": 3,
-            "weaknesses": "x" * 201, "suggestions": "", "query_domain": "",
+            "weaknesses": "x" * 201, "suggestions": "",
             "overall_pass": True,
         }
         assert _validate_critique_yaml(data) is False

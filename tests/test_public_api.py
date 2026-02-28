@@ -225,7 +225,11 @@ class TestRunResearchAsyncHappyPath:
     @patch("research_agent.ResearchAgent")
     async def test_includes_critique_in_result(self, mock_agent_cls):
         from research_agent.critique import CritiqueResult
-        fake_critique = CritiqueResult(4, 3, 4, 3, 4, "weak", "try more", "test")
+        fake_critique = CritiqueResult(
+            source_diversity=4, claim_support=3, coverage=4,
+            geographic_balance=3, actionability=4,
+            weaknesses="weak", suggestions="try more",
+        )
 
         agent_instance = mock_agent_cls.return_value
         agent_instance.research_async = AsyncMock(return_value="# Report")

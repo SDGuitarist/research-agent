@@ -4,6 +4,7 @@ After each report, evaluates 5 quality dimensions and saves a YAML critique
 to reports/meta/ for future adaptive prompts (Tier 2).
 """
 
+import dataclasses
 import logging
 import re
 import time
@@ -45,7 +46,6 @@ class CritiqueResult:
         actionability: Score 1-5 for practical usefulness of recommendations.
         weaknesses: Top weaknesses identified (sanitized, truncated).
         suggestions: Improvement suggestions (sanitized, truncated).
-        query_domain: Domain/topic of the query for future filtering.
     """
     source_diversity: int
     claim_support: int
@@ -54,7 +54,28 @@ class CritiqueResult:
     actionability: int
     weaknesses: str
     suggestions: str
-    query_domain: str
+
+    @classmethod
+    def from_parsed(cls, parsed: dict[str, int], weaknesses: str, suggestions: str) -> "CritiqueResult":
+        """Construct from LLM-parsed scores dict.
+
+        Text fields are passed separately because sanitization
+        requirements differ between call sites.
+
+        Raises:
+            ValueError: If any dimension key is missing from parsed.
+        """
+        missing = [d for d in DIMENSIONS if d not in parsed]
+        if missing:
+            raise ValueError(f"from_parsed: missing dimension keys: {missing}")
+        scores = {d: parsed[d] for d in DIMENSIONS}
+        return cls(**scores, weaknesses=weaknesses, suggestions=suggestions)
+
+    @classmethod
+    def fallback(cls) -> "CritiqueResult":
+        """Neutral fallback when critique API call fails."""
+        scores = {d: 3 for d in DIMENSIONS}
+        return cls(**scores, weaknesses="Critique unavailable (API error)", suggestions="")
 
     @property
     def _scores(self) -> tuple[int, ...]:
@@ -83,7 +104,6 @@ def _parse_critique_response(text: str) -> dict:
         ACTIONABILITY: 3
         WEAKNESSES: ...
         SUGGESTIONS: ...
-        QUERY_DOMAIN: ...
 
     Returns dict with parsed values. Missing scores default to 3.
     """
@@ -98,7 +118,7 @@ def _parse_critique_response(text: str) -> dict:
         else:
             result[dim] = 3
 
-    for field in ("weaknesses", "suggestions", "query_domain"):
+    for field in ("weaknesses", "suggestions"):
         pattern = rf"{field.upper()}:\s*(.+)"
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
@@ -179,8 +199,7 @@ COVERAGE: [1-5]
 GEOGRAPHIC_BALANCE: [1-5]
 ACTIONABILITY: [1-5]
 WEAKNESSES: [one sentence, max 200 chars]
-SUGGESTIONS: [one sentence, max 200 chars]
-QUERY_DOMAIN: [1-3 word topic label]"""
+SUGGESTIONS: [one sentence, max 200 chars]"""
 
     try:
         response = client.messages.create(
@@ -193,30 +212,20 @@ QUERY_DOMAIN: [1-3 word topic label]"""
 
         if not response.content:
             logger.warning("Empty critique response, using defaults")
-            return _default_critique(query)
+            return CritiqueResult.fallback()
 
         parsed = _parse_critique_response(response.content[0].text)
 
     except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
         logger.warning(f"Critique API call failed: {e}, using defaults")
-        return _default_critique(query)
+        return CritiqueResult.fallback()
 
     # Truncate free-text fields (sanitization happens at consumption boundary
     # in _summarize_patterns, not at write time — avoids double-encoding)
     weaknesses = parsed.get("weaknesses", "")[:MAX_TEXT_LENGTH]
     suggestions = parsed.get("suggestions", "")[:MAX_TEXT_LENGTH]
-    query_domain = parsed.get("query_domain", "")[:MAX_TEXT_LENGTH]
 
-    return CritiqueResult(
-        source_diversity=parsed["source_diversity"],
-        claim_support=parsed["claim_support"],
-        coverage=parsed["coverage"],
-        geographic_balance=parsed["geographic_balance"],
-        actionability=parsed["actionability"],
-        weaknesses=weaknesses,
-        suggestions=suggestions,
-        query_domain=query_domain,
-    )
+    return CritiqueResult.from_parsed(parsed, weaknesses=weaknesses, suggestions=suggestions)
 
 
 def critique_report_file(
@@ -266,8 +275,7 @@ COVERAGE: [1-5]
 GEOGRAPHIC_BALANCE: [1-5]
 ACTIONABILITY: [1-5]
 WEAKNESSES: [one sentence, max 200 chars]
-SUGGESTIONS: [one sentence, max 200 chars]
-QUERY_DOMAIN: [1-3 word topic label]"""
+SUGGESTIONS: [one sentence, max 200 chars]"""
 
     response = client.messages.create(
         model=model,
@@ -278,38 +286,14 @@ QUERY_DOMAIN: [1-3 word topic label]"""
     )
 
     if not response.content:
-        return _default_critique("")
+        return CritiqueResult.fallback()
 
     parsed = _parse_critique_response(response.content[0].text)
 
     weaknesses = sanitize_content(parsed.get("weaknesses", ""))[:MAX_TEXT_LENGTH]
     suggestions = sanitize_content(parsed.get("suggestions", ""))[:MAX_TEXT_LENGTH]
-    query_domain = sanitize_content(parsed.get("query_domain", ""))[:MAX_TEXT_LENGTH]
 
-    return CritiqueResult(
-        source_diversity=parsed["source_diversity"],
-        claim_support=parsed["claim_support"],
-        coverage=parsed["coverage"],
-        geographic_balance=parsed["geographic_balance"],
-        actionability=parsed["actionability"],
-        weaknesses=weaknesses,
-        suggestions=suggestions,
-        query_domain=query_domain,
-    )
-
-
-def _default_critique(query: str) -> CritiqueResult:
-    """Return a neutral critique when the API call fails."""
-    return CritiqueResult(
-        source_diversity=3,
-        claim_support=3,
-        coverage=3,
-        geographic_balance=3,
-        actionability=3,
-        weaknesses="Critique unavailable (API error)",
-        suggestions="",
-        query_domain="",
-    )
+    return CritiqueResult.from_parsed(parsed, weaknesses=weaknesses, suggestions=suggestions)
 
 
 def save_critique(result: CritiqueResult, meta_dir: Path) -> Path:
@@ -323,25 +307,13 @@ def save_critique(result: CritiqueResult, meta_dir: Path) -> Path:
         Path to the written YAML file.
     """
     timestamp = int(time.time())
-    # Slug from query_domain or fallback
-    slug = result.query_domain.replace(" ", "_").lower()[:30] or "unknown"
-    slug = re.sub(r"[^a-z0-9_]", "", slug) or "unknown"
-    filename = f"critique-{slug}_{timestamp}.yaml"
+    filename = f"critique-{timestamp}.yaml"
     path = meta_dir / filename
 
-    data = {
-        "source_diversity": result.source_diversity,
-        "claim_support": result.claim_support,
-        "coverage": result.coverage,
-        "geographic_balance": result.geographic_balance,
-        "actionability": result.actionability,
-        "weaknesses": result.weaknesses,
-        "suggestions": result.suggestions,
-        "query_domain": result.query_domain,
-        "overall_pass": result.overall_pass,
-        "mean_score": round(result.mean_score, 2),
-        "timestamp": timestamp,
-    }
+    data = dataclasses.asdict(result)
+    data["overall_pass"] = result.overall_pass
+    data["mean_score"] = round(result.mean_score, 2)
+    data["timestamp"] = timestamp
 
     content = yaml.dump(data, default_flow_style=False, allow_unicode=True)
     atomic_write(path, content)

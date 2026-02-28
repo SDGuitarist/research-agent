@@ -17,30 +17,88 @@ from research_agent.critique import (
 
 class TestCritiqueResultGate:
     def test_pass_all_scores_above_threshold(self):
-        cr = CritiqueResult(3, 4, 3, 3, 4, "", "", "")
+        cr = CritiqueResult(
+            source_diversity=3, claim_support=4, coverage=3,
+            geographic_balance=3, actionability=4, weaknesses="", suggestions="",
+        )
         assert cr.overall_pass is True
 
     def test_pass_exactly_3_0_mean(self):
-        cr = CritiqueResult(3, 3, 3, 3, 3, "", "", "")
+        cr = CritiqueResult(
+            source_diversity=3, claim_support=3, coverage=3,
+            geographic_balance=3, actionability=3, weaknesses="", suggestions="",
+        )
         assert cr.overall_pass is True
 
     def test_pass_one_dim_at_2(self):
         """A score of 2 is allowed — only below 2 fails."""
-        cr = CritiqueResult(2, 4, 4, 4, 4, "", "", "")
+        cr = CritiqueResult(
+            source_diversity=2, claim_support=4, coverage=4,
+            geographic_balance=4, actionability=4, weaknesses="", suggestions="",
+        )
         assert cr.overall_pass is True
 
     def test_fail_one_dim_at_1(self):
         """Score of 1 is below 2, so overall_pass is False."""
-        cr = CritiqueResult(1, 4, 4, 4, 4, "", "", "")
+        cr = CritiqueResult(
+            source_diversity=1, claim_support=4, coverage=4,
+            geographic_balance=4, actionability=4, weaknesses="", suggestions="",
+        )
         assert cr.overall_pass is False
 
     def test_fail_mean_below_3(self):
-        cr = CritiqueResult(2, 2, 2, 2, 2, "", "", "")
+        cr = CritiqueResult(
+            source_diversity=2, claim_support=2, coverage=2,
+            geographic_balance=2, actionability=2, weaknesses="", suggestions="",
+        )
         assert cr.overall_pass is False
 
     def test_mean_score_property(self):
-        cr = CritiqueResult(1, 2, 3, 4, 5, "", "", "")
+        cr = CritiqueResult(
+            source_diversity=1, claim_support=2, coverage=3,
+            geographic_balance=4, actionability=5, weaknesses="", suggestions="",
+        )
         assert cr.mean_score == 3.0
+
+
+# --- Factory classmethods ---
+
+class TestCritiqueResultFactory:
+    def test_from_parsed_valid(self):
+        parsed = {
+            "source_diversity": 4, "claim_support": 3, "coverage": 5,
+            "geographic_balance": 2, "actionability": 4,
+        }
+        cr = CritiqueResult.from_parsed(parsed, weaknesses="weak", suggestions="more")
+        assert cr.source_diversity == 4
+        assert cr.coverage == 5
+        assert cr.weaknesses == "weak"
+        assert cr.suggestions == "more"
+
+    def test_from_parsed_missing_key_raises(self):
+        parsed = {"source_diversity": 4, "claim_support": 3}  # missing 3 dims
+        with pytest.raises(ValueError, match="missing dimension keys"):
+            CritiqueResult.from_parsed(parsed, weaknesses="", suggestions="")
+
+    def test_from_parsed_ignores_extra_keys(self):
+        parsed = {
+            "source_diversity": 4, "claim_support": 3, "coverage": 5,
+            "geographic_balance": 2, "actionability": 4,
+            "extra_field": 99,
+        }
+        cr = CritiqueResult.from_parsed(parsed, weaknesses="", suggestions="")
+        assert cr.source_diversity == 4
+
+    def test_fallback_returns_neutral_scores(self):
+        cr = CritiqueResult.fallback()
+        assert cr.source_diversity == 3
+        assert cr.claim_support == 3
+        assert cr.coverage == 3
+        assert cr.geographic_balance == 3
+        assert cr.actionability == 3
+        assert cr.weaknesses == "Critique unavailable (API error)"
+        assert cr.suggestions == ""
+        assert cr.overall_pass is True
 
 
 # --- _parse_critique_response ---
@@ -55,7 +113,6 @@ class TestParseCritiqueResponse:
             "ACTIONABILITY: 4\n"
             "WEAKNESSES: Only US sources found\n"
             "SUGGESTIONS: Try non-English search terms\n"
-            "QUERY_DOMAIN: music licensing"
         )
         result = _parse_critique_response(text)
         assert result["source_diversity"] == 4
@@ -65,7 +122,6 @@ class TestParseCritiqueResponse:
         assert result["actionability"] == 4
         assert result["weaknesses"] == "Only US sources found"
         assert result["suggestions"] == "Try non-English search terms"
-        assert result["query_domain"] == "music licensing"
 
     def test_missing_fields_default_to_3(self):
         result = _parse_critique_response("nothing useful here")
@@ -96,8 +152,7 @@ class TestEvaluateReport:
                 "SOURCE_DIVERSITY: 4\nCLAIM_SUPPORT: 3\nCOVERAGE: 4\n"
                 "GEOGRAPHIC_BALANCE: 2\nACTIONABILITY: 3\n"
                 "WEAKNESSES: <script>alert('xss')</script> weak sources\n"
-                "SUGGESTIONS: Search more broadly\n"
-                "QUERY_DOMAIN: AI music"
+                "SUGGESTIONS: Search more broadly"
             ))]
         )
 
@@ -126,7 +181,7 @@ class TestEvaluateReport:
                 "SOURCE_DIVERSITY: 3\nCLAIM_SUPPORT: 3\nCOVERAGE: 3\n"
                 "GEOGRAPHIC_BALANCE: 3\nACTIONABILITY: 3\n"
                 f"WEAKNESSES: {long_text}\n"
-                "SUGGESTIONS: ok\nQUERY_DOMAIN: test"
+                "SUGGESTIONS: ok"
             ))]
         )
 
@@ -162,11 +217,15 @@ class TestEvaluateReport:
 
 class TestSaveCritique:
     def test_yaml_roundtrip(self, tmp_path):
-        cr = CritiqueResult(4, 3, 5, 2, 4, "weak spot", "try harder", "music")
+        cr = CritiqueResult(
+            source_diversity=4, claim_support=3, coverage=5,
+            geographic_balance=2, actionability=4,
+            weaknesses="weak spot", suggestions="try harder",
+        )
         path = save_critique(cr, tmp_path)
 
         assert path.exists()
-        assert path.name.startswith("critique-music_")
+        assert path.name.startswith("critique-")
         assert path.suffix == ".yaml"
 
         data = yaml.safe_load(path.read_text())
@@ -176,14 +235,23 @@ class TestSaveCritique:
         assert data["overall_pass"] is True
         assert data["mean_score"] == 3.6
 
-    def test_empty_domain_uses_unknown(self, tmp_path):
-        cr = CritiqueResult(3, 3, 3, 3, 3, "", "", "")
+    def test_filename_is_timestamp_only(self, tmp_path):
+        cr = CritiqueResult(
+            source_diversity=3, claim_support=3, coverage=3,
+            geographic_balance=3, actionability=3, weaknesses="", suggestions="",
+        )
         path = save_critique(cr, tmp_path)
-        assert "unknown" in path.name
+        # Format: critique-{timestamp}.yaml — no slug
+        assert path.name.startswith("critique-")
+        parts = path.stem.split("-", 1)
+        assert parts[1].isdigit()
 
     def test_creates_meta_dir(self, tmp_path):
         nested = tmp_path / "reports" / "meta"
-        cr = CritiqueResult(3, 3, 3, 3, 3, "", "", "test")
+        cr = CritiqueResult(
+            source_diversity=3, claim_support=3, coverage=3,
+            geographic_balance=3, actionability=3, weaknesses="", suggestions="",
+        )
         path = save_critique(cr, nested)
         assert path.exists()
         assert nested.exists()
@@ -208,7 +276,10 @@ class TestAgentCritiqueIntegration:
         from research_agent.modes import ResearchMode
 
         agent = ResearchAgent(mode=ResearchMode.standard())
-        fake_result = CritiqueResult(3, 3, 3, 3, 3, "", "", "test")
+        fake_result = CritiqueResult(
+            source_diversity=3, claim_support=3, coverage=3,
+            geographic_balance=3, actionability=3, weaknesses="", suggestions="",
+        )
         with patch("research_agent.agent.evaluate_report", return_value=fake_result) as mock_eval, \
              patch("research_agent.agent.save_critique") as mock_save:
             agent._run_critique("q", 5, 2, [], "full_report")
