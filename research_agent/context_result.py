@@ -23,7 +23,7 @@ class ReportTemplate:
         name: Display name for the context (e.g. "Pacific Flow Entertainment").
         draft_sections: Ordered (heading, description) pairs for draft pass.
         final_sections: Ordered (heading, description) pairs for final pass.
-        context_usage: Instruction for how to use business context in synthesis.
+        context_usage: Instruction for how to use research context in synthesis.
     """
 
     name: str

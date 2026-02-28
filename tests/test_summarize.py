@@ -459,10 +459,10 @@ class TestStructuredSummaries:
 
     @pytest.mark.asyncio
     async def test_structured_true_uses_facts_quotes_tone_prompt(self):
-        """structured=True should use FACTS/KEY QUOTES/TONE prompt format."""
+        """structured=True should use FACTS/KEY EVIDENCE/PERSPECTIVE prompt format."""
         mock_client = AsyncMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="FACTS: Key facts here.\nKEY QUOTES: None found\nTONE: N/A")]
+        mock_response.content = [MagicMock(text="FACTS: Key facts here.\nKEY EVIDENCE: None found\nPERSPECTIVE: N/A")]
         mock_client.messages.create.return_value = mock_response
 
         await summarize_chunk(
@@ -477,8 +477,8 @@ class TestStructuredSummaries:
         user_content = call_args.kwargs["messages"][0]["content"]
 
         assert "FACTS:" in user_content
-        assert "KEY QUOTES:" in user_content
-        assert "TONE:" in user_content
+        assert "KEY EVIDENCE:" in user_content
+        assert "PERSPECTIVE:" in user_content
 
     @pytest.mark.asyncio
     async def test_structured_false_uses_original_prompt(self):
@@ -545,7 +545,7 @@ class TestStructuredSummaries:
         """structured flag should propagate from summarize_all to summarize_chunk."""
         mock_client = AsyncMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="FACTS: data\nKEY QUOTES: None\nTONE: N/A")]
+        mock_response.content = [MagicMock(text="FACTS: data\nKEY EVIDENCE: None\nPERSPECTIVE: N/A")]
         mock_client.messages.create.return_value = mock_response
 
         contents = [

@@ -97,8 +97,8 @@ URL: {url}
 
 Respond in this exact format:
 FACTS: [2-3 sentences of key facts]
-KEY QUOTES: [2-3 exact phrases from reviews/marketing, or "None found"]
-TONE: [one sentence on persuasion approach, or "N/A"]"""
+KEY EVIDENCE: [2-3 direct quotes or data points that support the main claims, or "None found"]
+PERSPECTIVE: [one sentence on the source's analytical stance or framing, or "N/A"]"""
         chunk_max_tokens = 800
     else:
         user_prompt = f"""Summarize the key information from this webpage in 2-4 sentences. Focus on facts, findings, and actionable information. Be concise.
@@ -168,7 +168,7 @@ async def summarize_content(
         client: Anthropic client
         content: Extracted content to summarize
         model: Model to use for summarization
-        structured: If True, use FACTS/KEY QUOTES/TONE format
+        structured: If True, use FACTS/KEY EVIDENCE/PERSPECTIVE format
         max_chunks: Maximum chunks per source
         semaphore: Optional semaphore for concurrency limiting across sources
         rate_limit_event: Optional event to signal when a 429 is encountered
@@ -219,7 +219,7 @@ async def summarize_all(
         client: Anthropic client
         contents: List of extracted content
         model: Model to use
-        structured: If True, use FACTS/KEY QUOTES/TONE format
+        structured: If True, use FACTS/KEY EVIDENCE/PERSPECTIVE format
         max_chunks: Maximum chunks per source
 
     Returns:
