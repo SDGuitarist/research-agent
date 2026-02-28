@@ -1,40 +1,45 @@
-# Handoff: All P3 Todos Complete
+# Handoff: Cycle 19 Plan Review Complete
 
 ## Current State
 
 **Project:** Research Agent
-**Phase:** All review todos resolved — ready for new feature cycle
+**Phase:** Plan reviewed and corrected — ready for Work phase (Session 1)
 **Branch:** `main`
 **Date:** February 28, 2026
-**Commits:** `be38bb0`, `225a293`
+**Commits:** `8e31112`, `fff05d9`, `c5ae4a1`
 
 ---
 
 ## What Was Done This Session
 
-### Batch 1 — Todos 083, 084, 088
+Applied 3 batches of review corrections to the Cycle 19 MCP Server plan.
 
-1. **083 (f-string logging in context.py)**: Already fixed in a prior commit — marked done
-2. **084 (YAML frontmatter size limit)**: Added 8 KB size check before `yaml.safe_load()` in `context.py:_parse_template()` + test
-3. **088 (_DEFAULT_FINAL_START coupling)**: Added test assertion `_DEFAULT_FINAL_START == 5` in `test_synthesize.py`
-4. **Committed**: `be38bb0`
+### Batch 1 — Critical (commit `8e31112`)
+- Fixed `list_modes()` return type to use `list[ModeInfo]` (not dict)
+- Fixed `list_available_contexts()` return type to use `list[tuple[str, str]]`
+- Added missing `get_reports` re-export fix in Session 2 Step 1 (`__init__.py`)
+- Added `logger = logging.getLogger(__name__)` to code sketch
+- Added lazy imports inside tool functions to avoid import-time side effects
 
-### Batch 2 — Todos 050, 051, 052, 053
+### Batch 2 — Medium (commit `fff05d9`)
+- Replaced `save_path.write_text()` with `atomic_write()` from `safe_io.py`
+- Updated except clause to catch `(OSError, StateError)`
+- Added path-stripping in `except ResearchError` handler (security: no leaked paths)
+- Corrected test mock counts: test_agent.py=42, test_coverage.py=0, total=57
+- Removed test_coverage.py from Session 1 Step 3
+- Dropped `__main_mcp__.py` (redundant — `if __name__ == "__main__"` suffices)
+- Clarified `context` parameter docstring with three-way behavior
 
-5. **050 (f-string logging in coverage.py)**: Fixed 4 f-string logger calls in `query_validation.py` (code was extracted there from coverage.py)
-6. **051 (retry query character validation)**: Added search operator blocking (`site:`, `inurl:`, etc.), 120-char length cap, non-printable character stripping to `validate_query_list()` + 3 tests
-7. **052 (magic overlap thresholds)**: Already fixed in prior session (named constant `MAX_TRIED_OVERLAP`) — marked done
-8. **053 (tried_queries duplication)**: Already fixed in prior session (`_collect_tried_queries` helper) — marked done
-9. **Committed**: `225a293`
+### Batch 3 — Housekeeping (commit `c5ae4a1`)
+- Split `_dns_cache` fix into its own Session 2 step (separate concern)
+- Added `asyncio_mode = "auto"` to Session 2 pyproject.toml changes
+- Added `pip install -e ".[test]"` preamble to Session 3
+- Updated test count from "558+" to "769" everywhere
+- Added "Optional: Consider for This Cycle or Next" section (delete_report, critique_report, list_saved_reports format)
 
-### Files Changed
-
-- `research_agent/context.py` — YAML size limit guard
-- `research_agent/query_validation.py` — %-style logging, search operator blocking, length cap, non-printable stripping
-- `tests/test_context.py` — oversized YAML test
-- `tests/test_coverage.py` — search operator, length cap, non-printable tests
-- `tests/test_synthesize.py` — `_DEFAULT_FINAL_START` assertion
-- `todos/050-*`, `todos/051-*`, `todos/052-*`, `todos/053-*`, `todos/083-*`, `todos/084-*`, `todos/088-*` — all marked done
+### Cleanup
+- Deleted 4 stale feature branches
+- Pushed all commits to `main`
 
 ### Test Count
 
@@ -44,20 +49,20 @@
 
 ## Three Questions
 
-1. **Hardest fix in this batch?** 051 — deciding where to add search operator blocking. It belongs in `validate_query_list()` (shared validation) rather than `_validate_retry_queries()` (coverage-specific wrapper), so both decompose and coverage paths get the protection.
+1. **Hardest decision in this session?** Whether to keep or remove `__main_mcp__.py`. Removed it — `if __name__ == "__main__": main()` in `mcp_server.py` already enables `python -m research_agent.mcp_server`, so the extra file was pure duplication.
 
-2. **What did you consider fixing differently, and why didn't you?** Considered adding the search operator check only to the coverage path since decompose queries come from Claude's own analysis (not from potentially-injected content). Put it in the shared path anyway because defense-in-depth costs nothing here.
+2. **What did you reject, and why?** Considered updating the research insights example code (line ~314) to also include path-stripping, but left it alone — it's illustrative context, not the authoritative code sketch. Updating it would add noise for no functional benefit.
 
-3. **Least confident about going into the next batch or compound phase?** Nothing — all pending todos are resolved. The codebase is clean for a new feature cycle.
+3. **Least confident about going into Work phase?** The `_dns_cache` fix (Session 2 Step 2) — threading a local dict through `fetch_urls()` internals may touch more functions than expected. The plan says "mechanical parameter threading" but the actual call chain needs verification during implementation.
 
 ---
 
 ## Next Phase
 
-All review todos (P1 through P3) are resolved. No pending items remain. Next work should start a new brainstorm/plan cycle for a new feature.
+**Work phase** — implement Session 1 (print-to-logging conversion).
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. Start a new brainstorm/plan cycle for the next feature.
+Read docs/plans/2026-02-28-feat-cycle-19-mcp-server-plan.md, Session 1 only. Implement print-to-logging conversion: agent.py + test_agent.py (Step 1), synthesize.py + test_synthesize.py (Step 2), relevance.py + CLI logging (Step 3). Relevant files: research_agent/agent.py, research_agent/synthesize.py, research_agent/relevance.py, research_agent/cli.py, tests/test_agent.py, tests/test_synthesize.py. Do only Session 1 — commit each step and stop after Step 3.
 ```
