@@ -351,40 +351,40 @@ class TestResearchModeRelevanceThresholds:
 
 
 class TestResearchModeSynthesisTemplates:
-    """Tests for synthesis instruction templates (Cycle 10)."""
+    """Tests for synthesis instruction templates.
 
-    def test_deep_synthesis_contains_all_12_section_headers(self):
-        """Deep mode synthesis_instructions should contain all 12 section headers."""
+    PFE-specific sections were moved to contexts/pfe.md YAML frontmatter.
+    Deep and standard modes now have generic instructions — section structure
+    comes from the context file's template, not from modes.py.
+    """
+
+    def test_deep_synthesis_is_generic(self):
+        """Deep mode synthesis_instructions should NOT contain PFE sections."""
         mode = ResearchMode.deep()
         instructions = mode.synthesis_instructions
 
-        expected_sections = [
-            "Executive Summary",
-            "Company Overview",
-            "Service Portfolio",
-            "Marketing Positioning",
-            "Messaging Theme Analysis",
-            "Buyer Psychology",
-            "Content & Marketing Tactics",
-            "Business Model Analysis",
-            "Competitive Implications",
-            "Positioning Advice",
-            "Limitations & Gaps",
-            "Sources",
-        ]
-        for section in expected_sections:
-            assert section in instructions, f"Missing section: {section}"
+        # PFE-specific sections removed
+        assert "Company Overview" not in instructions
+        assert "Service Portfolio" not in instructions
+        assert "Messaging Theme Analysis" not in instructions
+        assert "Buyer Psychology" not in instructions
+        assert "Competitive Implications" not in instructions
 
-    def test_deep_analytical_sections_have_insufficient_guardrail(self):
-        """Each analytical section (5-10) should have 'insufficient' guardrail text."""
+    def test_deep_synthesis_has_guardrail(self):
+        """Deep mode should still have 'insufficient' guardrail text."""
         mode = ResearchMode.deep()
         instructions = mode.synthesis_instructions
 
         assert "insufficient" in instructions.lower()
         assert "rather than speculating" in instructions
 
+    def test_deep_synthesis_has_word_target(self):
+        """Deep mode should still have word target."""
+        mode = ResearchMode.deep()
+        assert "3500 words" in mode.synthesis_instructions
+
     def test_standard_mode_does_not_contain_section_template(self):
-        """Standard mode should NOT have the 12-section template."""
+        """Standard mode should NOT have the PFE section template."""
         mode = ResearchMode.standard()
         instructions = mode.synthesis_instructions
 
@@ -392,16 +392,22 @@ class TestResearchModeSynthesisTemplates:
         assert "Buyer Psychology" not in instructions
         assert "Business Model Analysis" not in instructions
 
-    def test_standard_mode_mentions_competitive_implications(self):
-        """Standard mode should mention competitive implications."""
+    def test_standard_mode_has_limitations_section(self):
+        """Standard mode should mention Limitations & Gaps."""
         mode = ResearchMode.standard()
         instructions = mode.synthesis_instructions
 
-        assert "competitive implications" in instructions.lower()
         assert "Limitations & Gaps" in instructions
 
+    def test_standard_mode_no_pfe_competitive_mention(self):
+        """Standard mode should NOT mention competitive implications."""
+        mode = ResearchMode.standard()
+        instructions = mode.synthesis_instructions
+
+        assert "competitive implications" not in instructions.lower()
+
     def test_quick_mode_parameters_unchanged(self):
-        """Quick mode should be unchanged by Cycle 10."""
+        """Quick mode should be unchanged."""
         mode = ResearchMode.quick()
 
         assert mode.word_target == 300

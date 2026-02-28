@@ -1,3 +1,22 @@
+---
+name: Pacific Flow Entertainment
+template:
+  draft:
+    - Executive Summary: "2-3 paragraph overview of key findings."
+    - Company Overview: "Factual: founding, location, team size, years in business, certifications."
+    - Service Portfolio: "Factual: services offered, pricing if found, packages, service area."
+    - Marketing Positioning: "Brand voice, taglines, unique selling propositions, stated differentiators."
+    - Messaging Theme Analysis: "3-5 persuasion patterns. Quote exact phrases. Categorize themes (authority, social proof, scarcity, emotional appeal, expertise)."
+    - Buyer Psychology: "Fears, desires, emotional triggers in marketing. Objections preemptively addressed. Draw from reviews and testimonials."
+    - Content & Marketing Tactics: "SEO, social media, review strategy, referral networks, paid advertising, content marketing."
+    - Business Model Analysis: "Revenue structure, pricing strategy, competitive moats, scalability, vulnerabilities."
+  final:
+    - Competitive Implications: "Threats, opportunities, gaps in the competitor's approach."
+    - Positioning Advice: "3-5 actionable angles based on findings."
+  context_usage: >
+    Use business context for Competitive Implications and Positioning Advice
+    sections. Keep factual analysis objective and context-free.
+---
 # Business Context — Pacific Flow Entertainment & Alex Guillen Music
 
 **Purpose:** Canonical reference for research agents, lead scoring, outreach calibration, and competitive analysis synthesis. Defines brand identities, market positioning, pricing, and competitive boundaries so all automated tools align with business goals.
