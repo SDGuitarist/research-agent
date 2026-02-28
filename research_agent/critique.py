@@ -201,10 +201,11 @@ QUERY_DOMAIN: [1-3 word topic label]"""
         logger.warning(f"Critique API call failed: {e}, using defaults")
         return _default_critique(query)
 
-    # Sanitize + truncate free-text fields
-    weaknesses = sanitize_content(parsed.get("weaknesses", ""))[:MAX_TEXT_LENGTH]
-    suggestions = sanitize_content(parsed.get("suggestions", ""))[:MAX_TEXT_LENGTH]
-    query_domain = sanitize_content(parsed.get("query_domain", ""))[:MAX_TEXT_LENGTH]
+    # Truncate free-text fields (sanitization happens at consumption boundary
+    # in _summarize_patterns, not at write time — avoids double-encoding)
+    weaknesses = parsed.get("weaknesses", "")[:MAX_TEXT_LENGTH]
+    suggestions = parsed.get("suggestions", "")[:MAX_TEXT_LENGTH]
+    query_domain = parsed.get("query_domain", "")[:MAX_TEXT_LENGTH]
 
     return CritiqueResult(
         source_diversity=parsed["source_diversity"],

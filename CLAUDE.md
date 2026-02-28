@@ -18,8 +18,8 @@ research_agent/
 ├── sanitize.py    — Shared content sanitization (prompt injection defense)
 ├── summarize.py   — Batched chunk summarization with Claude
 ├── relevance.py   — Source quality scoring (1-5), gate: full_report/short_report/insufficient_data
-├── synthesize.py  — Report generation with mode-specific instructions + business context validation
-├── context.py     — Business context loading (search, synthesis, full slices)
+├── synthesize.py  — Report generation with mode-specific instructions + context-aware templates
+├── context.py     — Research context loading, auto-detection, critique history
 ├── skeptic.py     — Adversarial verification: evidence, timing, framing agents
 ├── modes.py          — Frozen dataclass configs: quick/standard/deep (includes model)
 ├── context_result.py — Three-way context result (loaded/empty/not_configured)
@@ -61,7 +61,7 @@ pip install -e ".[test]"   # install package + test deps in editable mode
 
 - Python 3.14
 - `.env` must contain: `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`
-- `research_context.md` — business context for personalized decomposition
+- `contexts/` directory — optional research context files with YAML templates
 - All models use `claude-sonnet-4-20250514`
 
 ## Code Style

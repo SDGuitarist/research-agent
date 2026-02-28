@@ -113,9 +113,9 @@ class TestEvaluateReport:
 
         assert result.source_diversity == 4
         assert result.geographic_balance == 2
-        # Sanitized: < and > replaced
-        assert "<script>" not in result.weaknesses
-        assert "&lt;script&gt;" in result.weaknesses
+        # Raw text stored — sanitization happens at consumption boundary
+        # (_summarize_patterns in context.py), not at write time
+        assert "<script>" in result.weaknesses
         assert len(result.weaknesses) <= 200
 
     def test_truncates_long_text(self):

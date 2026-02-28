@@ -363,7 +363,7 @@ def _summarize_patterns(passing_critiques: list[dict]) -> str:
     Args:
         passing_critiques: Pre-filtered list of critiques where overall_pass is True.
 
-    Returns a sanitized text suitable for injection into prompts,
+    Returns sanitized text suitable for injection into prompts,
     or empty string if fewer than _MIN_CRITIQUES_FOR_GUIDANCE.
     """
     if len(passing_critiques) < _MIN_CRITIQUES_FOR_GUIDANCE:

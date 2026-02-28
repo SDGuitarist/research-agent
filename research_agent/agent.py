@@ -105,7 +105,7 @@ class ResearchAgent:
         """Load research context using the given effective parameters.
 
         Args:
-            context_path: Path to context file, or None for default.
+            context_path: Path to context file, or None (returns not_configured).
             no_context: If True, skip context loading entirely.
             cache: Optional per-run cache dict to avoid redundant reads.
         """

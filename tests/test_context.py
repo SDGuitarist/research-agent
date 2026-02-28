@@ -948,7 +948,7 @@ class TestSummarizePatterns:
              "weaknesses": "R&D sources underrepresented"},
         ] * 4
         result = _summarize_patterns(critiques)
-        # & should become &amp; (single sanitization)
+        # & should become &amp; (single sanitization at read time)
         assert "&amp;" in result
         # Must NOT be double-encoded to &amp;amp;
         assert "&amp;amp;" not in result
