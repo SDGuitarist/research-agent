@@ -300,10 +300,16 @@ Examples:
         sys.exit(2)
 
     # Configure logging (after parsing so --verbose is available)
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.WARNING,
-        format="%(levelname)s: %(name)s: %(message)s",
-    )
+    # Default: INFO to stderr with clean format (preserves old print() UX).
+    # --verbose: DEBUG with module-prefixed format for diagnostics.
+    handler = logging.StreamHandler(sys.stderr)
+    if args.verbose:
+        handler.setFormatter(logging.Formatter("%(levelname)s: %(name)s: %(message)s"))
+        logging.getLogger("research_agent").setLevel(logging.DEBUG)
+    else:
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logging.getLogger("research_agent").setLevel(logging.INFO)
+    logging.getLogger("research_agent").addHandler(handler)
 
     # Determine mode
     mode_flag_used = args.quick or args.deep or args.standard

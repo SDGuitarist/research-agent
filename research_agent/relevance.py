@@ -278,7 +278,7 @@ async def evaluate_sources(
 
     # Count unique sources for display
     unique_urls = {s.url for s in summaries}
-    print(f"\n      Scoring {len(summaries)} chunks from {len(unique_urls)} sources...")
+    logger.info("Scoring %d chunks from %d sources...", len(summaries), len(unique_urls))
 
     # Pre-sanitize query once for the whole batch (score_source uses it directly)
     safe_query = sanitize_content(query)
@@ -320,7 +320,7 @@ async def evaluate_sources(
             dropped_sources.append(source)
             status = "DROP"
 
-        print(f"      Source {i} ({domain}): score {score}/5{chunk_label} — {status}")
+        logger.info("Source %d (%s): score %d/5%s — %s", i, domain, score, chunk_label, status)
 
     total_scored = len(source_scores)
     total_survived = total_scored - len(dropped_sources)
@@ -352,7 +352,7 @@ async def evaluate_sources(
             f"below minimum threshold ({mode.min_sources_short_report}) for {mode.name} mode"
         )
 
-    print(f"      Decision: {decision} ({total_survived}/{total_scored} sources passed)")
+    logger.info("Decision: %s (%d/%d sources passed)", decision, total_survived, total_scored)
 
     # Convert dropped aggregation dicts to SourceScore objects
     dropped_as_scores = tuple(
