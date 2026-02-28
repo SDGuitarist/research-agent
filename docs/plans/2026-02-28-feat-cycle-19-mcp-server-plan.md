@@ -382,7 +382,7 @@ Both transports log to stderr. Never configure a stdout handler. The MCP server 
 - [ ] `list_contexts` returns available context files with previews
 - [ ] All errors use `ToolError` with actionable, LLM-readable messages
 - [ ] Zero `print()` calls remain in `run_research_async()` call path
-- [ ] All 558+ existing tests pass after print-to-logging conversion
+- [ ] All 769 existing tests pass after print-to-logging conversion
 - [ ] New MCP server tests use `mcp.test_client()` and cover all tools + error paths
 - [ ] `.env` loading works (API keys found when `.env` file exists)
 
@@ -426,7 +426,7 @@ Both transports log to stderr. Never configure a stdout handler. The MCP server 
   logging.getLogger("research_agent").addHandler(handler)
   logging.getLogger("research_agent").setLevel(logging.INFO)
   ```
-- Run full `pytest tests/ -v` — all 558+ tests must pass
+- Run full `pytest tests/ -v` — all 769 tests must pass
 
 **Estimated changes:** ~200-250 lines (production + tests combined)
 **Commits:** One per step (~3 commits)
@@ -441,11 +441,17 @@ Action items:
 - Move `REPORTS_DIR`, `sanitize_filename`, `get_auto_save_path`, and `get_reports` from `cli.py` to new `research_agent/report_store.py`
 - Update `cli.py` to import from `report_store`
 - **Update `__init__.py`**: change `from .cli import get_reports` to `from .report_store import get_reports` — this re-export must point to the new module or the public API breaks
-- Fix `_dns_cache` in `fetch.py` to per-call local dict (preparatory fix for MCP server safety)
 
 Run `pytest tests/ -v` — all tests must still pass.
 
-**Step 2: Create `mcp_server.py` (~120-140 lines)**
+**Step 2: Fix `_dns_cache` in `fetch.py`** (separate concern — MCP server safety prep)
+
+- Convert `_dns_cache` module-level dict in `fetch.py` to a per-call local dict inside `fetch_urls()`
+- Thread the local dict through any internal functions that reference it
+
+Run `pytest tests/ -v` — all tests must still pass.
+
+**Step 3: Create `mcp_server.py` (~120-140 lines)**
 
 ```python
 """MCP server for the research agent."""
@@ -684,14 +690,17 @@ if __name__ == "__main__":
     main()
 ```
 
-**Step 3: Update `pyproject.toml`**
+**Step 4: Update `pyproject.toml`**
 - Add `"fastmcp>=2.0,<4.0"` to `dependencies`
 - Add `research-agent-mcp = "research_agent.mcp_server:main"` to `[project.scripts]`
+- Add `asyncio_mode = "auto"` under `[tool.pytest.ini_options]` (eliminates `@pytest.mark.asyncio` boilerplate for Session 3 tests)
 
-**Estimated changes:** ~190 lines (new files + pyproject.toml + cli.py refactor)
-**Commits:** One per step (~3 commits)
+**Estimated changes:** ~200 lines (new files + pyproject.toml + cli.py refactor + fetch.py fix)
+**Commits:** One per step (~4 commits)
 
 ### Session 3: MCP Server Tests
+
+**Preamble:** Run `pip install -e ".[test]"` to pick up the `fastmcp` dependency added to `pyproject.toml` in Session 2.
 
 **Goal:** Test all 5 tools, both transports, and error paths.
 
@@ -789,6 +798,14 @@ Tests to write:
 | gptr-mcp | 5 coarse tools over complex pipeline | Our model — few tools, LLM doesn't orchestrate |
 | arxiv-mcp-server | Modular tools/ directory, clean separation | Good structure reference for future growth |
 | Firecrawl MCP | 12 tools + async job pair | Async useful later, not needed yet |
+
+## Optional: Consider for This Cycle or Next
+
+These are low-effort additions that reuse existing infrastructure. Not required for MVP but worth considering if time allows in Session 2 or a follow-up cycle.
+
+- **`delete_report(filename)` tool** (~10 lines) — Reuses `_validate_report_filename()` for path safety, then calls `path.unlink()`. Gives MCP clients the ability to clean up old reports without shell access.
+- **`critique_report(filename)` tool** (~20 lines) — Wraps the already-exported `critique_report_file()` from `__init__.py`. Lets an agent request a quality check on a saved report and decide whether to re-run the research.
+- **Improve `list_saved_reports` return format** — Current format (`- filename (date: query_name)`) is human-readable but hard for LLMs to parse programmatically. Consider returning structured lines like `filename | date | query_name` or a simple table, so calling agents can reliably extract filenames for `get_report` calls.
 
 ## Feed-Forward
 
