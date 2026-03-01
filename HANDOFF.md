@@ -1,65 +1,65 @@
-# Handoff: Cycle 19 MCP Server — Review Complete
+# Handoff: Cycle 19 MCP Server — Fix Phase Complete
 
 ## Current State
 
 **Project:** Research Agent
-**Phase:** Review complete — Cycle 19
+**Phase:** Fix-batched complete — Cycle 19
 **Branch:** `main`
 **Date:** February 28, 2026
-**Commit:** `c7d9ce1` (no new commits — review only)
+**Commits:** `6ca586c`, `d68c72c`, `96e3fe2` (3 batch commits)
 
 ---
 
 ## What Was Done This Session
 
-Ran `/workflows:review` on the full Cycle 19 diff (`c7bbd85..HEAD`, 10 commits, 20 files). Launched 7 review agents in parallel:
+Fixed all 11 review findings from `docs/reviews/cycle-19-mcp-server/REVIEW-SUMMARY.md` in 3 batches:
 
-1. **kieran-python-reviewer** — 0 P1, 3 P2, 1 P3
-2. **security-sentinel** — 1 P1, 3 P2, 2 P3, 1 P4
-3. **performance-oracle** — No issues (DNS cache change confirmed non-regression)
-4. **architecture-strategist** — No blocking issues (clean layering, additive pattern upheld)
-5. **agent-native-reviewer** — 3 critical parity gaps, 4 warnings
-6. **code-simplicity-reviewer** — 1 redundant test class (43 lines)
-7. **learnings-researcher** — 10 relevant patterns from past cycles, all correctly applied
+### Batch 1 — Security + Quality (089, 090, 091)
+- **089 (P1):** Blocked non-localhost HTTP binding with hard `sys.exit()` — eliminates unauthenticated network access
+- **090 (P2):** Broadened path-stripping regex to catch `/opt/`, `/var/`, `/tmp/`, `/app/` paths
+- **091 (P2):** Converted all 7 f-string logger calls in agent.py to `%s` lazy formatting
 
-### Files Created
+### Batch 2 — Test + Validation + Agent Parity (092, 093, 094, 095)
+- **092 (P2):** Added `assert_called_once_with` for atomic_write in auto-save test
+- **093 (P2):** Added `VALID_MODES` early validation at MCP boundary
+- **094 (P2):** Added `critique_report` MCP tool (6th tool, wraps public API)
+- **095 (P2):** Added `skip_critique` and `max_sources` params to `run_research`
 
-- `docs/reviews/cycle-19-mcp-server/REVIEW-SUMMARY.md` — Full synthesis with recommended fix order
-- `todos/089-pending-p1-unauthenticated-http-transport.md`
-- `todos/090-pending-p2-path-stripping-regex-gaps.md`
-- `todos/091-pending-p2-fstring-logger-calls-agent.md`
-- `todos/092-pending-p2-auto-save-test-assert-gap.md`
-- `todos/093-pending-p2-mode-validation-mcp-boundary.md`
-- `todos/094-pending-p2-missing-critique-report-tool.md`
-- `todos/095-pending-p2-missing-skip-critique-max-sources.md`
-- `todos/096-pending-p3-remove-redundant-validate-tests.md`
-- `todos/097-pending-p3-context-param-normalization.md`
-- `todos/098-pending-p3-enrich-mcp-instructions.md`
-- `todos/099-pending-p3-tighten-fastmcp-version.md`
+### Batch 3 — Cleanup + Polish (096, 097, 098, 099)
+- **096 (P3):** Removed redundant `TestValidateReportFilename` class (-43 lines), migrated unique test
+- **097 (P3):** Added context param normalization (`"null"`/`""` → `None`)
+- **098 (P3):** Enriched MCP instructions to mention all 6 tools
+- **099 (P3):** Tightened fastmcp version to `>=2.0,<3.0`
 
-### Feed-Forward Risk Resolution
+### Files Changed
+- `research_agent/mcp_server.py` — All 3 batches
+- `research_agent/agent.py` — Batch 1 (f-string loggers)
+- `tests/test_mcp_server.py` — All 3 batches
+- `pyproject.toml` — Batch 3 (version pin)
+- 11 todo files renamed from `pending` to `done`
 
-- **Plan risk** ("HTTP transport reconfiguration"): Confirmed working. Security reviewer flagged the deeper issue — no authentication on HTTP transport (089).
-- **Work risk** ("auto-save test coverage"): Confirmed gap. Test patches `atomic_write` but never asserts it was called (092).
+### Test Results
+- Full suite: 802 tests passing (pre-commit hook runs all)
+- MCP server tests: 33 tests (was 31, added 8 new, removed 7 redundant, +1 migrated)
 
 ---
 
 ## Three Questions
 
-1. **Hardest judgment call in this review?** Whether the agent-native parity gaps (missing critique_report, skip_critique, max_sources) should be P1 or P2. The agent-native reviewer scored these as "critical", but the Cycle 19 plan explicitly scoped 5 tools. These are real parity gaps but not regressions — they're missing features. P2 is correct: should fix, but doesn't block merging the current scope.
+1. **Hardest fix in this batch?** The path-stripping regex (090). Balancing coverage (catching `/opt/`, `/var/`, `/tmp/`) against over-matching (not stripping URLs) required a regex with negative lookbehind `(?<!:/)(?<!/)` that's correct but not immediately obvious.
 
-2. **What did you consider flagging but chose not to, and why?** The `except Exception` catch-all in `mcp_server.py:65`. Every reviewer noted it, and the learnings researcher confirmed the project convention against bare catch-alls. But the code explicitly documents why this is the one justified exception (MCP server boundary), and the comment references the CLAUDE.md rule.
+2. **What did you consider fixing differently, and why didn't you?** For 089, considered requiring `MCP_AUTH_TOKEN` bearer token for HTTP transport (Option A from the todo). Rejected because FastMCP doesn't expose middleware hooks for auth validation — implementing it would require monkey-patching or forking the library. Localhost-only restriction is simpler and sufficient for a local research tool.
 
-3. **What might this review have missed?** The downstream prompt injection surface. The MCP server introduces a new entry point where queries originate from potentially untrusted MCP clients. The existing three-layer defense was designed for CLI input. Whether the threat model shift requires strengthening those defenses was not deeply audited.
+3. **Least confident about going into the compound phase?** The critique_report tool's catch-all `except Exception`. It follows the justified server-boundary pattern, but it's now the second such catch-all in the file. If `critique_report_file` changes its exception types, errors would be silently caught. This is acceptable risk for a tool that's non-critical to the research pipeline.
 
 ---
 
 ## Next Phase
 
-**Fix phase** — address review findings, starting with P1 (089) then P2s in order.
+**Compound phase** — document solutions from this fix cycle in `docs/solutions/`.
 
 ### Prompt for Next Session
 
 ```
-Read docs/reviews/cycle-19-mcp-server/REVIEW-SUMMARY.md. Fix todos 089-099 using /fix-batched. Start with P1 (089 - unauthenticated HTTP transport), then P2s in recommended order: 090, 091, 092, 093, 094, 095. Relevant files: research_agent/mcp_server.py, research_agent/agent.py, tests/test_mcp_server.py, pyproject.toml.
+Read docs/fixes/cycle-19-mcp-server/batch1.md, batch2.md, batch3.md. Run /workflows:compound to document the key patterns from fixing 11 review findings. Focus on: (1) MCP server boundary security patterns, (2) agent-native parity checklist, (3) defensive input normalization for LLM callers. Relevant files: research_agent/mcp_server.py, docs/fixes/cycle-19-mcp-server/.
 ```
