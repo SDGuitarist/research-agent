@@ -185,6 +185,22 @@ class TestRunResearchErrors:
         assert "/Users/" not in str(exc_info.value)
         assert "Research failed unexpectedly" in str(exc_info.value)
 
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.run_research_async")
+    async def test_path_stripping_covers_common_unix_paths(self, mock_run, client):
+        """Path stripping catches /opt/, /var/, /tmp/, /app/ paths too."""
+        from research_agent.errors import ResearchError
+
+        mock_run.side_effect = ResearchError(
+            "Failed to read /opt/app/data/config.yaml"
+        )
+
+        with pytest.raises(ToolError) as exc_info:
+            await client.call_tool("run_research", {"query": "test"})
+
+        assert "/opt/" not in str(exc_info.value)
+        assert "<path>" in str(exc_info.value)
+
 
 # ---------------------------------------------------------------------------
 # list_saved_reports
@@ -406,6 +422,23 @@ class TestTransportValidation:
         )
         assert result.returncode != 0
         assert "Unknown MCP_TRANSPORT" in result.stderr
+
+    def test_non_localhost_http_refused(self):
+        """HTTP transport on non-loopback address is refused."""
+        result = subprocess.run(
+            [sys.executable, "-m", "research_agent.mcp_server"],
+            env={
+                "PATH": "/usr/bin:/bin",
+                "MCP_TRANSPORT": "http",
+                "MCP_HOST": "0.0.0.0",
+                "HOME": str(Path.home()),
+            },
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode != 0
+        assert "Refusing to bind" in result.stderr
 
 
 # ---------------------------------------------------------------------------

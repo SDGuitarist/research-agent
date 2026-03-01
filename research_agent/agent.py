@@ -366,7 +366,7 @@ class ResearchAgent:
                     results = await asyncio.to_thread(search, sq, per_sq_sources)
                     return (sq, results)
                 except SearchError as e:
-                    logger.warning(f"Sub-query search failed: {e}, continuing")
+                    logger.warning("Sub-query search failed: %s, continuing", e)
                     return (sq, [])
 
         completed = await asyncio.gather(*[_search_one(sq) for sq in sub_queries])
@@ -455,7 +455,7 @@ class ResearchAgent:
         if not contents:
             raise ResearchError("Could not extract content from any pages")
 
-        logger.info(f"Summarizing content with {self.mode.model}...")
+        logger.info("Summarizing content with %s...", self.mode.model)
         if not quiet:
             self._next_step(f"Summarizing content with {self.mode.model}...")
         summaries = await summarize_all(
@@ -639,7 +639,7 @@ class ResearchAgent:
         # Synthesize report (full or short)
         self._last_source_count = len(evaluation.surviving_sources)
         self._last_gate_decision = evaluation.decision
-        logger.info(f"Synthesizing report with {self.mode.model}...")
+        logger.info("Synthesizing report with %s...", self.mode.model)
         limited_sources = evaluation.decision == "short_report"
         surviving = evaluation.surviving_sources
         dropped_count = len(evaluation.dropped_sources)
@@ -695,7 +695,7 @@ class ResearchAgent:
                 findings = [finding]
                 logger.info("Combined skeptic pass complete (%d critical, %d concerns)", finding.critical_count, finding.concern_count)
         except SkepticError as e:
-            logger.warning(f"Skeptic review failed: {e}, continuing without it")
+            logger.warning("Skeptic review failed: %s, continuing without it", e)
             logger.info("Skeptic review failed, continuing with standard synthesis")
             findings = []
 
@@ -770,7 +770,7 @@ class ResearchAgent:
             new_results = [r for r in pass2_results if r.url not in seen_urls]
             logger.info("Refined pass found %d results (%d new)", len(pass2_results), len(new_results))
         except SearchError as e:
-            logger.warning(f"Pass 2 search failed: {e}, continuing with existing results")
+            logger.warning("Pass 2 search failed: %s, continuing with existing results", e)
             logger.info("Refined pass failed, continuing with existing results")
             new_results = []
 
@@ -848,13 +848,13 @@ class ResearchAgent:
                     summaries.extend(new_summaries)
                     logger.info("Total summaries: %d", len(summaries))
                 except (ResearchError, APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
-                    logger.warning(f"Pass 2 processing failed: {e}, continuing with pass 1 results")
+                    logger.warning("Pass 2 processing failed: %s, continuing with pass 1 results", e)
                     logger.info("Pass 2 failed, continuing with %d summaries", len(summaries))
             else:
                 logger.info("No new unique URLs from pass 2")
 
         except SearchError as e:
-            logger.warning(f"Pass 2 search failed: {e}, continuing with pass 1 results")
+            logger.warning("Pass 2 search failed: %s, continuing with pass 1 results", e)
             logger.info("Pass 2 search failed, continuing with %d summaries", len(summaries))
 
         tried = self._collect_tried_queries(query, refined_query, decomposition)

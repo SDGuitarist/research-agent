@@ -59,8 +59,10 @@ async def run_research(
     try:
         result = await run_research_async(query, mode=mode, context=context)
     except ResearchError as e:
-        # Strip absolute filesystem paths to avoid leaking server directory structure
-        msg = re.sub(r'(/Users/|/home/)\S+', '<path>', str(e))
+        # Strip absolute filesystem paths to avoid leaking server directory structure.
+        # Matches multi-segment Unix paths like /opt/app/file.py, /var/log/err,
+        # /Users/name/project — but not URLs (which contain ://).
+        msg = re.sub(r'(?<!:/)(?<!/)/(?:[\w.-]+/)+[\w.-]+', '<path>', str(e))
         raise ToolError(msg)
     except Exception:
         logger.exception("Unexpected error in run_research")
@@ -219,12 +221,18 @@ def main():
         except ValueError:
             sys.exit(f"MCP_PORT must be an integer, got: {os.environ['MCP_PORT']!r}")
 
-        if host not in ("127.0.0.1", "localhost"):
-            logger.warning(
-                "MCP server binding to %s:%d — accessible on the network. "
-                "No authentication is configured.", host, port,
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            sys.exit(
+                f"Refusing to bind MCP HTTP server to {host}:{port} — "
+                "no authentication is configured. Binding to a non-loopback "
+                "address would expose all tools (and API keys) to the network.\n"
+                "Options:\n"
+                "  1. Use MCP_HOST=127.0.0.1 (default) for local-only access\n"
+                "  2. Use MCP_TRANSPORT=stdio for production deployments\n"
+                "  3. Place a reverse proxy with auth in front of localhost"
             )
 
+        logger.info("Starting HTTP transport on %s:%d (loopback only)", host, port)
         mcp.run(transport="http", host=host, port=port)
     else:
         sys.exit(f"Unknown MCP_TRANSPORT: {transport!r}. Use 'stdio' or 'http'.")
