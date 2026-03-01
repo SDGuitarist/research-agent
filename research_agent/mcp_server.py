@@ -17,7 +17,10 @@ mcp = FastMCP(
     "Research Agent",
     instructions=(
         "Research agent that searches the web and generates structured markdown reports. "
-        "Reports and contexts are relative to the working directory. "
+        "Use list_research_modes to see available modes before running research. "
+        "Use list_contexts to discover domain-specific context files. "
+        "Reports auto-save for standard/deep modes — use list_saved_reports to find them. "
+        "Use critique_report to evaluate report quality after research completes. "
         "Set 'cwd' in your MCP client config to the research-agent project root."
     ),
 )
@@ -65,6 +68,12 @@ async def run_research(
         raise ToolError(
             f"Invalid mode: {mode!r}. Must be one of: {', '.join(sorted(VALID_MODES))}"
         )
+
+    # Normalize context: LLMs commonly send "None"/"null" instead of omitting
+    if context is not None:
+        context = context.strip()
+        if context.lower() in ("null", ""):
+            context = None
 
     try:
         result = await run_research_async(

@@ -9,7 +9,7 @@ import pytest
 from fastmcp.client import Client
 from fastmcp.exceptions import ToolError
 
-from research_agent.mcp_server import mcp, _validate_report_filename
+from research_agent.mcp_server import mcp
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +303,13 @@ class TestGetReport:
                 "get_report", {"filename": "report name.md"}
             )
 
+    async def test_long_filename_rejected(self, client):
+        """Filename over 255 chars returns ToolError."""
+        with pytest.raises(ToolError, match="Filename too long"):
+            await client.call_tool(
+                "get_report", {"filename": "a" * 253 + ".md"}
+            )
+
 
 # ---------------------------------------------------------------------------
 # list_research_modes
@@ -435,49 +442,43 @@ class TestRunResearchParams:
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs["max_sources"] == 6
 
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.run_research_async")
+    async def test_context_null_string_normalized_to_none(self, mock_run, client):
+        """LLM-sent "null" string is normalized to None (auto-detect)."""
+        from research_agent.results import ResearchResult
 
-# ---------------------------------------------------------------------------
-# _validate_report_filename — direct unit tests
-# ---------------------------------------------------------------------------
+        mock_run.return_value = ResearchResult(
+            report="# Report", query="test", mode="quick",
+            sources_used=4, status="full_report", critique=None,
+        )
 
+        await client.call_tool(
+            "run_research", {"query": "test", "mode": "quick", "context": "null"}
+        )
 
-class TestValidateReportFilename:
-    def test_valid_filename(self, tmp_path):
-        reports_dir = tmp_path / "reports"
-        reports_dir.mkdir()
-        (reports_dir / "valid_report.md").write_text("content")
+        mock_run.assert_called_once()
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["context"] is None
 
-        with patch("research_agent.report_store.REPORTS_DIR", reports_dir):
-            path = _validate_report_filename("valid_report.md")
-            assert path.name == "valid_report.md"
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.run_research_async")
+    async def test_context_none_string_preserves_skip(self, mock_run, client):
+        """The string "none" still means skip context (not auto-detect)."""
+        from research_agent.results import ResearchResult
 
-    def test_slash_rejected(self):
-        with pytest.raises(ValueError, match="Invalid filename"):
-            _validate_report_filename("path/to/file.md")
+        mock_run.return_value = ResearchResult(
+            report="# Report", query="test", mode="quick",
+            sources_used=4, status="full_report", critique=None,
+        )
 
-    def test_null_byte_rejected(self):
-        with pytest.raises(ValueError, match="null byte"):
-            _validate_report_filename("file\x00.md")
+        await client.call_tool(
+            "run_research", {"query": "test", "mode": "quick", "context": "none"}
+        )
 
-    def test_long_filename_rejected(self):
-        with pytest.raises(ValueError, match="Filename too long"):
-            _validate_report_filename("a" * 253 + ".md")
-
-    def test_non_md_rejected(self):
-        with pytest.raises(ValueError, match="Only .md"):
-            _validate_report_filename("report.txt")
-
-    def test_special_chars_rejected(self):
-        with pytest.raises(ValueError, match="Invalid filename"):
-            _validate_report_filename("report (1).md")
-
-    def test_missing_file(self, tmp_path):
-        reports_dir = tmp_path / "reports"
-        reports_dir.mkdir()
-
-        with patch("research_agent.report_store.REPORTS_DIR", reports_dir):
-            with pytest.raises(FileNotFoundError, match="Report not found"):
-                _validate_report_filename("missing.md")
+        mock_run.assert_called_once()
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["context"] == "none"
 
 
 # ---------------------------------------------------------------------------
