@@ -11,6 +11,7 @@ from fastmcp import FastMCP
 logger = logging.getLogger(__name__)
 
 MAX_QUERY_LENGTH = 2000
+VALID_MODES = {"quick", "standard", "deep"}
 
 mcp = FastMCP(
     "Research Agent",
@@ -27,6 +28,8 @@ async def run_research(
     query: str,
     mode: str = "standard",
     context: str | None = None,
+    skip_critique: bool = False,
+    max_sources: int | None = None,
 ) -> str:
     """Run a research query and get a structured markdown report.
 
@@ -42,6 +45,8 @@ async def run_research(
                  - "none" (string): skip context loading entirely — no extra API call.
                  - "<name>" (e.g., "pfe"): load a specific context file from contexts/<name>.yaml.
                  Use list_contexts to see available names.
+        skip_critique: If True, skip post-report quality evaluation (~$0.02 savings).
+        max_sources: Override the mode's default source count (e.g., 6 for a lighter standard run).
     """
     from fastmcp.exceptions import ToolError
 
@@ -56,8 +61,16 @@ async def run_research(
             "Shorten your query and try again."
         )
 
+    if mode not in VALID_MODES:
+        raise ToolError(
+            f"Invalid mode: {mode!r}. Must be one of: {', '.join(sorted(VALID_MODES))}"
+        )
+
     try:
-        result = await run_research_async(query, mode=mode, context=context)
+        result = await run_research_async(
+            query, mode=mode, context=context,
+            skip_critique=skip_critique, max_sources=max_sources,
+        )
     except ResearchError as e:
         # Strip absolute filesystem paths to avoid leaking server directory structure.
         # Matches multi-segment Unix paths like /opt/app/file.py, /var/log/err,
@@ -133,6 +146,52 @@ def get_report(filename: str) -> str:
     except (ValueError, FileNotFoundError) as e:
         raise ToolError(str(e))
     return path.read_text()
+
+
+@mcp.tool
+def critique_report(filename: str) -> str:
+    """Evaluate quality of a saved research report.
+
+    Returns scores (1-5) on 5 dimensions, weaknesses, and suggestions.
+    Requires ANTHROPIC_API_KEY.
+
+    Args:
+        filename: Report filename (e.g., "query_name_2026-02-28_143052.md").
+                  Use list_saved_reports to see available files.
+    """
+    from anthropic import Anthropic
+    from fastmcp.exceptions import ToolError
+
+    from research_agent import critique_report_file
+    from research_agent.modes import DEFAULT_MODEL
+
+    try:
+        path = _validate_report_filename(filename)
+    except (ValueError, FileNotFoundError) as e:
+        raise ToolError(str(e))
+
+    try:
+        client = Anthropic()
+        result = critique_report_file(client, path, model=DEFAULT_MODEL)
+    except Exception:
+        logger.exception("Unexpected error in critique_report")
+        raise ToolError(
+            "Critique failed. Check that ANTHROPIC_API_KEY is configured."
+        )
+
+    lines = [
+        f"Overall: {'PASS' if result.overall_pass else 'FAIL'} ({result.mean_score:.1f}/5.0)",
+        f"Source Diversity: {result.source_diversity}/5",
+        f"Claim Support: {result.claim_support}/5",
+        f"Coverage: {result.coverage}/5",
+        f"Geographic Balance: {result.geographic_balance}/5",
+        f"Actionability: {result.actionability}/5",
+    ]
+    if result.weaknesses:
+        lines.append(f"Weaknesses: {result.weaknesses}")
+    if result.suggestions:
+        lines.append(f"Suggestions: {result.suggestions}")
+    return "\n".join(lines)
 
 
 @mcp.tool

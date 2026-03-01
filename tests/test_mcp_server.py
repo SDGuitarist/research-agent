@@ -77,11 +77,12 @@ class TestRunResearch:
 
         save_path = tmp_path / "test_query_2026-02-28.md"
         with patch("research_agent.report_store.get_auto_save_path", return_value=save_path), \
-             patch("research_agent.safe_io.atomic_write"):
+             patch("research_agent.safe_io.atomic_write") as mock_write:
             result = await client.call_tool(
                 "run_research", {"query": "test query", "mode": "standard"}
             )
 
+        mock_write.assert_called_once_with(save_path, "# Saved Report")
         text = result.data
         assert "Saved: test_query_2026-02-28.md" in text
 
@@ -123,16 +124,8 @@ class TestRunResearchErrors:
         with pytest.raises(ToolError, match="Query too long"):
             await client.call_tool("run_research", {"query": long_query})
 
-    @patch.dict("os.environ", ENV_BOTH, clear=True)
-    @patch("research_agent.run_research_async")
-    async def test_invalid_mode(self, mock_run, client):
-        """Invalid mode returns ToolError with valid options."""
-        from research_agent.errors import ResearchError
-
-        mock_run.side_effect = ResearchError(
-            "Invalid mode: 'bogus'. Must be one of: deep, quick, standard"
-        )
-
+    async def test_invalid_mode(self, client):
+        """Invalid mode returns ToolError at boundary before API calls."""
         with pytest.raises(ToolError, match="Must be one of"):
             await client.call_tool(
                 "run_research", {"query": "test", "mode": "bogus"}
@@ -355,6 +348,92 @@ class TestListContexts:
         result = await client.call_tool("list_contexts", {})
 
         assert "No context files found" in result.data
+
+
+# ---------------------------------------------------------------------------
+# critique_report
+# ---------------------------------------------------------------------------
+
+
+class TestCritiqueReport:
+    async def test_invalid_filename_rejected(self, client):
+        """Invalid filename returns ToolError."""
+        with pytest.raises(ToolError, match="Invalid filename"):
+            await client.call_tool(
+                "critique_report", {"filename": "../../.env"}
+            )
+
+    @patch("research_agent.critique_report_file")
+    async def test_returns_scores(self, mock_critique, client, tmp_path):
+        """Successful critique returns formatted scores."""
+        from research_agent.critique import CritiqueResult
+
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+        report_file = reports_dir / "test_report.md"
+        report_file.write_text("# Test Report\n\nBody here.")
+
+        mock_critique.return_value = CritiqueResult(
+            source_diversity=4, claim_support=3, coverage=4,
+            geographic_balance=2, actionability=4,
+            weaknesses="Limited scope", suggestions="Broaden sources",
+        )
+
+        with patch("research_agent.report_store.REPORTS_DIR", reports_dir):
+            result = await client.call_tool(
+                "critique_report", {"filename": "test_report.md"}
+            )
+
+        text = result.data
+        assert "PASS" in text
+        assert "Source Diversity: 4" in text
+        assert "Claim Support: 3" in text
+        assert "Limited scope" in text
+
+
+# ---------------------------------------------------------------------------
+# run_research — skip_critique and max_sources params
+# ---------------------------------------------------------------------------
+
+
+class TestRunResearchParams:
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.run_research_async")
+    async def test_skip_critique_passed_through(self, mock_run, client):
+        """skip_critique parameter is forwarded to run_research_async."""
+        from research_agent.results import ResearchResult
+
+        mock_run.return_value = ResearchResult(
+            report="# Report", query="test", mode="quick",
+            sources_used=4, status="full_report", critique=None,
+        )
+
+        await client.call_tool(
+            "run_research", {"query": "test", "mode": "quick", "skip_critique": True}
+        )
+
+        mock_run.assert_called_once()
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["skip_critique"] is True
+
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.run_research_async")
+    async def test_max_sources_passed_through(self, mock_run, client):
+        """max_sources parameter is forwarded to run_research_async."""
+        from research_agent.results import ResearchResult
+
+        mock_run.return_value = ResearchResult(
+            report="# Report", query="test", mode="standard",
+            sources_used=6, status="full_report", critique=None,
+        )
+
+        await client.call_tool(
+            "run_research", {"query": "test", "mode": "standard", "max_sources": 6}
+        )
+
+        mock_run.assert_called_once()
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["max_sources"] == 6
 
 
 # ---------------------------------------------------------------------------
