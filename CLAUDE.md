@@ -86,6 +86,7 @@ pip install -e ".[test]"   # install package + test deps in editable mode
 - **Frozen dataclasses for modes**: All mode parameters in one place
 
 See `LESSONS_LEARNED.md` for development history and detailed findings from each cycle.
+- After `/workflows:compound`, always run `/update-learnings` to propagate lessons to all docs
 
 ## Three Questions (Mandatory)
 
