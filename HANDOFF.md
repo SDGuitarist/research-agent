@@ -2,7 +2,8 @@
 
 **Date:** 2026-03-02
 **Branch:** `main`
-**Phase:** Cycle 20 compound phase complete — full loop done
+**Phase:** Cycle 20 complete — ready for Cycle 21 brainstorm
+**Last commit:** `672e1cc` — docs(20-compound): document parallel async synthesis patterns
 
 ## Current State
 
@@ -41,5 +42,10 @@ From plan and review:
 ## Prompt for Next Session
 
 ```
-Read HANDOFF.md for context. This is Research Agent, a Python CLI that searches the web and generates structured markdown reports with citations using Claude. Cycle 20 complete (query iteration). Pick the next feature or improvement to brainstorm — check deferred items in HANDOFF.md for candidates.
+Read HANDOFF.md for context. This is Research Agent, a Python CLI that searches the web and generates structured markdown reports with citations using Claude. Cycle 20 complete (query iteration). Run /workflows:brainstorm for Cycle 21. Candidates from deferred items:
+1. Standalone `generate_followups` MCP tool — agent-native parity
+2. Real-world quality testing of iteration output — review Q3 flagged this
+3. Cheaper model for planning/gap-analysis steps — cost optimization
+4. Per-query source count observability — debugging aid
+Pick the highest-impact candidate or propose something new.
 ```
