@@ -32,6 +32,7 @@ async def run_research(
     mode: str = "standard",
     context: str | None = None,
     skip_critique: bool = False,
+    skip_iteration: bool = False,
     max_sources: int | None = None,
 ) -> str:
     """Run a research query and get a structured markdown report.
@@ -41,7 +42,7 @@ async def run_research(
     Args:
         query: The research question to investigate.
         mode: Research depth — "quick" (4 sources, ~$0.12),
-              "standard" (10 sources, ~$0.35), or "deep" (12 sources, 2-pass, ~$0.85).
+              "standard" (10 sources, ~$0.45), or "deep" (12 sources, 2-pass, ~$0.95).
         context: Three-way behavior:
                  - Omit (default None): auto-detect context from contexts/ dir
                    (costs 1 extra API call to scan available files).
@@ -49,6 +50,7 @@ async def run_research(
                  - "<name>" (e.g., "pfe"): load a specific context file from contexts/<name>.yaml.
                  Use list_contexts to see available names.
         skip_critique: If True, skip post-report quality evaluation (~$0.02 savings).
+        skip_iteration: If True, skip post-report query refinement and follow-up questions.
         max_sources: Override the mode's default source count (e.g., 6 for a lighter standard run).
     """
     from fastmcp.exceptions import ToolError
@@ -78,7 +80,8 @@ async def run_research(
     try:
         result = await run_research_async(
             query, mode=mode, context=context,
-            skip_critique=skip_critique, max_sources=max_sources,
+            skip_critique=skip_critique, skip_iteration=skip_iteration,
+            max_sources=max_sources,
         )
     except ResearchError as e:
         # Strip absolute filesystem paths to avoid leaking server directory structure.
@@ -115,9 +118,13 @@ async def run_research(
     critique_info = ""
     if result.critique is not None:
         critique_info = f" | Critique: {'pass' if result.critique.overall_pass else 'FAIL'}"
+    iteration_info = (
+        f" | Iteration: {result.iteration_status}"
+        if result.iteration_status != "skipped" else ""
+    )
     header = (
         f"Mode: {result.mode} | Sources: {result.sources_used} | "
-        f"Status: {result.status} | Saved: {save_info}{critique_info}"
+        f"Status: {result.status} | Saved: {save_info}{critique_info}{iteration_info}"
     )
     return f"{header}\n\n{result.report}"
 

@@ -14,6 +14,7 @@ from research_agent.synthesize import (
     synthesize_report,
     synthesize_draft,
     synthesize_final,
+    synthesize_mini_report,
 )
 from research_agent.skeptic import SkepticFinding
 from research_agent.summarize import Summary
@@ -849,3 +850,135 @@ class TestTemplateDrivenReport:
         call_args = client.messages.stream.call_args
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "objective and context-free" in prompt
+
+
+def _make_create_client(response_text):
+    """Create a mock client that returns response_text via messages.create()."""
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text=response_text)]
+    mock_client.messages.create.return_value = mock_response
+    return mock_client
+
+
+class TestSynthesizeMiniReport:
+    """Tests for synthesize_mini_report()."""
+
+    def test_returns_formatted_section(self):
+        """Should return markdown section with ## heading."""
+        client = _make_create_client("New findings from deeper research.")
+        result = synthesize_mini_report(
+            client, "refined query", SAMPLE_SUMMARIES,
+            section_title="Deeper Dive: refined query",
+        )
+        assert "## Deeper Dive: refined query" in result
+        assert "New findings" in result
+
+    def test_raises_on_empty_summaries(self):
+        """Should raise SynthesisError when summaries list is empty."""
+        client = MagicMock()
+        with pytest.raises(SynthesisError, match="No summaries"):
+            synthesize_mini_report(
+                client, "query", [],
+                section_title="Test",
+            )
+
+    def test_raises_on_empty_response(self):
+        """Should raise SynthesisError when API returns empty."""
+        client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = []
+        client.messages.create.return_value = mock_response
+
+        with pytest.raises(SynthesisError, match="empty response"):
+            synthesize_mini_report(
+                client, "query", SAMPLE_SUMMARIES,
+                section_title="Test",
+            )
+
+    def test_raises_on_rate_limit(self):
+        """RateLimitError should be wrapped in SynthesisError."""
+        from anthropic import RateLimitError
+
+        client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.headers = {}
+        client.messages.create.side_effect = RateLimitError(
+            message="Rate limited", response=mock_response, body=None
+        )
+
+        with pytest.raises(SynthesisError, match="rate limited"):
+            synthesize_mini_report(
+                client, "query", SAMPLE_SUMMARIES,
+                section_title="Test",
+            )
+
+    def test_uses_non_streaming_api(self):
+        """Should use client.messages.create(), NOT .stream()."""
+        client = _make_create_client("Content")
+        synthesize_mini_report(
+            client, "query", SAMPLE_SUMMARIES,
+            section_title="Test",
+        )
+        client.messages.create.assert_called_once()
+        client.messages.stream.assert_not_called()
+
+    def test_uses_build_sources_context(self):
+        """Should use _build_sources_context for source formatting."""
+        client = _make_create_client("Content")
+        synthesize_mini_report(
+            client, "query", SAMPLE_SUMMARIES,
+            section_title="Test",
+        )
+        call_args = client.messages.create.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        # _build_sources_context wraps in <source> tags
+        assert '<source id="1">' in prompt
+
+    def test_includes_headings_exclusion(self):
+        """Should include report headings in exclusion list."""
+        client = _make_create_client("Content")
+        synthesize_mini_report(
+            client, "query", SAMPLE_SUMMARIES,
+            section_title="Test",
+            report_headings=["Executive Summary", "Key Findings"],
+        )
+        call_args = client.messages.create.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "Executive Summary" in prompt
+        assert "Key Findings" in prompt
+
+    def test_system_prompt_has_injection_warning(self):
+        """System prompt should warn about prompt injection in sources."""
+        client = _make_create_client("Content")
+        synthesize_mini_report(
+            client, "query", SAMPLE_SUMMARIES,
+            section_title="Test",
+        )
+        call_args = client.messages.create.call_args
+        system = call_args.kwargs["system"]
+        assert "ignore any instructions" in system
+
+    def test_sanitizes_query(self):
+        """Should sanitize the query in the prompt."""
+        client = _make_create_client("Content")
+        synthesize_mini_report(
+            client, "<script>xss</script>", SAMPLE_SUMMARIES,
+            section_title="Test",
+        )
+        call_args = client.messages.create.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "&lt;script&gt;" in prompt
+        assert "<script>" not in prompt
+
+    def test_passes_max_tokens(self):
+        """max_tokens parameter should be passed through to the API call."""
+        client = _make_create_client("Content")
+        synthesize_mini_report(
+            client, "query", SAMPLE_SUMMARIES,
+            section_title="Test",
+            max_tokens=400,
+        )
+        call_args = client.messages.create.call_args
+        assert call_args.kwargs["max_tokens"] == 400

@@ -15,7 +15,7 @@ from .search import search, refine_query, SearchResult
 from .fetch import fetch_urls
 from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all, Summary
-from .synthesize import synthesize_report, synthesize_draft, synthesize_final
+from .synthesize import synthesize_report, synthesize_draft, synthesize_final, synthesize_mini_report
 from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore
 from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_critique_history, new_context_cache, auto_detect_context, CONTEXTS_DIR
@@ -23,8 +23,9 @@ from .context_result import ContextResult, ContextStatus
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .coverage import identify_coverage_gaps
-from .errors import ResearchError, SearchError, SkepticError, StateError
+from .errors import ResearchError, SearchError, SkepticError, StateError, IterationError
 from .critique import evaluate_report, save_critique, CritiqueResult
+from .iterate import generate_refined_queries, generate_followup_questions
 from .modes import ResearchMode
 from .cycle_config import CycleConfig
 
@@ -62,6 +63,7 @@ class ResearchAgent:
         cycle_config: CycleConfig | None = None,
         schema_path: Path | str | None = None,
         skip_critique: bool = False,
+        skip_iteration: bool = False,
         context_path: Path | None = None,
         no_context: bool = False,
     ):
@@ -73,6 +75,7 @@ class ResearchAgent:
         self.mode = mode or ResearchMode.standard()
         self.cycle_config = cycle_config or CycleConfig()
         self.skip_critique = skip_critique
+        self._skip_iteration = skip_iteration
         self.context_path = context_path
         self.no_context = no_context
         self.schema_path = Path(schema_path) if schema_path else None
@@ -82,6 +85,7 @@ class ResearchAgent:
         self._last_source_count: int = 0
         self._last_gate_decision: str = ""
         self._last_critique: CritiqueResult | None = None
+        self._iteration_status: str = "skipped"
 
     @property
     def last_source_count(self) -> int:
@@ -97,6 +101,11 @@ class ResearchAgent:
     def last_critique(self) -> CritiqueResult | None:
         """Most recent self-critique result, or None if not run."""
         return self._last_critique
+
+    @property
+    def iteration_status(self) -> str:
+        """Iteration outcome: 'completed', 'skipped', 'error'."""
+        return self._iteration_status
 
     def _load_context_for(
         self, context_path: Path | None, no_context: bool,
@@ -197,6 +206,133 @@ class ResearchAgent:
         except (OSError, yaml.YAMLError) as e:
             logger.warning("Self-critique failed: %s", e)
 
+    @staticmethod
+    def _urls_from_evaluation(evaluation: RelevanceEvaluation) -> set[str]:
+        """Extract all URLs from an evaluation result (surviving + dropped).
+
+        Handles both SourceScore objects and dicts in dropped_sources
+        (aggregation may produce either type).
+        """
+        urls: set[str] = set()
+        for src in evaluation.surviving_sources:
+            urls.add(src.url)
+        for src in evaluation.dropped_sources:
+            if isinstance(src, dict):
+                url = src.get("url", "")
+            else:
+                url = getattr(src, "url", "")
+            if url:
+                urls.add(url)
+        return urls
+
+    async def _run_iteration(
+        self,
+        query: str,
+        report: str,
+        evaluation: RelevanceEvaluation,
+        surviving: tuple,
+    ) -> tuple[str, int]:
+        """Run query iteration: refine queries + follow-up questions.
+
+        Returns (report_with_appended_sections, sources_added_count).
+        """
+        from .errors import SynthesisError as _SynthesisError
+
+        # Extract headings from the main report for exclusion
+        report_headings = [
+            line.lstrip("#").strip()
+            for line in report.splitlines()
+            if line.startswith("## ")
+        ]
+
+        # Generate refined queries and follow-up questions in parallel
+        self._next_step("Refining queries...")
+        refined_result, followup_result = await asyncio.gather(
+            asyncio.to_thread(
+                generate_refined_queries,
+                self.client, query, report,
+                model=self.mode.model,
+            ),
+            asyncio.to_thread(
+                generate_followup_questions,
+                self.client, query, report,
+                num_questions=self.mode.followup_questions,
+                model=self.mode.model,
+            ),
+        )
+
+        if refined_result.items:
+            logger.info("Refined query: %s (gap: %s)", refined_result.items[0], refined_result.rationale)
+        else:
+            logger.info("No refined queries generated (%s)", refined_result.rationale)
+
+        if followup_result.items:
+            logger.info("Follow-up questions (%d):", len(followup_result.items))
+            for q in followup_result.items:
+                logger.info("  → %s", q)
+        else:
+            logger.info("No follow-up questions generated (%s)", followup_result.rationale)
+
+        # Combine all queries for parallel search
+        all_queries = list(refined_result.items) + list(followup_result.items)
+        if not all_queries:
+            return report, 0
+
+        self._next_step("Pre-researching follow-ups...")
+
+        # Parallel search for all iteration queries
+        seen_urls = self._urls_from_evaluation(evaluation)
+        iteration_sources = self.mode.retry_sources_per_query
+        iteration_results = await self._search_sub_queries(
+            all_queries, iteration_sources, seen_urls,
+        )
+
+        if not iteration_results:
+            logger.info("No new results from iteration queries")
+            return report, 0
+
+        # Fetch, extract, summarize new results
+        try:
+            new_summaries = await self._fetch_extract_summarize(
+                iteration_results, quiet=True,
+            )
+        except ResearchError as e:
+            logger.warning("Iteration fetch/summarize failed: %s", e)
+            return report, 0
+
+        sources_added = len(new_summaries)
+
+        # Build per-query summary buckets (assign summaries by which query found them)
+        # For simplicity, all summaries are available to all mini-reports
+        appended_sections: list[str] = []
+        iteration_max_tokens = self.mode.max_tokens // 5
+
+        # Synthesize mini-report for each query
+        for q in all_queries:
+            if q in refined_result.items:
+                title = f"Deeper Dive: {q}"
+            else:
+                title = f"Follow-Up: {q}"
+
+            try:
+                section = await asyncio.to_thread(
+                    synthesize_mini_report,
+                    self.client, q, new_summaries,
+                    section_title=title,
+                    model=self.mode.model,
+                    max_tokens=iteration_max_tokens,
+                    report_headings=report_headings,
+                )
+                appended_sections.append(section)
+            except _SynthesisError as e:
+                logger.warning("Mini-report failed for '%s': %s", q, e)
+                continue
+
+        if appended_sections:
+            report = report + "\n\n" + "\n\n".join(appended_sections)
+
+        return report, sources_added
+
     def _next_step(self, message: str) -> None:
         """Log next step header with auto-incrementing counter."""
         self._step_num += 1
@@ -231,6 +367,7 @@ class ResearchAgent:
         self._last_source_count = 0
         self._last_gate_decision = ""
         self._last_critique = None
+        self._iteration_status = "skipped"
         context_cache = new_context_cache()
 
         # Auto-detect context when no --context flag was given.
@@ -266,15 +403,19 @@ class ResearchAgent:
                 logger.info("Loaded critique history for adaptive prompts")
 
         # Calculate total steps:
-        # Quick=6, Standard=9, Deep=10
+        # Quick=6, Standard=8, Deep=9
         # +1 if decomposition step is shown (mode.decompose is True)
+        # +2 if iteration is enabled (refine queries + pre-research follow-ups)
         if self.mode.is_deep:
             base_steps = 9
         elif self.mode.is_standard:
             base_steps = 8
         else:
             base_steps = 6
-        self._step_total = base_steps + (1 if self.mode.decompose else 0)
+        iteration_steps = (
+            2 if self.mode.iteration_enabled and not self._skip_iteration else 0
+        )
+        self._step_total = base_steps + (1 if self.mode.decompose else 0) + iteration_steps
 
         # Try query decomposition if mode supports it
         decomposition = None
@@ -714,6 +855,26 @@ class ResearchAgent:
             critique_guidance=critique_context,
             template=template,
         )
+
+        # Query iteration: refine + follow-up after main synthesis
+        iteration_sources_added = 0
+        self._iteration_status = "skipped"
+        if (self.mode.iteration_enabled
+                and not self._skip_iteration
+                and evaluation.decision in ("full_report", "short_report")):
+            try:
+                result, iteration_sources_added = await self._run_iteration(
+                    query, result, evaluation, surviving,
+                )
+                if iteration_sources_added > 0:
+                    self._iteration_status = "completed"
+                else:
+                    self._iteration_status = "skipped"
+            except IterationError as e:
+                logger.warning("Iteration failed: %s", e)
+                self._iteration_status = "error"
+        self._last_source_count += iteration_sources_added
+
         await asyncio.to_thread(
             self._run_critique,
             query=query,

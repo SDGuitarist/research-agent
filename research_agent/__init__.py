@@ -41,6 +41,7 @@ def run_research(
     mode: str = "standard",
     context: str | None = None,
     skip_critique: bool = False,
+    skip_iteration: bool = False,
     max_sources: int | None = None,
 ) -> ResearchResult:
     """Run a research query and return a structured result.
@@ -73,7 +74,8 @@ def run_research(
     try:
         return asyncio.run(run_research_async(
             query, mode=mode, context=context,
-            skip_critique=skip_critique, max_sources=max_sources,
+            skip_critique=skip_critique, skip_iteration=skip_iteration,
+            max_sources=max_sources,
         ))
     except RuntimeError as e:
         if "cannot be called from a running event loop" in str(e):
@@ -89,6 +91,7 @@ async def run_research_async(
     mode: str = "standard",
     context: str | None = None,
     skip_critique: bool = False,
+    skip_iteration: bool = False,
     max_sources: int | None = None,
 ) -> ResearchResult:
     """Async version of run_research for use in async contexts.
@@ -130,7 +133,8 @@ async def run_research_async(
 
     agent = ResearchAgent(
         mode=research_mode, context_path=context_path, no_context=no_context,
-        skip_critique=skip_critique, max_sources=max_sources,
+        skip_critique=skip_critique, skip_iteration=skip_iteration,
+        max_sources=max_sources,
     )
     report = await agent.research_async(query)
 
@@ -141,6 +145,7 @@ async def run_research_async(
         sources_used=agent.last_source_count,
         status=agent.last_gate_decision or "error",
         critique=agent.last_critique,
+        iteration_status=agent.iteration_status,
     )
 
 

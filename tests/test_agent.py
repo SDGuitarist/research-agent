@@ -18,6 +18,8 @@ from research_agent.schema import Gap, GapStatus, SchemaResult
 from research_agent.cycle_config import CycleConfig
 from research_agent.errors import StateError
 from research_agent.coverage import CoverageGap
+from research_agent.iterate import QueryGenerationResult
+from research_agent.errors import IterationError
 
 
 class TestResearchAgentQuickMode:
@@ -2165,3 +2167,248 @@ class TestCoverageGapRetry:
             )
 
         mock_retry.assert_not_called()
+
+
+class TestQueryIteration:
+    """Tests for query iteration integration in _evaluate_and_synthesize."""
+
+    def _make_agent(self, mode=None, skip_iteration=False):
+        with patch("research_agent.agent.Anthropic"), \
+             patch("research_agent.agent.AsyncAnthropic"):
+            agent = ResearchAgent(
+                api_key="test-key",
+                mode=mode or ResearchMode.standard(),
+                skip_critique=True,
+                skip_iteration=skip_iteration,
+            )
+        agent._start_time = 0.0
+        agent._step_num = 0
+        agent._step_total = 12
+        return agent
+
+    def _make_summaries(self, count=2):
+        return [
+            Summary(
+                url=f"https://example{i}.com/page",
+                title=f"Source {i}",
+                summary=f"Summary {i} with useful content.",
+            )
+            for i in range(1, count + 1)
+        ]
+
+    def _make_evaluation(self, decision, surviving=(), dropped=(), total_scored=0):
+        return RelevanceEvaluation(
+            decision=decision,
+            decision_rationale=f"Test: {decision}",
+            surviving_sources=tuple(surviving),
+            dropped_sources=tuple(dropped),
+            total_scored=total_scored,
+            total_survived=len(surviving),
+            refined_query="refined query",
+        )
+
+    @pytest.mark.asyncio
+    async def test_standard_mode_runs_iteration(self):
+        """Standard mode with full_report runs iteration and appends sections."""
+        agent = self._make_agent()
+        summaries = self._make_summaries(4)
+        full_eval = self._make_evaluation(
+            "full_report", surviving=summaries, total_scored=4,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=full_eval), \
+             patch("research_agent.agent.synthesize_draft", return_value="## Draft\nContent"), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
+             patch("research_agent.agent.synthesize_final", return_value="## Draft\nContent\n\n## Sources\n..."), \
+             patch.object(agent, "_run_iteration", new_callable=AsyncMock) as mock_iteration:
+            mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
+            mock_iteration.return_value = (
+                "## Draft\nContent\n\n## Sources\n...\n\n## Deeper Dive: refined\n\nNew info.",
+                3,
+            )
+
+            result = await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+            )
+
+        assert "Deeper Dive" in result
+        mock_iteration.assert_called_once()
+        assert agent.iteration_status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_quick_mode_skips_iteration(self):
+        """Quick mode skips iteration entirely."""
+        agent = self._make_agent(mode=ResearchMode.quick())
+        summaries = self._make_summaries(2)
+        full_eval = self._make_evaluation(
+            "full_report", surviving=summaries, total_scored=2,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=full_eval), \
+             patch("research_agent.agent.synthesize_report", return_value="# Report\nContent"), \
+             patch.object(agent, "_run_iteration", new_callable=AsyncMock) as mock_iteration:
+
+            result = await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+            )
+
+        mock_iteration.assert_not_called()
+        assert agent.iteration_status == "skipped"
+
+    @pytest.mark.asyncio
+    async def test_skip_iteration_flag_skips(self):
+        """skip_iteration=True on standard mode skips iteration."""
+        agent = self._make_agent(skip_iteration=True)
+        summaries = self._make_summaries(4)
+        full_eval = self._make_evaluation(
+            "full_report", surviving=summaries, total_scored=4,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=full_eval), \
+             patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
+             patch("research_agent.agent.synthesize_final", return_value="Full Report"), \
+             patch.object(agent, "_run_iteration", new_callable=AsyncMock) as mock_iteration:
+            mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
+
+            result = await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+            )
+
+        mock_iteration.assert_not_called()
+        assert agent.iteration_status == "skipped"
+
+    @pytest.mark.asyncio
+    async def test_iteration_error_returns_main_report(self):
+        """IterationError → main report returned unchanged, status='error'."""
+        agent = self._make_agent()
+        summaries = self._make_summaries(4)
+        full_eval = self._make_evaluation(
+            "full_report", surviving=summaries, total_scored=4,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=full_eval), \
+             patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
+             patch("research_agent.agent.synthesize_final", return_value="Full Report"), \
+             patch.object(agent, "_run_iteration", new_callable=AsyncMock, side_effect=IterationError("API timeout")):
+            mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
+
+            result = await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+            )
+
+        assert result == "Full Report"
+        assert agent.iteration_status == "error"
+
+    @pytest.mark.asyncio
+    async def test_insufficient_data_skips_iteration(self):
+        """insufficient_data gate decision → iteration skipped."""
+        agent = self._make_agent()
+        summaries = self._make_summaries(2)
+        insufficient_eval = self._make_evaluation(
+            "insufficient_data",
+            dropped=(SourceScore(url="https://ex.com", title="T", score=1, explanation="Bad"),),
+            total_scored=1,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=insufficient_eval), \
+             patch.object(agent, "_try_coverage_retry", new_callable=AsyncMock, return_value=None), \
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No Data"), \
+             patch.object(agent, "_run_iteration", new_callable=AsyncMock) as mock_iteration:
+
+            result = await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+            )
+
+        mock_iteration.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_iteration_no_results_returns_main_report(self):
+        """Iteration with no new results → main report unchanged, status='skipped'."""
+        agent = self._make_agent()
+        summaries = self._make_summaries(4)
+        full_eval = self._make_evaluation(
+            "full_report", surviving=summaries, total_scored=4,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=full_eval), \
+             patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
+             patch("research_agent.agent.synthesize_final", return_value="Full Report"), \
+             patch.object(agent, "_run_iteration", new_callable=AsyncMock, return_value=("Full Report", 0)):
+            mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
+
+            result = await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+            )
+
+        assert result == "Full Report"
+        assert agent.iteration_status == "skipped"
+
+
+class TestUrlsFromEvaluation:
+    """Tests for _urls_from_evaluation() helper."""
+
+    def test_extracts_from_source_score_objects(self):
+        """Should extract URLs from SourceScore objects."""
+        surviving = (
+            Summary(url="https://a.com", title="A", summary="A"),
+            Summary(url="https://b.com", title="B", summary="B"),
+        )
+        dropped = (
+            SourceScore(url="https://c.com", title="C", score=1, explanation="Bad"),
+        )
+        evaluation = RelevanceEvaluation(
+            decision="full_report",
+            decision_rationale="test",
+            surviving_sources=surviving,
+            dropped_sources=dropped,
+            total_scored=3,
+            total_survived=2,
+            refined_query=None,
+        )
+        urls = ResearchAgent._urls_from_evaluation(evaluation)
+        assert urls == {"https://a.com", "https://b.com", "https://c.com"}
+
+    def test_extracts_from_dict_dropped(self):
+        """Should extract URLs from dict-typed dropped sources."""
+        surviving = (
+            Summary(url="https://a.com", title="A", summary="A"),
+        )
+        dropped = (
+            {"url": "https://d.com", "title": "D", "score": 1},
+        )
+        evaluation = RelevanceEvaluation(
+            decision="short_report",
+            decision_rationale="test",
+            surviving_sources=surviving,
+            dropped_sources=dropped,
+            total_scored=2,
+            total_survived=1,
+            refined_query=None,
+        )
+        urls = ResearchAgent._urls_from_evaluation(evaluation)
+        assert "https://a.com" in urls
+        assert "https://d.com" in urls
+
+    def test_empty_urls_discarded(self):
+        """Empty URL strings should not appear in result set."""
+        surviving = (
+            Summary(url="https://a.com", title="A", summary="A"),
+        )
+        dropped = (
+            {"url": "", "title": "Empty"},
+        )
+        evaluation = RelevanceEvaluation(
+            decision="full_report",
+            decision_rationale="test",
+            surviving_sources=surviving,
+            dropped_sources=dropped,
+            total_scored=2,
+            total_survived=1,
+            refined_query=None,
+        )
+        urls = ResearchAgent._urls_from_evaluation(evaluation)
+        assert "" not in urls
+        assert len(urls) == 1

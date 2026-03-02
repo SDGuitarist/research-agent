@@ -30,6 +30,7 @@ class ResearchResult:
     sources_used: int
     status: str
     critique: CritiqueResult | None = field(default=None)
+    iteration_status: str = field(default="skipped")
 
 
 @dataclass(frozen=True)
