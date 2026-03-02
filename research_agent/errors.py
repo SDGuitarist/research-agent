@@ -36,6 +36,14 @@ class SchemaError(ResearchError):
         self.errors: list[str] = errors if errors is not None else []
 
 
+class IterationError(ResearchError):
+    """Raised when query iteration fails (API errors only).
+
+    Validation rejections return empty results silently — they never raise.
+    """
+    pass
+
+
 class StateError(ResearchError):
     """State file read/write/corruption failure."""
     pass

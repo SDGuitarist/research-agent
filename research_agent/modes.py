@@ -29,6 +29,8 @@ class ResearchMode:
     retry_sources_per_query: int = 3  # Sources per retry query during coverage gap retry
     cost_estimate: str = ""  # Estimated cost per query (e.g., "~$0.20")
     model: str = DEFAULT_MODEL  # Claude model for all API calls
+    iteration_enabled: bool = False  # Whether to run query iteration after synthesis
+    followup_questions: int = 0  # Number of follow-up questions to generate (0 = skip)
 
     @property
     def is_quick(self) -> bool:
@@ -73,6 +75,8 @@ class ResearchMode:
                 f"min_sources_full_report ({self.min_sources_full_report}) must be <= "
                 f"max_sources ({self.max_sources})"
             )
+        if self.followup_questions < 0:
+            errors.append(f"followup_questions must be >= 0, got {self.followup_questions}")
 
         if errors:
             raise ValueError(f"Invalid ResearchMode: {'; '.join(errors)}")
@@ -100,6 +104,8 @@ class ResearchMode:
             decompose=False,  # Skip decomposition for speed
             retry_sources_per_query=2,
             cost_estimate="~$0.12",
+            iteration_enabled=False,
+            followup_questions=0,
         )
 
     @classmethod
@@ -123,7 +129,9 @@ class ResearchMode:
             min_sources_full_report=4,
             min_sources_short_report=2,
             relevance_cutoff=3,
-            cost_estimate="~$0.35",
+            cost_estimate="~$0.45",
+            iteration_enabled=True,
+            followup_questions=2,
         )
 
     @classmethod
@@ -148,7 +156,9 @@ class ResearchMode:
             min_sources_short_report=5,  # Increased for deep mode
             relevance_cutoff=3,
             retry_sources_per_query=5,
-            cost_estimate="~$0.85",
+            cost_estimate="~$0.95",
+            iteration_enabled=True,
+            followup_questions=3,
         )
 
     @classmethod

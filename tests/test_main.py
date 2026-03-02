@@ -177,8 +177,8 @@ class TestShowCosts:
         show_costs()
         output = capsys.readouterr().out
         assert "~$0.12" in output
-        assert "~$0.35" in output
-        assert "~$0.85" in output
+        assert "~$0.45" in output
+        assert "~$0.95" in output
 
     def test_includes_source_counts(self, capsys):
         show_costs()
@@ -199,7 +199,7 @@ class TestResearchModeCostEstimate:
         assert ResearchMode.quick().cost_estimate == "~$0.12"
 
     def test_standard_has_cost_estimate(self):
-        assert ResearchMode.standard().cost_estimate == "~$0.35"
+        assert ResearchMode.standard().cost_estimate == "~$0.45"
 
     def test_deep_has_cost_estimate(self):
-        assert ResearchMode.deep().cost_estimate == "~$0.85"
+        assert ResearchMode.deep().cost_estimate == "~$0.95"
