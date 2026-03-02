@@ -1,70 +1,45 @@
-# Handoff: Cycle 20 Query Iteration — Fix Phase Complete
+# HANDOFF — Research Agent
+
+**Date:** 2026-03-02
+**Branch:** `main`
+**Phase:** Cycle 20 compound phase complete — full loop done
 
 ## Current State
 
-**Project:** Research Agent
-**Phase:** Fix phase complete — ready for compound phase
-**Branch:** `main`
-**Date:** March 2, 2026
-**Commit:** `39a4a25`
+Cycle 20 (Query Iteration) is fully complete through all 5 phases: brainstorm, plan, work, review, fix, compound. The feature adds post-synthesis query refinement and predictive follow-up questions to standard/deep modes. All 871 tests pass. Solution documented with 4 reusable patterns.
 
----
+## Key Artifacts
 
-## What Was Done This Session
+| Phase | Location |
+|-------|----------|
+| Brainstorm | `docs/brainstorms/2026-03-01-query-iteration-brainstorm.md` |
+| Plan | `docs/plans/2026-03-01-feat-query-iteration-plan.md` |
+| Review | `docs/reviews/cycle-20/REVIEW-SUMMARY.md` |
+| Solution | `docs/solutions/architecture/parallel-async-synthesis-with-safety-barriers.md` |
 
-1. **Fixed all 14 review findings** (todos 100-113) in 4 batches:
+## Review Fixes Pending
 
-   **Batch 1 — P1s + connected P3:**
-   - 100: Added `skip_iteration` to `run_research()` docstring
-   - 101: Removed unused `surviving` parameter from `_run_iteration()`
-   - 109: Hoisted `SynthesisError` import to module level, removed redundant status reset
+None — all 14 findings resolved in commit `39a4a25`.
 
-   **Batch 2 — P2s (agent.py + iterate.py):**
-   - 102: Sanitized report headings before LLM prompt injection (both iterate.py and agent.py)
-   - 103: Parallelized mini-report synthesis with `asyncio.gather` + semaphore
-   - 104: Added 180s iteration timeout via `asyncio.wait_for`
-   - 107: Added `"no_new_sources"` status to distinguish "tried, nothing found" from "never attempted"
-   - 108: Truncated draft to 3000 chars before refinement in `generate_refined_queries()`
+## Deferred Items
 
-   **Batch 3 — P2s (CLI + tests):**
-   - 105: Added `--no-iteration` CLI flag + iteration status display on stderr
-   - 106: Added 2 MCP boundary tests (skip_iteration pass-through, iteration_status in header)
-
-   **Batch 4 — P3s:**
-   - 110: Extracted named constants for validation thresholds in iterate.py
-   - 111: Made `skip_critique` private (`_skip_critique`) for naming consistency
-   - 112: Sanitized query text in section titles (defense-in-depth)
-   - 113: Capped `iteration_max_tokens` at 800
-
-2. **All 871 tests pass** (69.59s)
-
-3. **All 14 todo files renamed** from `pending` to `complete`
-
-## Files Changed
-
-- `research_agent/__init__.py` — docstring fix
-- `research_agent/agent.py` — parameter removal, imports, parallel synthesis, timeout, sanitization, naming
-- `research_agent/cli.py` — `--no-iteration` flag, iteration status display
-- `research_agent/iterate.py` — heading sanitization, draft truncation, named constants
-- `tests/test_agent.py` — updated `no_new_sources` status assertion
-- `tests/test_mcp_server.py` — 2 new boundary tests
+From plan and review:
+- Standalone `generate_followups` MCP tool (agent-native reviewer suggestion)
+- `iteration_sections: tuple[str, ...]` structured field on ResearchResult
+- Per-query source count observability
+- Cheaper model for planning/gap-analysis steps
+- Real-world quality testing of generated queries and mini-reports (review Q3 flagged this)
 
 ## Three Questions
 
-1. **Hardest fix in this batch?** Todo 103 (parallel mini-report synthesis). Required restructuring the sequential for-loop into `asyncio.gather` with a nested `_synthesize_one` async function, while preserving per-query error isolation and ordering. Combined it with todos 112 (sanitize titles) and 113 (cap tokens) since they touched the same code block.
+1. **Hardest decision?** Documenting Pattern 1 (parallel gather) and Pattern 2 (wait_for timeout) as separate patterns while explaining their coupled cancellation semantics at runtime.
 
-2. **What did you consider fixing differently, and why didn't you?** Considered making `skip_critique` public instead of private (option B in todo 111). Chose private because all other internal flags (`_skip_iteration`, `_iteration_status`, `_last_source_count`) use the underscore convention. The attribute is only read inside `_run_critique()`.
+2. **What was rejected?** The CLI flag pattern and private naming convention — real fixes but not reusable architectural patterns. Including them would dilute the four core patterns.
 
-3. **Least confident about going into the compound phase?** The interaction between `asyncio.wait_for` (todo 104) and the parallel mini-report synthesis (todo 103). If the timeout fires mid-synthesis, `asyncio.gather` tasks inside `_run_iteration` get cancelled. The main report is returned unchanged, but I haven't tested the cancellation path under real conditions.
+3. **Least confident about?** Double-sanitization idempotency risk. `sanitize_content` is not idempotent — calling it twice on `&` produces `&amp;amp;`. Current code avoids this by sanitizing different extracted substrings at each layer. A future refactor piping one layer's output into another could trigger double-encoding. No automated test covers this across the two new layers.
 
----
-
-## Next Phase
-
-**Compound phase** — document solved patterns in `docs/solutions/`.
-
-### Prompt for Next Session
+## Prompt for Next Session
 
 ```
-Read HANDOFF.md. Run /workflows:compound for Cycle 20. Key patterns to document: parallel synthesis with semaphore + gather, asyncio.wait_for timeout wrapping, defense-in-depth heading sanitization, status enum disambiguation. Relevant commit: 39a4a25.
+Read HANDOFF.md for context. This is Research Agent, a Python CLI that searches the web and generates structured markdown reports with citations using Claude. Cycle 20 complete (query iteration). Pick the next feature or improvement to brainstorm — check deferred items in HANDOFF.md for candidates.
 ```

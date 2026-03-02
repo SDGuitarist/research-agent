@@ -113,3 +113,9 @@ Searchable table of all patterns discovered across development cycles. Each row 
 | **Architecture** | Private attr access between files in the same package is acceptable when the alternative breaks additive constraints | 18 | architecture.md |
 | **Process** | Post-session validation Q3 ("least confident + what test catches it?") is the highest-value question—feeds forward into next session | 18 | process.md |
 | **Process** | Validation questions yield most on design sessions, least on mechanical sessions—budget accordingly | 18 | process.md |
+| **Async** | Parallel synthesis with semaphore + gather: cap concurrency with `asyncio.Semaphore`, catch specific exceptions per task, filter None results | 20 | architecture.md |
+| **Async** | Two-level timeouts: per-call timeout on `messages.create` + phase-level `asyncio.wait_for` on the entire enrichment stage | 20 | architecture.md |
+| **Async** | `asyncio.wait_for` cancels the entire `gather` cleanly—wrap the phase, not individual tasks, for correct cancellation semantics | 20 | architecture.md |
+| **Security** | Sanitize derived fields at every prompt insertion point—headings extracted from LLM output that embedded web content are still external content | 20 | security.md |
+| **Architecture** | Status enums must not conflate distinct outcomes—"completed" vs "no_new_sources" vs "error" vs "skipped" each serve different callers | 20 | architecture.md |
+| **Architecture** | Every new pipeline feature needs a CLI flag and MCP parameter in the same commit—not in a follow-up review fix | 19, 20 | architecture.md |

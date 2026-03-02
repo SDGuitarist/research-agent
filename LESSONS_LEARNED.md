@@ -24,6 +24,7 @@ This document is the hub for all lessons from 18 development cycles of the resea
 | 17 | Gap-aware research loop (4 sub-cycles) | Foundation modules first, integration last; four-state result types over None; atomic writes for persistent state |
 | 17+ | Real-world research runs (Lodge at Torrey Pines) | Short queries beat complex ones; LinkedIn is the biggest blind spot; "insufficient data" can be the answer |
 | 18 | Pip-installable package | Delegate validation to the module that owns the data; wrap, don't refactor |
+| 20 | Query iteration (auto-refine + follow-ups) | Parallel async synthesis needs semaphore + gather + phase-level timeout; sanitize derived fields (headings from LLM output) at every insertion point |
 
 ## Top 10 Patterns
 
@@ -41,13 +42,15 @@ Patterns that recurred across 3+ cycles or prevented entire categories of bugs. 
 | 8 | Rate limit at the request level, not the batch level | 10, 11, 14 | [operations.md](docs/lessons/operations.md) |
 | 9 | Validate LLM output before using it — plausible ≠ correct | 8, 13, 16 | [architecture.md](docs/lessons/architecture.md) |
 | 10 | Live-test integrations before designing around them | 8+, 9 | [operations.md](docs/lessons/operations.md) |
+| 11 | Two-level timeouts: per-call + per-phase `wait_for` | 20 | [architecture.md](docs/lessons/architecture.md) |
+| 12 | Sanitize derived fields — LLM output that embedded web content is still external | 4, 6, 20 | [security.md](docs/lessons/security.md) |
 
 ## Category Files
 
 | File | Sections | Topics |
 |------|----------|--------|
 | [security.md](docs/lessons/security.md) | 7, 14 (security) | SSRF layering, prompt injection, TOCTOU, redirect bypass, sanitize-all-paths |
-| [architecture.md](docs/lessons/architecture.md) | 3, 5, 6, 8, 10, 12, 13, 16, 18, 20 | Pipeline design, additive pattern, frozen dataclasses, multi-pass synthesis, typed APIs |
+| [architecture.md](docs/lessons/architecture.md) | 3, 5, 6, 8, 10, 12, 13, 16, 18, 20 | Pipeline design, additive pattern, frozen dataclasses, multi-pass synthesis, typed APIs, parallel synthesis |
 | [operations.md](docs/lessons/operations.md) | 2, 9, 11, 14 (performance), 15, 16 (parallelization), 19 | Rate limiting, fetch cascade, instrumentation, sleep budgets, live-test integrations |
 | [process.md](docs/lessons/process.md) | 1, 4, 14 (review methodology), 17, 20 (validation Qs) | Planning, review cadence, testing discipline, prompting strategy, feed-forward |
 | [patterns-index.md](docs/lessons/patterns-index.md) | All | Flat searchable table with cycle mappings |
