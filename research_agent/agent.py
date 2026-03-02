@@ -23,10 +23,11 @@ from .context_result import ContextResult, ContextStatus
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .coverage import identify_coverage_gaps
-from .errors import ResearchError, SearchError, SkepticError, StateError, IterationError
+from .errors import ResearchError, SearchError, SkepticError, StateError, IterationError, SynthesisError
 from .critique import evaluate_report, save_critique, CritiqueResult
 from .iterate import generate_refined_queries, generate_followup_questions
 from .modes import ResearchMode
+from .sanitize import sanitize_content
 from .cycle_config import CycleConfig
 
 from .schema import Gap, GapStatus, SchemaResult, load_schema
@@ -37,6 +38,9 @@ logger = logging.getLogger(__name__)
 
 # Maximum concurrent sub-query searches (semaphore cap)
 MAX_CONCURRENT_SUB_QUERIES = 2
+
+# Overall timeout for the iteration phase (seconds)
+ITERATION_TIMEOUT = 180.0
 
 # Default directory for critique metadata files
 META_DIR = Path("reports/meta")
@@ -74,7 +78,7 @@ class ResearchAgent:
         self._step_total = 0
         self.mode = mode or ResearchMode.standard()
         self.cycle_config = cycle_config or CycleConfig()
-        self.skip_critique = skip_critique
+        self._skip_critique = skip_critique
         self._skip_iteration = skip_iteration
         self.context_path = context_path
         self.no_context = no_context
@@ -104,7 +108,7 @@ class ResearchAgent:
 
     @property
     def iteration_status(self) -> str:
-        """Iteration outcome: 'completed', 'skipped', 'error'."""
+        """Iteration outcome: 'completed', 'skipped', 'no_new_sources', 'error'."""
         return self._iteration_status
 
     def _load_context_for(
@@ -184,7 +188,7 @@ class ResearchAgent:
         gate_decision: str,
     ) -> None:
         """Run self-critique after report synthesis. Never crashes pipeline."""
-        if self.mode.is_quick or self.skip_critique:
+        if self.mode.is_quick or self._skip_critique:
             return  # Quick mode has no skeptic data; --no-critique opts out
 
         try:
@@ -230,17 +234,15 @@ class ResearchAgent:
         query: str,
         report: str,
         evaluation: RelevanceEvaluation,
-        surviving: tuple,
     ) -> tuple[str, int]:
         """Run query iteration: refine queries + follow-up questions.
 
         Returns (report_with_appended_sections, sources_added_count).
         """
-        from .errors import SynthesisError as _SynthesisError
 
-        # Extract headings from the main report for exclusion
+        # Extract headings from the main report for exclusion (sanitized for defense-in-depth)
         report_headings = [
-            line.lstrip("#").strip()
+            sanitize_content(line.lstrip("#").strip())
             for line in report.splitlines()
             if line.startswith("## ")
         ]
@@ -304,29 +306,38 @@ class ResearchAgent:
 
         # Build per-query summary buckets (assign summaries by which query found them)
         # For simplicity, all summaries are available to all mini-reports
-        appended_sections: list[str] = []
-        iteration_max_tokens = self.mode.max_tokens // 5
+        iteration_max_tokens = min(self.mode.max_tokens // 5, 800)
 
-        # Synthesize mini-report for each query
+        # Build (query, title) pairs with sanitized titles
+        refined_set = set(refined_result.items)
+        query_titles = []
         for q in all_queries:
-            if q in refined_result.items:
-                title = f"Deeper Dive: {q}"
-            else:
-                title = f"Follow-Up: {q}"
+            safe_q = sanitize_content(q)
+            title = f"Deeper Dive: {safe_q}" if q in refined_set else f"Follow-Up: {safe_q}"
+            query_titles.append((q, title))
 
-            try:
-                section = await asyncio.to_thread(
-                    synthesize_mini_report,
-                    self.client, q, new_summaries,
-                    section_title=title,
-                    model=self.mode.model,
-                    max_tokens=iteration_max_tokens,
-                    report_headings=report_headings,
-                )
-                appended_sections.append(section)
-            except _SynthesisError as e:
-                logger.warning("Mini-report failed for '%s': %s", q, e)
-                continue
+        # Synthesize mini-reports in parallel with bounded concurrency
+        sem = asyncio.Semaphore(MAX_CONCURRENT_SUB_QUERIES)
+
+        async def _synthesize_one(q: str, title: str) -> str | None:
+            async with sem:
+                try:
+                    return await asyncio.to_thread(
+                        synthesize_mini_report,
+                        self.client, q, new_summaries,
+                        section_title=title,
+                        model=self.mode.model,
+                        max_tokens=iteration_max_tokens,
+                        report_headings=report_headings,
+                    )
+                except SynthesisError as e:
+                    logger.warning("Mini-report failed for '%s': %s", q, e)
+                    return None
+
+        results = await asyncio.gather(
+            *[_synthesize_one(q, t) for q, t in query_titles]
+        )
+        appended_sections = [r for r in results if r is not None]
 
         if appended_sections:
             report = report + "\n\n" + "\n\n".join(appended_sections)
@@ -858,18 +869,21 @@ class ResearchAgent:
 
         # Query iteration: refine + follow-up after main synthesis
         iteration_sources_added = 0
-        self._iteration_status = "skipped"
         if (self.mode.iteration_enabled
                 and not self._skip_iteration
                 and evaluation.decision in ("full_report", "short_report")):
             try:
-                result, iteration_sources_added = await self._run_iteration(
-                    query, result, evaluation, surviving,
+                result, iteration_sources_added = await asyncio.wait_for(
+                    self._run_iteration(query, result, evaluation),
+                    timeout=ITERATION_TIMEOUT,
                 )
                 if iteration_sources_added > 0:
                     self._iteration_status = "completed"
                 else:
-                    self._iteration_status = "skipped"
+                    self._iteration_status = "no_new_sources"
+            except asyncio.TimeoutError:
+                logger.warning("Iteration timed out after %.0fs", ITERATION_TIMEOUT)
+                self._iteration_status = "error"
             except IterationError as e:
                 logger.warning("Iteration failed: %s", e)
                 self._iteration_status = "error"

@@ -21,6 +21,16 @@ from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
 
+# Validation thresholds for refined queries
+MIN_REFINED_WORDS = 3
+MAX_REFINED_WORDS = 10
+MAX_REFINED_OVERLAP = 0.6
+
+# Validation thresholds for follow-up questions
+MIN_FOLLOWUP_WORDS = 4
+MAX_FOLLOWUP_WORDS = 15
+MAX_FOLLOWUP_OVERLAP = 0.5
+
 
 @dataclass(frozen=True)
 class QueryGenerationResult:
@@ -57,7 +67,7 @@ def generate_refined_queries(
         IterationError: On API failures (rate limits, timeouts, etc.)
     """
     safe_query = sanitize_content(query)
-    safe_draft = sanitize_content(draft)
+    safe_draft = sanitize_content(draft[:3000])
 
     try:
         response = client.messages.create(
@@ -121,11 +131,11 @@ def _parse_refined_response(text: str, original_query: str) -> QueryGenerationRe
 
     validated = validate_query_list(
         [raw_query],
-        min_words=3,
-        max_words=10,
+        min_words=MIN_REFINED_WORDS,
+        max_words=MAX_REFINED_WORDS,
         max_results=1,
         reference_queries=[original_query],
-        max_reference_overlap=0.6,
+        max_reference_overlap=MAX_REFINED_OVERLAP,
         require_reference_overlap=True,
         label="Refined query",
     )
@@ -172,9 +182,9 @@ def generate_followup_questions(
     safe_query = sanitize_content(query)
     safe_preview = sanitize_content(report[:2000])
 
-    # Extract section headings from report for exclusion
+    # Extract section headings from report for exclusion (sanitized for defense-in-depth)
     headings = [
-        line.lstrip("#").strip()
+        sanitize_content(line.lstrip("#").strip())
         for line in report.splitlines()
         if line.startswith("## ")
     ]
@@ -245,11 +255,11 @@ def _parse_followup_response(
 
     validated = validate_query_list(
         raw_questions,
-        min_words=4,
-        max_words=15,
+        min_words=MIN_FOLLOWUP_WORDS,
+        max_words=MAX_FOLLOWUP_WORDS,
         max_results=max_questions,
         reference_queries=[original_query],
-        max_reference_overlap=0.5,
+        max_reference_overlap=MAX_FOLLOWUP_OVERLAP,
         label="Follow-up question",
     )
 

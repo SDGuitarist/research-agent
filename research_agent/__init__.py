@@ -52,6 +52,8 @@ def run_research(
         context: Context name (matches contexts/<name>.md), "none" to
             skip context, or None to auto-detect from the query.
         skip_critique: If True, skip self-critique after report generation.
+        skip_iteration: If True, skip post-report query refinement and
+            follow-up questions.
         max_sources: Override the mode's default source count.
 
     Returns:

@@ -179,6 +179,11 @@ Examples:
         help="Skip post-report self-critique (saves one API call)",
     )
     parser.add_argument(
+        "--no-iteration",
+        action="store_true",
+        help="Skip post-report query refinement and follow-up questions",
+    )
+    parser.add_argument(
         "--context",
         type=str,
         default=None,
@@ -275,6 +280,7 @@ Examples:
             mode=mode,
             max_sources=args.max_sources if not mode_flag_used else None,
             skip_critique=args.no_critique,
+            skip_iteration=args.no_iteration,
             context_path=context_path,
             no_context=no_context,
         )
@@ -286,6 +292,10 @@ Examples:
         if critique is not None:
             status = "pass" if critique.overall_pass else "FAIL"
             print(f"\nSelf-critique: mean={critique.mean_score:.1f}, {status}")
+
+        # Print iteration status if it ran
+        if agent.iteration_status != "skipped":
+            print(f"Iteration: {agent.iteration_status}", file=sys.stderr)
 
         # Append to research log
         append_research_log(args.query, mode, report)

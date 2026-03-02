@@ -480,6 +480,44 @@ class TestRunResearchParams:
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs["context"] == "none"
 
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.run_research_async")
+    async def test_skip_iteration_passed_through(self, mock_run, client):
+        """skip_iteration parameter is forwarded to run_research_async."""
+        from research_agent.results import ResearchResult
+
+        mock_run.return_value = ResearchResult(
+            report="# Report", query="test", mode="quick",
+            sources_used=4, status="full_report", critique=None,
+        )
+
+        await client.call_tool(
+            "run_research", {"query": "test", "mode": "quick", "skip_iteration": True}
+        )
+
+        mock_run.assert_called_once()
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["skip_iteration"] is True
+
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.run_research_async")
+    async def test_iteration_status_in_header(self, mock_run, client):
+        """iteration_status='completed' appears in response header."""
+        from research_agent.results import ResearchResult
+
+        mock_run.return_value = ResearchResult(
+            report="# Report", query="test", mode="standard",
+            sources_used=10, status="full_report", critique=None,
+            iteration_status="completed",
+        )
+
+        result = await client.call_tool(
+            "run_research", {"query": "test", "mode": "standard"}
+        )
+
+        text = result.data
+        assert "Iteration: completed" in text
+
 
 # ---------------------------------------------------------------------------
 # Transport validation

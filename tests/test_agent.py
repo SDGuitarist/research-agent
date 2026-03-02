@@ -2325,7 +2325,7 @@ class TestQueryIteration:
 
     @pytest.mark.asyncio
     async def test_iteration_no_results_returns_main_report(self):
-        """Iteration with no new results → main report unchanged, status='skipped'."""
+        """Iteration with no new results → main report unchanged, status='no_new_sources'."""
         agent = self._make_agent()
         summaries = self._make_summaries(4)
         full_eval = self._make_evaluation(
@@ -2344,7 +2344,7 @@ class TestQueryIteration:
             )
 
         assert result == "Full Report"
-        assert agent.iteration_status == "skipped"
+        assert agent.iteration_status == "no_new_sources"
 
 
 class TestUrlsFromEvaluation:
