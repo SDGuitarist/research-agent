@@ -192,7 +192,6 @@ class ResearchAgent:
             return  # Quick mode has no skeptic data; --no-critique opts out
 
         try:
-            logger.debug("Planning: evaluate_report → %s", self.mode.planning_model)
             result = evaluate_report(
                 client=self.client,
                 query=query,
@@ -250,8 +249,6 @@ class ResearchAgent:
 
         # Generate refined queries and follow-up questions in parallel
         self._next_step("Refining queries...")
-        logger.debug("Planning: generate_refined_queries → %s", self.mode.planning_model)
-        logger.debug("Planning: generate_followup_questions → %s", self.mode.planning_model)
         refined_result, followup_result = await asyncio.gather(
             asyncio.to_thread(
                 generate_refined_queries,
@@ -402,6 +399,11 @@ class ResearchAgent:
                 logger.info("Auto-detect found no matching context; running without context")
 
         # Load context once for the entire run using effective (post-auto-detect) state
+        logger.debug(
+            "Model routing: synthesis=%s, planning=%s",
+            self.mode.model, self.mode.planning_model,
+        )
+
         self._run_context = self._load_context_for(
             effective_context_path, effective_no_context, cache=context_cache,
         )
@@ -435,7 +437,6 @@ class ResearchAgent:
         decomposition = None
         if self.mode.decompose:
             self._next_step("Analyzing query...")
-            logger.debug("Planning: decompose_query → %s", self.mode.planning_model)
             decomposition = await asyncio.to_thread(
                 decompose_query, self.client, query,
                 context_content=self._run_context.content,
@@ -658,7 +659,6 @@ class ResearchAgent:
             (combined_summaries, new_evaluation) if retry improved results,
             None if retry was skipped or found nothing new.
         """
-        logger.debug("Planning: identify_coverage_gaps → %s", self.mode.planning_model)
         gap = await identify_coverage_gaps(
             query=query,
             summaries=list(evaluation.surviving_sources),
@@ -934,7 +934,6 @@ class ResearchAgent:
 
         # Refine query using snippets
         snippets = [r.snippet for r in pass1_results if r.snippet]
-        logger.debug("Planning: refine_query (standard) → %s", self.mode.planning_model)
         refined_query = await asyncio.to_thread(
             refine_query, self.client, query, snippets, model=self.mode.planning_model
         )
@@ -1005,7 +1004,6 @@ class ResearchAgent:
         self._next_step("Deep mode: refining search...")
 
         summary_texts = [s.summary for s in summaries]
-        logger.debug("Planning: refine_query (deep) → %s", self.mode.planning_model)
         refined_query = await asyncio.to_thread(
             refine_query, self.client, query, summary_texts, model=self.mode.planning_model
         )
