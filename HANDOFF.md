@@ -2,27 +2,23 @@
 
 **Date:** 2026-03-03
 **Branch:** `main`
-**Phase:** Cycle 21 fix phase complete — ready for compound phase
-**Last commit:** `5ee8d9a` — docs(21): update model comment and MCP docstring for tiered routing
+**Phase:** Cycle 21 complete — compound phase done
 
-## What Was Done This Session
+## Current State
 
-1. **Fixed all 5 review findings** from Cycle 21 in recommended order:
+Cycle 21 (Tiered Model Routing) is fully complete through the compound phase. Added `planning_model` field to `ResearchMode` routing 7 planning call sites to Haiku while 8 synthesis sites stay on Sonnet. Review found 5 issues (0 P1, 3 P2, 2 P3), all fixed. Solution documented, learnings propagated. 874 tests passing.
 
-| # | Issue | Commit | What Changed |
-|---|-------|--------|-------------|
-| 116 | ModeInfo agent visibility | `8d93bcc` | Added `model` + `planning_model` fields to ModeInfo, list_modes(), MCP output |
-| 114 | Consolidate debug logs | `059404f` | Replaced 7 per-call-site frozen-value logs with 1 summary log (-6 net LOC) |
-| 115 | Integration test for routing | `9ac1f04` | Added 2 tests: decompose_query + refine_query receive AUTO_DETECT_MODEL |
-| 117 | Model field comment | `5ee8d9a` | Updated "for all API calls" → "for synthesis and quality-critical calls" |
-| 118 | MCP docstring | `5ee8d9a` | Added tiered routing note to run_research docstring |
+## Key Artifacts
 
-2. **All 874 tests pass** (872 existing + 2 new from fix 115)
-3. **Marked all 5 todo files as done** (status: pending → done)
+| Phase | Location |
+|-------|----------|
+| Brainstorm | `docs/brainstorms/2026-03-02-tiered-model-routing-brainstorm.md` |
+| Plan | `docs/plans/2026-03-02-feat-tiered-model-routing-plan.md` |
+| Review | `docs/reviews/cycle-21/REVIEW-SUMMARY.md` |
+| Solution | `docs/solutions/architecture/tiered-model-routing-planning-vs-synthesis.md` |
 
 ## Deferred Items
 
-From prior cycles (unchanged):
 - Tier 2: Haiku for relevance scoring (needs A/B comparison data)
 - Tier 3: Haiku for summarization (deferred indefinitely — too risky)
 - `validate_query_list()` on `refine_query()` output (pre-existing gap, low priority)
@@ -33,20 +29,16 @@ From prior cycles (unchanged):
 - Update `cost_estimate` strings after real usage data collected
 - Monitor Haiku decompose quality on first 10-20 real runs (feed-forward from review)
 
-## Three Questions (Fix-Batched Phase)
+## Three Questions (Compound Phase)
 
-1. **Hardest fix in this batch?** Fix 115 (integration test) — needed to find the right mock setup to exercise the standard mode pipeline through decompose_query while avoiding the existing test's patterns that don't mock decompose. Also caught a wrong field name (`classification` vs `is_complex`) in `DecompositionResult`.
+1. **Hardest pattern to extract?** The relationship between "static task-based routing" as a general pattern and the specific decision about where to draw the planning/synthesis boundary. The transferable insight is "classify pipeline stages by quality sensitivity, not by module."
 
-2. **What did you consider fixing differently, and why didn't you?** For fix 116, considered Option B (adding a `to_mode_info()` method on ResearchMode to auto-generate ModeInfo and prevent future drift). Chose Option A (manual 2-field addition) because the fix scope was "add model visibility" not "refactor ModeInfo construction" — YAGNI for a fix phase.
+2. **What was rejected?** Detailed per-call-site latency benchmarks — pre-production estimates would imply false precision.
 
-3. **Least confident about going into compound phase?** Whether the 2 integration tests in fix 115 are sufficient coverage. They test decompose_query (standard mode) and refine_query (quick mode), but 5 other planning call sites (identify_coverage_gaps, generate_refined_queries, generate_followup_questions, evaluate_report, and the deep-mode refine_query) remain untested. A regression at those sites wouldn't be caught. However, all 7 sites use the identical `model=self.mode.planning_model` pattern, so a regression would likely hit the tested sites too.
+3. **Least confident about?** The interaction between `planning_model` and the iteration system (Cycle 20). If iteration quality degrades on complex topics, the root cause might be Haiku's planning quality rather than iteration logic — the debugging path isn't obvious because model routing is invisible at the `iterate.py` level.
 
-## Next Phase
-
-**Compound** — document what was solved in `docs/solutions/`, then `/update-learnings`.
-
-### Prompt for Next Session
+## Prompt for Next Session
 
 ```
-Read HANDOFF.md. Run /workflows:compound for Cycle 21. The cycle added tiered model routing (planning steps use Haiku, synthesis stays on Sonnet) and fixed 5 review findings. Key files: research_agent/modes.py, research_agent/agent.py, research_agent/results.py, research_agent/mcp_server.py. See docs/reviews/cycle-21/REVIEW-SUMMARY.md for the full review context.
+Read HANDOFF.md for context. This is Research Agent, a Python CLI that searches the web and generates structured reports with citations using Claude. Cycle 21 (tiered model routing) is complete. Pick the next feature or improvement from the deferred items list, or propose something new.
 ```
