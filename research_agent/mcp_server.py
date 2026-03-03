@@ -43,6 +43,8 @@ async def run_research(
         query: The research question to investigate.
         mode: Research depth — "quick" (4 sources, ~$0.12),
               "standard" (10 sources, ~$0.45), or "deep" (12 sources, 2-pass, ~$0.95).
+              Planning steps (decompose, refine, gap analysis) use a lighter model;
+              synthesis and quality-critical steps use the full model. Costs are approximate.
         context: Three-way behavior:
                  - Omit (default None): auto-detect context from contexts/ dir
                    (costs 1 extra API call to scan available files).
