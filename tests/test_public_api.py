@@ -92,6 +92,8 @@ class TestListModes:
             assert m.cost_estimate  # non-empty string
             # auto_save is bool — just check it's set
             assert isinstance(m.auto_save, bool)
+            assert m.model  # non-empty string
+            assert m.planning_model  # non-empty string
 
 
 # --- run_research validation ---

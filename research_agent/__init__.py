@@ -166,6 +166,8 @@ def list_modes() -> list[ModeInfo]:
             word_target=m.word_target,
             cost_estimate=m.cost_estimate,
             auto_save=m.auto_save,
+            model=m.model,
+            planning_model=m.planning_model,
         )
         for m in modes
     ]

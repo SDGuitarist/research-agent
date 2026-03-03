@@ -95,12 +95,27 @@ class TestModeInfo:
             word_target=800,
             cost_estimate="$0.05",
             auto_save=False,
+            model="claude-sonnet-4-20250514",
+            planning_model="claude-haiku-4-5-20251001",
         )
         assert info.name == "quick"
         assert info.max_sources == 4
         assert info.word_target == 800
         assert info.cost_estimate == "$0.05"
         assert info.auto_save is False
+        assert info.model == "claude-sonnet-4-20250514"
+        assert info.planning_model == "claude-haiku-4-5-20251001"
+
+    def test_model_fields_default_to_empty_string(self):
+        info = ModeInfo(
+            name="quick",
+            max_sources=4,
+            word_target=800,
+            cost_estimate="$0.05",
+            auto_save=False,
+        )
+        assert info.model == ""
+        assert info.planning_model == ""
 
     def test_frozen_immutability(self):
         info = ModeInfo(

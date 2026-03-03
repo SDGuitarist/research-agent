@@ -219,9 +219,12 @@ def list_research_modes() -> str:
     lines = []
     for m in modes:
         save_str = "auto-saves" if m.auto_save else "no auto-save"
+        model_info = f"model={m.model}"
+        if m.planning_model and m.planning_model != m.model:
+            model_info += f", planning={m.planning_model}"
         lines.append(
             f"- {m.name}: {m.max_sources} sources, ~{m.word_target} words, "
-            f"{m.cost_estimate}, {save_str}"
+            f"{m.cost_estimate}, {save_str}, {model_info}"
         )
     return "\n".join(lines)
 

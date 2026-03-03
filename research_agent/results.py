@@ -41,6 +41,8 @@ class ModeInfo:
     word_target: int
     cost_estimate: str
     auto_save: bool
+    model: str = ""
+    planning_model: str = ""
 
 
 @dataclass(frozen=True)
