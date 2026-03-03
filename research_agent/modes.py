@@ -29,6 +29,7 @@ class ResearchMode:
     retry_sources_per_query: int = 3  # Sources per retry query during coverage gap retry
     cost_estimate: str = ""  # Estimated cost per query (e.g., "~$0.20")
     model: str = DEFAULT_MODEL  # Claude model for all API calls
+    planning_model: str = AUTO_DETECT_MODEL  # Cheaper model for planning/classification steps
     iteration_enabled: bool = False  # Whether to run query iteration after synthesis
     followup_questions: int = 0  # Number of follow-up questions to generate (0 = skip)
 

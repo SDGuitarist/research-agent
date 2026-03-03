@@ -1,7 +1,7 @@
 """Tests for research_agent.modes module."""
 
 import pytest
-from research_agent.modes import ResearchMode
+from research_agent.modes import AUTO_DETECT_MODEL, ResearchMode
 
 
 class TestResearchModeFactoryMethods:
@@ -19,6 +19,7 @@ class TestResearchModeFactoryMethods:
         assert mode.auto_save is False
         assert mode.pass1_sources == 4  # Increased from 2
         assert mode.pass2_sources == 2  # Increased from 1
+        assert mode.planning_model == AUTO_DETECT_MODEL
 
     def test_research_mode_standard_has_correct_parameters(self):
         """Standard mode should have 10 max sources (increased for relevance filtering), 2 passes, 2000 word target."""
@@ -32,6 +33,7 @@ class TestResearchModeFactoryMethods:
         assert mode.auto_save is True
         assert mode.pass1_sources == 6  # Increased from 4
         assert mode.pass2_sources == 4  # Increased from 3
+        assert mode.planning_model == AUTO_DETECT_MODEL
 
     def test_research_mode_deep_has_correct_parameters(self):
         """Deep mode should have 12 max sources (increased for relevance filtering), 2 passes, 3500 word target."""
@@ -45,6 +47,7 @@ class TestResearchModeFactoryMethods:
         assert mode.auto_save is True
         assert mode.pass1_sources == 12  # Increased from 10
         assert mode.pass2_sources == 12  # Increased from 10
+        assert mode.planning_model == AUTO_DETECT_MODEL
 
     def test_research_mode_from_name_returns_quick(self):
         """from_name('quick') should return quick mode."""
