@@ -2,50 +2,55 @@
 
 **Date:** 2026-03-02
 **Branch:** `main`
-**Phase:** Cycle 20 complete — ready for Cycle 21 brainstorm
+**Phase:** Cycle 21 plan complete — ready for deepen-plan, then work
 **Last commit:** `672e1cc` — docs(20-compound): document parallel async synthesis patterns
 
 ## Current State
 
-Cycle 20 (Query Iteration) is fully complete through all 5 phases: brainstorm, plan, work, review, fix, compound. The feature adds post-synthesis query refinement and predictive follow-up questions to standard/deep modes. All 871 tests pass. Solution documented with 4 reusable patterns.
+Cycle 21 **plan** for Tiered Model Routing is complete. Brainstorm was reviewed (document-review skill), then plan was written with full local research (repo-research-analyst + learnings-researcher). No code changes yet.
+
+Key finding from research: **7 call sites** in agent.py, not 6 — `refine_query` is called twice (line ~933 and ~1003). All 6 target functions already accept `model` as a kwarg, so no module changes needed.
+
+## Key Decisions
+
+- **Scope:** Tier 1 only — 6 planning/classification calls move to Haiku
+- **Approach:** Add `planning_model` field to `ResearchMode` frozen dataclass
+- **Steps on Haiku:** decompose, refine_query, coverage_gaps, iterate queries, followup questions, self-critique
+- **Steps on Sonnet:** summarize, relevance scoring, synthesis, skeptic agents
+- **Quick mode:** Stays on Sonnet (no planning steps to move)
+- **Estimated savings:** ~8-11% per standard/deep run
 
 ## Key Artifacts
 
 | Phase | Location |
 |-------|----------|
-| Brainstorm | `docs/brainstorms/2026-03-01-query-iteration-brainstorm.md` |
-| Plan | `docs/plans/2026-03-01-feat-query-iteration-plan.md` |
-| Review | `docs/reviews/cycle-20/REVIEW-SUMMARY.md` |
-| Solution | `docs/solutions/architecture/parallel-async-synthesis-with-safety-barriers.md` |
-
-## Review Fixes Pending
-
-None — all 14 findings resolved in commit `39a4a25`.
+| Brainstorm | `docs/brainstorms/2026-03-02-tiered-model-routing-brainstorm.md` |
+| Plan | `docs/plans/2026-03-02-feat-tiered-model-routing-plan.md` |
 
 ## Deferred Items
 
-From plan and review:
-- Standalone `generate_followups` MCP tool (agent-native reviewer suggestion)
+From Cycle 20 + this brainstorm:
+- Tier 2: Haiku for relevance scoring (needs A/B comparison data)
+- Tier 3: Haiku for summarization (deferred indefinitely — too risky)
+- Standalone `generate_followups` MCP tool (agent-native parity)
 - `iteration_sections: tuple[str, ...]` structured field on ResearchResult
 - Per-query source count observability
-- Cheaper model for planning/gap-analysis steps
-- Real-world quality testing of generated queries and mini-reports (review Q3 flagged this)
+- Double-sanitization idempotency risk (standing risk from Cycle 20)
 
-## Three Questions
+## Three Questions (Plan Phase)
 
-1. **Hardest decision?** Documenting Pattern 1 (parallel gather) and Pattern 2 (wait_for timeout) as separate patterns while explaining their coupled cancellation semantics at runtime.
+1. **Hardest decision?** Whether to validate `planning_model` in `__post_init__`. Decided against it — the existing `model` field has no validation, and adding it to one but not the other creates inconsistency.
+2. **What was rejected?** A `--planning-model` CLI debug flag for verification. Verbose logging (`-v`) already shows which model is used — a dedicated flag adds complexity for a one-time check.
+3. **Least confident about?** Whether the cost estimate updates are accurate. The brainstorm estimates (~11% standard, ~8% deep) are rough — actual savings depend on token counts per planning call, which vary by query complexity.
 
-2. **What was rejected?** The CLI flag pattern and private naming convention — real fixes but not reusable architectural patterns. Including them would dilute the four core patterns.
-
-3. **Least confident about?** Double-sanitization idempotency risk. `sanitize_content` is not idempotent — calling it twice on `&` produces `&amp;amp;`. Current code avoids this by sanitizing different extracted substrings at each layer. A future refactor piping one layer's output into another could trigger double-encoding. No automated test covers this across the two new layers.
-
-## Prompt for Next Session
+## Prompt for Next Session (Deepen Plan)
 
 ```
-Read HANDOFF.md for context. This is Research Agent, a Python CLI that searches the web and generates structured markdown reports with citations using Claude. Cycle 20 complete (query iteration). Run /workflows:brainstorm for Cycle 21. Candidates from deferred items:
-1. Standalone `generate_followups` MCP tool — agent-native parity
-2. Real-world quality testing of iteration output — review Q3 flagged this
-3. Cheaper model for planning/gap-analysis steps — cost optimization
-4. Per-query source count observability — debugging aid
-Pick the highest-impact candidate or propose something new.
+Read docs/plans/2026-03-02-feat-tiered-model-routing-plan.md. Run /deepen-plan to enhance the plan with parallel research. After deepen-plan is complete, stop.
+```
+
+## Prompt for Work Session (after deepen)
+
+```
+Read docs/plans/2026-03-02-feat-tiered-model-routing-plan.md. Run /workflows:work to implement. Single session — ~50 lines of changes. Relevant files: research_agent/modes.py, research_agent/agent.py, tests/test_modes.py. Do only the work phase — commit and stop.
 ```
