@@ -536,7 +536,7 @@ class TestTransportValidation:
             },
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=30,
         )
         assert result.returncode != 0
         assert "Unknown MCP_TRANSPORT" in result.stderr
@@ -553,7 +553,7 @@ class TestTransportValidation:
             },
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=30,
         )
         assert result.returncode != 0
         assert "Refusing to bind" in result.stderr

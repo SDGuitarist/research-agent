@@ -43,6 +43,7 @@ class ModeInfo:
     auto_save: bool
     model: str = ""
     planning_model: str = ""
+    relevance_model: str = ""
 
 
 @dataclass(frozen=True)

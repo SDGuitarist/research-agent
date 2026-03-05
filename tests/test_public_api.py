@@ -94,6 +94,7 @@ class TestListModes:
             assert isinstance(m.auto_save, bool)
             assert m.model  # non-empty string
             assert m.planning_model  # non-empty string
+            assert m.relevance_model  # non-empty string
 
 
 # --- run_research validation ---

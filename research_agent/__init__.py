@@ -168,6 +168,7 @@ def list_modes() -> list[ModeInfo]:
             auto_save=m.auto_save,
             model=m.model,
             planning_model=m.planning_model,
+            relevance_model=m.relevance_model,
         )
         for m in modes
     ]

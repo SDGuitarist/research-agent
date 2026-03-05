@@ -97,6 +97,7 @@ class TestModeInfo:
             auto_save=False,
             model="claude-sonnet-4-20250514",
             planning_model="claude-haiku-4-5-20251001",
+            relevance_model="claude-haiku-4-5-20251001",
         )
         assert info.name == "quick"
         assert info.max_sources == 4
@@ -105,6 +106,7 @@ class TestModeInfo:
         assert info.auto_save is False
         assert info.model == "claude-sonnet-4-20250514"
         assert info.planning_model == "claude-haiku-4-5-20251001"
+        assert info.relevance_model == "claude-haiku-4-5-20251001"
 
     def test_model_fields_default_to_empty_string(self):
         info = ModeInfo(
@@ -116,6 +118,7 @@ class TestModeInfo:
         )
         assert info.model == ""
         assert info.planning_model == ""
+        assert info.relevance_model == ""
 
     def test_frozen_immutability(self):
         info = ModeInfo(

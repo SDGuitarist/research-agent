@@ -30,6 +30,7 @@ class ResearchMode:
     cost_estimate: str = ""  # Estimated cost per query (e.g., "~$0.20")
     model: str = DEFAULT_MODEL  # Claude model for synthesis and quality-critical calls
     planning_model: str = AUTO_DETECT_MODEL  # Cheaper model for planning/classification steps
+    relevance_model: str = AUTO_DETECT_MODEL  # Cheaper model for relevance scoring (classification-like)
     iteration_enabled: bool = False  # Whether to run query iteration after synthesis
     followup_questions: int = 0  # Number of follow-up questions to generate (0 = skip)
 

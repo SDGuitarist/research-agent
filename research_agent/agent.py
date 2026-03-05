@@ -400,8 +400,8 @@ class ResearchAgent:
 
         # Load context once for the entire run using effective (post-auto-detect) state
         logger.debug(
-            "Model routing: synthesis=%s, planning=%s",
-            self.mode.model, self.mode.planning_model,
+            "Model routing: synthesis=%s, planning=%s, relevance=%s",
+            self.mode.model, self.mode.planning_model, self.mode.relevance_model,
         )
 
         self._run_context = self._load_context_for(
