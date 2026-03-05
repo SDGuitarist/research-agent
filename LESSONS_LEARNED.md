@@ -25,6 +25,7 @@ This document is the hub for all lessons from 18 development cycles of the resea
 | 17+ | Real-world research runs (Lodge at Torrey Pines) | Short queries beat complex ones; LinkedIn is the biggest blind spot; "insufficient data" can be the answer |
 | 18 | Pip-installable package | Delegate validation to the module that owns the data; wrap, don't refactor |
 | 20 | Query iteration (auto-refine + follow-ups) | Parallel async synthesis needs semaphore + gather + phase-level timeout; sanitize derived fields (headings from LLM output) at every insertion point |
+| 21 | Tiered model routing (planning + relevance) | A/B test cheap models with env var override before promoting to permanent fields; relevance scoring is classification-like and tolerates Haiku with zero decision flips |
 
 ## Top 10 Patterns
 

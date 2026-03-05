@@ -2,47 +2,43 @@
 
 **Date:** 2026-03-05
 **Branch:** `main`
-**Phase:** Post-Cycle 21 — Haiku monitoring complete, validation bug fixed
+**Phase:** Tier 2 A/B test complete — promoting Haiku relevance scoring to permanent
 
 ## Current State
 
-Cycle 21 (Tiered Model Routing) complete. This session fixed a validation bug in `meaningful_words()` that was silently dropping valid sub-queries due to punctuation and hyphenated word matching. Ran 9 baseline comparison reports confirming no quality degradation from Haiku planning. 891 tests passing.
+Tier 2 A/B test (Haiku for relevance scoring) complete. Ran 9 queries with `RELEVANCE_MODEL=claude-haiku-4-5-20251001` env var override. Zero decision flips, comparable source filtering. Now promoting to a permanent `relevance_model` field on `ResearchMode` and removing the env var hack. 891 tests passing.
 
 ### Session Commits
-1. `docs(21-review): add Cycle 21 review summary` — untracked file committed
-2. `fix(validation): strip punctuation and split hyphens in meaningful_words` — bug fix
-3. `test(validation): add tests for meaningful_words punctuation and hyphen handling` — 17 new tests
+1. `feat(relevance): add RELEVANCE_MODEL env var for A/B testing` — temporary override + test script
 
-### Baseline Comparison Results (9 queries, standard mode)
+### Tier 2 A/B Results: Haiku vs Sonnet Relevance Scoring (9 queries, standard mode)
 
-| Report | Size Change | Sources (old→new) |
-|--------|------------|-------------------|
-| lodge | +20% | 9→6 |
-| restaurants | +22% | 7→7 |
-| zoning | +21% | 7→12 |
-| pendry-branding | +43% | 6→9 |
-| hoteldel-programs | +4% | 2→2 |
-| luxury-trends | +4% | 9→7 |
-| grant-writing | +17% | 10→12 |
-| ai-jobs | +1% | 10→12 |
-| ai-filmmaking | +14% | 11→11 |
+| Report | Sonnet sources | Haiku sources | Decision change? |
+|--------|---------------|---------------|-----------------|
+| lodge | 6 | 7 | No (full→full) |
+| restaurants | 7 | 10 | No (full→full) |
+| zoning | 12 | 7 | No (full→full) |
+| pendry | 9 | 7 | No (full→full) |
+| hoteldel | 2 | 3 | No (short→short) |
+| luxury-trends | 7 | 7 | No (full→full) |
+| grant-writing | 12 | 12 | No (full→full) |
+| ai-jobs | 12 | 12 | No (full→full) |
+| ai-filmmaking | 11 | 9 | No (full→full) |
 
-**Verdict:** No regressions. Decomposition improvements from the validation fix show real gains (zoning, pendry, grant-writing). Haiku planning quality validated.
+**Verdict:** Zero decision flips. Source count differences are search variability, not scoring divergence. Haiku scores TripAdvisor/Yelp/YouTube consistently low (1/5) just like Sonnet. Safe to promote.
 
 ## Key Artifacts
 
 | Phase | Location |
 |-------|----------|
-| Brainstorm | `docs/brainstorms/2026-03-02-tiered-model-routing-brainstorm.md` |
-| Plan | `docs/plans/2026-03-02-feat-tiered-model-routing-plan.md` |
-| Review | `docs/reviews/cycle-21/REVIEW-SUMMARY.md` |
-| Solution | `docs/solutions/architecture/tiered-model-routing-planning-vs-synthesis.md` |
-| Baseline reports | `reports/baseline-*.md` (9 files, pre-Cycle 21) |
-| New reports | `reports/*_2026-03-05_*.md` (9 files, post-fix) |
+| A/B test script | `scripts/ab-test-relevance-haiku.sh` |
+| A/B test log | `reports/ab-test-haiku-relevance.log` |
+| Haiku-scored reports | `reports/*_2026-03-05_10[3-9]*.md` and `reports/*_2026-03-05_11*.md` |
+| Sonnet-scored reports | `reports/*_2026-03-05_09*.md` and `reports/*_2026-03-05_10[0-2]*.md` |
 
 ## Deferred Items
 
-- Tier 2: Haiku for relevance scoring (needs A/B comparison data — baselines now available)
+- ~~Tier 2: Haiku for relevance scoring~~ **Done** — A/B tested, promoting to permanent
 - Tier 3: Haiku for summarization (deferred indefinitely — too risky)
 - `validate_query_list()` on `refine_query()` output (pre-existing gap, low priority)
 - Standalone `generate_followups` MCP tool (agent-native parity)
@@ -50,18 +46,17 @@ Cycle 21 (Tiered Model Routing) complete. This session fixed a validation bug in
 - Per-query source count observability
 - Double-sanitization idempotency risk (standing risk from Cycle 20)
 - Update `cost_estimate` strings after real usage data collected
-- ~~Monitor Haiku decompose quality on first 10-20 real runs~~ **Done** — validated with 14 queries, no degradation
 
 ## Three Questions
 
-1. **Hardest implementation decision?** Whether to split hyphenated words in `meaningful_words()`. It's the right fix for "post-quantum"→"quantum" overlap, but it changes matching behavior globally — any hyphenated term now matches its components. Decided the benefit outweighs the risk since the overlap check is permissive (requires ≥1 word match), not restrictive.
+1. **Hardest implementation decision?** Whether to use an env var or a dataclass field for the A/B test. Chose env var for temporary testing (no schema change), then promote to permanent field once validated. This two-step approach avoids shipping untested permanent changes.
 
-2. **What did you consider changing but left alone?** Considered lowering `MAX_OVERLAP_WITH_ORIGINAL` from 0.8 to 0.7 to catch more edge cases, but the punctuation fix already resolved the real problem. Tightening overlap thresholds risks rejecting legitimate sub-queries that intentionally reuse original terms.
+2. **What did you consider changing but left alone?** Considered adding `relevance_model` directly to `ResearchMode` from the start (skipping the env var). But that would have changed the frozen dataclass, required test updates, and committed to the change before validating it. The env var let us test without commitment.
 
-3. **Least confident about going into next phase?** The lodge report dropped from 9→6 sources. It wasn't decomposed (simple query), so this is likely search result variability, not a model issue. But it's worth watching whether simple queries consistently find fewer sources now — could indicate a Tavily API change or a regression in query refinement.
+3. **Least confident about going into next phase?** The hoteldel query stayed `short_report` with both models (2 vs 3 sources). This isn't a model issue — it's a hard query (future events for a specific hotel). But the zoning query dropped from 12→7 sources with Haiku scoring, which is worth monitoring to see if Haiku is slightly more aggressive on borderline sources.
 
 ## Prompt for Next Session
 
 ```
-Read HANDOFF.md for context. Haiku monitoring is complete — 14 queries tested, no degradation. Baselines available in reports/baseline-*.md with post-fix comparisons in reports/*_2026-03-05_*.md. Pick the next feature from deferred items or propose a new cycle.
+Read HANDOFF.md for context. Tier 2 A/B test passed — Haiku relevance scoring validated. Add `relevance_model` field to ResearchMode (default to AUTO_DETECT_MODEL), use it in evaluate_sources, remove RELEVANCE_MODEL env var hack. Relevant files: research_agent/modes.py, research_agent/relevance.py, tests/test_relevance.py, tests/test_modes.py.
 ```

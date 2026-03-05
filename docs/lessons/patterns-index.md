@@ -119,3 +119,6 @@ Searchable table of all patterns discovered across development cycles. Each row 
 | **Security** | Sanitize derived fields at every prompt insertion point—headings extracted from LLM output that embedded web content are still external content | 20 | security.md |
 | **Architecture** | Status enums must not conflate distinct outcomes—"completed" vs "no_new_sources" vs "error" vs "skipped" each serve different callers | 20 | architecture.md |
 | **Architecture** | Every new pipeline feature needs a CLI flag and MCP parameter in the same commit—not in a follow-up review fix | 19, 20 | architecture.md |
+| **Cost** | Relevance scoring is classification-like (score 1-5 + one sentence)—Haiku handles it with zero decision flips vs Sonnet | 21 | operations.md |
+| **Process** | A/B test cheap models with a temporary env var override before promoting to permanent dataclass fields—validate before committing to schema changes | 21 | process.md |
+| **Architecture** | Tiered model routing: use the cheapest model that doesn't degrade output quality—planning and scoring tolerate Haiku, synthesis does not | 21 | architecture.md |
