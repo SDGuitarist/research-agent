@@ -186,7 +186,23 @@ def _parse_decomposition_response(text: str, original_query: str) -> Decompositi
             reasoning=reasoning,
         )
 
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("Decomposition reasoning: %s", reasoning)
+        logger.debug(
+            "Sub-queries before validation (%d): %s",
+            len(sub_queries), sub_queries,
+        )
+
     validated = _validate_sub_queries(sub_queries, original_query)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        dropped = [q for q in sub_queries if q not in validated]
+        if dropped:
+            logger.debug("Dropped sub-queries (%d): %s", len(dropped), dropped)
+        logger.debug(
+            "Sub-queries after validation (%d): %s",
+            len(validated), validated,
+        )
 
     # If validation reduced to 1 query, treat as simple
     if len(validated) == 1 and validated[0] == original_query:

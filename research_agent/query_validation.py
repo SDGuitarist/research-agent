@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 # Stop words excluded from overlap checks
 STOP_WORDS = frozenset({
     "the", "a", "an", "in", "on", "of", "for", "and", "or",
-    "to", "is", "how", "what", "why",
+    "to", "is", "are", "how", "what", "why", "do", "does",
 })
 
 
@@ -28,8 +28,19 @@ def strip_query(text: str, extra_chars: str = "") -> str:
 
 
 def meaningful_words(text: str) -> set[str]:
-    """Extract meaningful words (lowercase, excluding stop words)."""
-    return set(text.lower().split()) - STOP_WORDS
+    """Extract meaningful words (lowercase, stripped of punctuation, excluding stop words).
+
+    Hyphenated words are included both whole and as components,
+    so 'post-quantum' matches both 'post-quantum' and 'quantum'.
+    """
+    words = set()
+    for w in text.lower().split():
+        w = w.strip(",.?!;:\"'()[]")
+        if w:
+            words.add(w)
+            if "-" in w:
+                words.update(part for part in w.split("-") if part)
+    return words - STOP_WORDS
 
 
 def has_near_duplicate(words: set[str], valid_list: list[str], threshold: float = 0.7) -> bool:
