@@ -1,6 +1,7 @@
 """Source relevance scoring and evaluation for the research pipeline."""
 
 import logging
+import os
 import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -283,6 +284,11 @@ async def evaluate_sources(
     # Pre-sanitize query once for the whole batch (score_source uses it directly)
     safe_query = sanitize_content(query)
 
+    # Allow env var override for A/B testing relevance scoring with different models
+    scoring_model = os.environ.get("RELEVANCE_MODEL", mode.model)
+    if scoring_model != mode.model:
+        logger.info("Relevance scoring using override model: %s", scoring_model)
+
     # Score chunks in batches with adaptive backoff (only delay after a 429)
     rate_limit_hit = asyncio.Event()
 
@@ -290,7 +296,7 @@ async def evaluate_sources(
         return await score_source(
             safe_query, summary, client,
             rate_limit_event=rate_limit_hit,
-            model=mode.model,
+            model=scoring_model,
             critique_guidance=critique_guidance,
         )
 
