@@ -2,7 +2,7 @@
 
 ## Repo Snapshot
 - Project: Python CLI research agent for Pacific Flow that searches the web and produces markdown reports with citations.
-- Read first: `CLAUDE.md`, `HANDOFF.md`, `README.md`, then `docs/plans/`, `docs/solutions/`, and `todos/`.
+- Read first: `HANDOFF.md`, `CLAUDE.md`, `docs/reviews/CODEX-REVIEW-GATE.md`, `README.md`, then `docs/plans/`, `docs/solutions/`, and `todos/`.
 - Main entry point: `main.py`
 - Main package: `research_agent/`
 - Tests: `tests/`
@@ -28,7 +28,7 @@
 - Use Codex for second-opinion planning, branch risk review, plain-English explanation, and focused Claude Code handoff prompts.
 - Planning is analysis only unless I explicitly ask for implementation.
 - When asked to plan, include prior phase risk, smallest safe slice, acceptance checks, rollback, and a handoff prompt.
-- When asked to review, focus on search correctness, source handling, safety defenses, missing tests, and user-visible report regressions.
+- When asked to review, use `docs/reviews/CODEX-REVIEW-GATE.md` and focus on search correctness, source handling, safety defenses, missing tests, and user-visible report regressions.
 
 ## Repo Guardrails
 - Treat `reports/` as generated output unless I explicitly ask to edit a report.
