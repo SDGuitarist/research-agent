@@ -2,39 +2,42 @@
 
 **Date:** 2026-03-06
 **Branch:** `refactor/cycle-22-quick-wins`
-**Phase:** Work (Session 1 of 2 complete)
+**Phase:** Work complete (Session 2 of 2 done) → Review next
 
 ## Current State
 
-Cycle 22 quick wins — Session 1 done (3/5 items shipped). On feature branch `refactor/cycle-22-quick-wins` with 3 commits. 905 tests passing. Session 2 has 2 remaining items.
+Cycle 22 quick wins — all 5/5 items shipped. On feature branch `refactor/cycle-22-quick-wins` with 5 commits. 907 tests passing.
 
 ### Session 1 Commits
 1. `refactor(search): validate refine_query output with validate_query_list` — 3-10 word validation, 0.8 overlap threshold
 2. `feat(mcp): add generate_followups tool for agent-native parity` — standalone MCP tool using Haiku
 3. `feat(results): add iteration_sections field to ResearchResult` — tuple of mini-report strings
 
+### Session 2 Commits
+4. `feat(results): add source_counts field to ResearchResult` — dict mapping query → source count, populated in both research paths
+5. `test(agent): add double-Haiku e2e routing test` — verifies planning_model + relevance_model both route to Haiku
+
 ## Key Artifacts
 
 | Phase | Location |
 |-------|----------|
 | Plan | `docs/plans/2026-03-06-refactor-cycle-22-quick-wins-plan.md` |
-| Branch | `refactor/cycle-22-quick-wins` (3 commits ahead of main) |
-
-## Remaining (Session 2)
-
-- [ ] `ResearchResult.source_counts` — dict mapping query → source count (observability)
-- [ ] Double-Haiku path e2e integration test (verify planning_model + relevance_model routing)
+| Branch | `refactor/cycle-22-quick-wins` (5 commits ahead of main) |
 
 ## Three Questions
 
-1. **Hardest implementation decision?** Whether `TestIterationSections` should inherit from `TestQueryIteration` (reusing helpers) or be standalone. Chose inheritance for helper reuse but the mock setup for `test_iteration_completed_sections_captured` needed a side_effect function to simulate storing sections, since `_run_iteration` is the real method that sets them.
+1. **Hardest implementation decision?** How to populate `source_counts` without refactoring `_search_sub_queries` return type. Chose to track counts at direct `search()` call boundaries (original query + refined query) plus a combined `(sub-queries)` entry. Per-sub-query counts would require changing the static method signature used in 4 places — not worth it for observability.
 
-2. **What did you consider changing but left alone?** Considered refactoring `_run_iteration` return type from `tuple[str, int]` to a dataclass that includes sections. Left alone because the current approach (storing on `self._iteration_sections`) matches the existing pattern for `_iteration_status` — all state on the agent, exposed via properties.
+2. **What did you consider changing but left alone?** Considered making `_search_sub_queries` a regular method (not static) so it could write to `self._source_counts` directly with per-query granularity. Left it as a static method because the plan explicitly rejected this refactor, and the combined sub-query count still answers the key debugging question.
 
-3. **Least confident about going into Session 2?** The `source_counts` item — building the dict in the caller method requires understanding the control flow through `_research_deep` and `_research_with_refinement`, which are the two longest methods in agent.py. May be simpler to just count from `tried` list after search completes.
+3. **Least confident about going into review?** The `source_counts` property returns a copy (`dict(self._source_counts)`) which is safe but slightly different from other properties like `iteration_sections` which return the internal tuple directly. Frozen tuples don't need copying; mutable dicts do. Reviewers should confirm this is the right pattern.
 
-## Prompt for Next Session
+## Next Phase
+
+**Review** — run `/workflows:review` on the 5 commits in `refactor/cycle-22-quick-wins`.
+
+### Prompt for Next Session
 
 ```
-Read docs/plans/2026-03-06-refactor-cycle-22-quick-wins-plan.md. Implement Session 2: Items 4-5 (source_counts field + double-Haiku e2e test). Branch: refactor/cycle-22-quick-wins. Do only Session 2 — commit and stop.
+Review PR on branch refactor/cycle-22-quick-wins (5 commits, all Cycle 22 quick wins). Run /workflows:review. Base: main.
 ```

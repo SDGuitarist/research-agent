@@ -219,9 +219,9 @@ that uses the validated function, then structured fields, then tests).
 - [x] `refine_query()` validates output with `validate_query_list()`, falls back to original on rejection
 - [x] `generate_followups` MCP tool exposed and documented in instructions
 - [x] `ResearchResult.iteration_sections` populated as tuple of mini-report strings
-- [ ] `ResearchResult.source_counts` populated as dict mapping query → source count
-- [ ] Integration test verifies both `planning_model` and `relevance_model` routing
-- [ ] All 891+ tests pass
+- [x] `ResearchResult.source_counts` populated as dict mapping query → source count
+- [x] Integration test verifies both `planning_model` and `relevance_model` routing
+- [x] All 907 tests pass
 
 ## Feed-Forward
 
