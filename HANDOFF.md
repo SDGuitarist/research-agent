@@ -4,9 +4,15 @@
 **Branch:** `refactor/cycle-22-quick-wins`
 **Phase:** Work complete (Session 2 of 2 done) → Review next
 
+## Current Priority
+
+- Goal: Fix Batch 2 code concerns from Codex review.
+- Stop condition: Batch 2 items verified/documented, committed, pushed.
+- Read next: `docs/reviews/cycle-22/CODEX-REVIEW-FINDINGS.md`
+
 ## Current State
 
-Cycle 22 quick wins — all 5/5 items shipped. On feature branch `refactor/cycle-22-quick-wins` with 5 commits. 907 tests passing.
+Cycle 22 quick wins — all 5/5 items shipped + Batch 1 tests added. On feature branch `refactor/cycle-22-quick-wins` with 6 commits. 911 tests passing.
 
 ### Session 1 Commits
 1. `refactor(search): validate refine_query output with validate_query_list` — 3-10 word validation, 0.8 overlap threshold
@@ -32,12 +38,23 @@ Cycle 22 quick wins — all 5/5 items shipped. On feature branch `refactor/cycle
 
 3. **Least confident about going into review?** The `source_counts` property returns a copy (`dict(self._source_counts)`) which is safe but slightly different from other properties like `iteration_sections` which return the internal tuple directly. Frozen tuples don't need copying; mutable dicts do. Reviewers should confirm this is the right pattern.
 
+### Batch 1 Commit (Review Fixes)
+6. `test(22): add Batch 1 review tests — edge cases and coverage gaps` — 4 test additions: overlap boundary, MCP instructions, deep mode source_counts, double-Haiku model divergence
+
 ## Next Phase
 
-**Review** — run `/workflows:review` on the 5 commits in `refactor/cycle-22-quick-wins`.
+**Fix-batched (Batch 2)** — code concerns from Codex review.
 
 ### Prompt for Next Session
 
 ```
-Review PR on branch refactor/cycle-22-quick-wins (5 commits, all Cycle 22 quick wins). Run /workflows:review. Base: main.
+Read docs/reviews/cycle-22/CODEX-REVIEW-FINDINGS.md. Run Batch 2 (code concerns). Branch: refactor/cycle-22-quick-wins. 911 tests passing.
+
+BATCH 2 (code concerns):
+- Item 4: Verify source_counts defensive copy (dict()) is the right pattern — document why it differs from iteration_sections (tuple is already immutable)
+- Item 3: Verify iteration_sections tuple is populated in _run_iteration (not just stored on self)
+
+Relevant files: research_agent/agent.py, research_agent/results.py, tests/test_agent.py.
+
+Do only Batch 2. Commit and stop.
 ```
