@@ -32,6 +32,7 @@ class ResearchResult:
     critique: CritiqueResult | None = field(default=None)
     iteration_status: str = field(default="skipped")
     iteration_sections: tuple[str, ...] = field(default=())
+    source_counts: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

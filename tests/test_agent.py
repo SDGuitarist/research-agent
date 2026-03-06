@@ -2565,3 +2565,65 @@ class TestPlanningModelRouting:
 
             mock_refine.assert_called()
             assert mock_refine.call_args[1]["model"] == AUTO_DETECT_MODEL
+
+
+class TestSourceCounts:
+    """Tests for per-query source count observability."""
+
+    @pytest.mark.asyncio
+    async def test_standard_mode_populates_source_counts(self):
+        """Standard mode should populate source_counts with original + refined query counts."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_full_context") as mock_full_ctx, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
+
+            pass1 = [
+                SearchResult(title=f"R{i}", url=f"https://ex{i}.com", snippet="S")
+                for i in range(3)
+            ]
+            pass2 = [
+                SearchResult(title="R10", url="https://ex10.com", snippet="S"),
+                SearchResult(title="R0dup", url="https://ex0.com", snippet="S"),  # dup
+            ]
+            mock_search.side_effect = [pass1, pass2]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex0.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex0.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://ex0.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report",
+                decision_rationale="OK",
+                surviving_sources=tuple(summaries),
+                dropped_sources=(),
+                total_scored=1,
+                total_survived=1,
+                refined_query="refined query",
+            )
+            mock_draft.return_value = "Draft"
+            mock_skeptic.return_value = MagicMock(
+                lens="combined", checklist="[Observation] Test",
+                critical_count=0, concern_count=0,
+            )
+            mock_full_ctx.return_value = ContextResult.loaded("ctx")
+            mock_final.return_value = "Report"
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
+            await agent.research_async("test query")
+
+            counts = agent.source_counts
+            assert counts["test query"] == 3
+            # pass2 had 2 results but 1 was a dup, so 1 new
+            assert counts["refined query"] == 1
