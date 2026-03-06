@@ -31,6 +31,7 @@ class ResearchResult:
     status: str
     critique: CritiqueResult | None = field(default=None)
     iteration_status: str = field(default="skipped")
+    iteration_sections: tuple[str, ...] = field(default=())
 
 
 @dataclass(frozen=True)

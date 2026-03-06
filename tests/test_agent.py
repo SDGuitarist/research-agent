@@ -2347,6 +2347,54 @@ class TestQueryIteration:
         assert agent.iteration_status == "no_new_sources"
 
 
+class TestIterationSections(TestQueryIteration):
+    """Tests for iteration_sections property."""
+
+    @pytest.mark.asyncio
+    async def test_iteration_skipped_sections_empty(self):
+        """When iteration is skipped, iteration_sections is empty tuple."""
+        agent = self._make_agent(skip_iteration=True)
+        summaries = self._make_summaries(4)
+        full_eval = self._make_evaluation(
+            "full_report", surviving=summaries, total_scored=4,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=full_eval), \
+             patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
+             patch("research_agent.agent.synthesize_final", return_value="Full Report"):
+            mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
+
+            await agent._evaluate_and_synthesize("test query", summaries, "refined")
+
+        assert agent.iteration_sections == ()
+
+    @pytest.mark.asyncio
+    async def test_iteration_completed_sections_captured(self):
+        """When iteration completes, sections are stored as tuple."""
+        agent = self._make_agent()
+        summaries = self._make_summaries(4)
+        full_eval = self._make_evaluation(
+            "full_report", surviving=summaries, total_scored=4,
+        )
+
+        async def mock_run_iteration(query, report, evaluation):
+            agent._iteration_sections = ("## Deeper Dive: topic\n\nContent here.",)
+            return report + "\n\n## Deeper Dive: topic\n\nContent here.", 2
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=full_eval), \
+             patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
+             patch("research_agent.agent.synthesize_final", return_value="Full Report"), \
+             patch.object(agent, "_run_iteration", new_callable=AsyncMock, side_effect=mock_run_iteration):
+            mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
+
+            await agent._evaluate_and_synthesize("test query", summaries, "refined")
+
+        assert len(agent.iteration_sections) == 1
+        assert "Deeper Dive" in agent.iteration_sections[0]
+
+
 class TestUrlsFromEvaluation:
     """Tests for _urls_from_evaluation() helper."""
 

@@ -90,6 +90,7 @@ class ResearchAgent:
         self._last_gate_decision: str = ""
         self._last_critique: CritiqueResult | None = None
         self._iteration_status: str = "skipped"
+        self._iteration_sections: tuple[str, ...] = ()
 
     @property
     def last_source_count(self) -> int:
@@ -110,6 +111,11 @@ class ResearchAgent:
     def iteration_status(self) -> str:
         """Iteration outcome: 'completed', 'skipped', 'no_new_sources', 'error'."""
         return self._iteration_status
+
+    @property
+    def iteration_sections(self) -> tuple[str, ...]:
+        """Mini-report sections added during iteration, or empty tuple."""
+        return self._iteration_sections
 
     def _load_context_for(
         self, context_path: Path | None, no_context: bool,
@@ -341,6 +347,7 @@ class ResearchAgent:
 
         if appended_sections:
             report = report + "\n\n" + "\n\n".join(appended_sections)
+            self._iteration_sections = tuple(appended_sections)
 
         return report, sources_added
 
@@ -379,6 +386,7 @@ class ResearchAgent:
         self._last_gate_decision = ""
         self._last_critique = None
         self._iteration_status = "skipped"
+        self._iteration_sections = ()
         context_cache = new_context_cache()
 
         # Auto-detect context when no --context flag was given.
