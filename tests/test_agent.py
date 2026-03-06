@@ -2627,3 +2627,74 @@ class TestSourceCounts:
             assert counts["test query"] == 3
             # pass2 had 2 results but 1 was a dup, so 1 new
             assert counts["refined query"] == 1
+
+
+class TestDoubleHaikuRouting:
+    """Integration test: both planning_model and relevance_model route to Haiku."""
+
+    @pytest.mark.asyncio
+    async def test_planning_and_relevance_both_use_haiku(self):
+        """decompose_query gets planning_model, evaluate_sources gets mode with relevance_model."""
+        from research_agent.modes import AUTO_DETECT_MODEL
+        from research_agent.decompose import DecompositionResult
+
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.decompose_query") as mock_decompose, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_full_context") as mock_full_ctx, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
+
+            mock_decompose.return_value = DecompositionResult(
+                sub_queries=(), is_complex=False, reasoning="Simple query"
+            )
+            mock_search.return_value = [
+                SearchResult(title="R", url="https://ex1.com", snippet="S")
+            ]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report",
+                decision_rationale="OK",
+                surviving_sources=tuple(summaries),
+                dropped_sources=(),
+                total_scored=1,
+                total_survived=1,
+                refined_query="refined query",
+            )
+            mock_draft.return_value = "Draft"
+            mock_skeptic.return_value = MagicMock(
+                lens="combined", checklist="[Observation] Test",
+                critical_count=0, concern_count=0,
+            )
+            mock_full_ctx.return_value = ContextResult.loaded("ctx")
+            mock_final.return_value = "Report"
+
+            mode = ResearchMode.standard()
+            agent = ResearchAgent(api_key="test-key", mode=mode)
+            await agent.research_async("test query")
+
+            # Verify decompose received planning_model (Haiku)
+            mock_decompose.assert_called_once()
+            assert mock_decompose.call_args[1]["model"] == AUTO_DETECT_MODEL
+
+            # Verify evaluate_sources received mode with relevance_model (Haiku)
+            mock_evaluate.assert_called_once()
+            call_kwargs = mock_evaluate.call_args[1]
+            assert call_kwargs["mode"].relevance_model == AUTO_DETECT_MODEL
+
+            # Verify both are the same model (double-Haiku path)
+            assert mode.planning_model == mode.relevance_model == AUTO_DETECT_MODEL
