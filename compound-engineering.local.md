@@ -2,29 +2,24 @@
 
 ## Risk Chain
 
-**Brainstorm risk:** "Whether Haiku's decompose quality is good enough for complex multi-topic queries — sub-query generation for nuanced topics might produce less targeted queries, leading to weaker search results downstream."
+**Plan risk:** "Double-Haiku path (iterate planning + relevance scoring) not tested end-to-end"
 
-**Plan mitigation:** Verification step — run 3-5 test queries comparing Haiku vs Sonnet decompose output before shipping. Work phase tackles decompose first so quality can be assessed early.
+**Plan mitigation:** Item 5 added a dedicated e2e routing test verifying both `planning_model` and `relevance_model` route to `AUTO_DETECT_MODEL`.
 
-**Work risk (from Feed-Forward):** "Whether `identify_coverage_gaps()` on Haiku will correctly classify gap taxonomy types (QUERY_MISMATCH, THIN_FOOTPRINT, ABSENCE)."
+**Work risk (from Feed-Forward):** "Whether `generate_followups` MCP tool needs its own `query` parameter or should extract it from report metadata."
 
-**Review resolution:** 5 findings (0 P1, 3 P2, 2 P3) from 7 agents. All resolved. Top issues: ModeInfo missing planning_model (P2), redundant debug logs (P2), no integration test for routing (P2).
+**Review resolution:** 0 code bugs, coverage gaps only. Zero P1s. Two fix batches added edge-case tests (overlap boundary, MCP instructions, defensive copy mutation, real-code-path iteration_sections).
 
-**Tier 2 A/B test risk:** "The zoning query dropped from 12→7 sources with Haiku scoring, worth monitoring borderline aggressiveness."
-
-**Tier 2 resolution:** 9 queries A/B tested. Zero decision flips. Source count differences attributed to search variability, not scoring divergence. `relevance_model` promoted to permanent field.
-
-**Compound lesson:** Compare decisions (gate outcomes), not raw metrics. Two-step promotion (env var → permanent field) validated as safe methodology. Fix measurement bugs before A/B testing.
+**Compound lesson:** Batch small deferred items into housekeeping cycles every 3-5 cycles. Validate every LLM output path at introduction time. Expose structured data alongside concatenated strings.
 
 ## Files to Scrutinize
 
 | File | What changed | Risk area |
 |------|-------------|-----------|
-| `research_agent/modes.py` | Added `planning_model` + `relevance_model` fields to frozen dataclass | New fields must propagate to ModeInfo |
-| `research_agent/agent.py` | 7 call sites changed to `self.mode.planning_model` + 1 summary debug log | Correct planning vs synthesis split |
-| `research_agent/relevance.py` | `evaluate_sources()` now routes to `mode.relevance_model` | Haiku borderline aggressiveness on scoring |
-| `research_agent/results.py` | Added `model` + `planning_model` + `relevance_model` to ModeInfo | ModeInfo/ResearchMode drift |
-| `research_agent/query_validation.py` | `meaningful_words()` strips punctuation + splits hyphens | Validation correctness for complex queries |
+| `research_agent/search.py` | Added `validate_query_list()` to `refine_query()` | 0.8 overlap threshold (intentionally different from 0.6 in iterate.py) |
+| `research_agent/mcp_server.py` | New `generate_followups` tool + instructions update | MCP instructions string manually maintained — no parity lint |
+| `research_agent/results.py` | `iteration_sections` (tuple) + `source_counts` (dict) fields | Defensive copy on dict, direct return on tuple |
+| `research_agent/agent.py` | Populates both new fields + `_iteration_sections` list | Mutation safety of internal list before tuple conversion |
 
 ## Cross-Tool Review Protocol
 
@@ -33,8 +28,6 @@ Codex is an independent second-opinion agent in this workflow. For reviews:
 2. Then run Claude Code `/workflows:review` (compound review with learnings researcher)
 3. Merge both finding sets, deduplicate, and apply fix ordering per CLAUDE.md rules
 
-For planning: after Claude's `/workflows:plan`, optionally run Codex `codex-second-opinion-plan` to challenge assumptions and generate a focused handoff prompt.
-
 ## Plan Reference
 
-`docs/plans/2026-03-02-feat-tiered-model-routing-plan.md`
+`docs/plans/2026-03-06-refactor-cycle-22-quick-wins-plan.md`
