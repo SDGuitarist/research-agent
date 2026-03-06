@@ -21,9 +21,15 @@ from tavily.errors import (
 )
 
 from .errors import ANTHROPIC_TIMEOUT, SearchError
+from .query_validation import validate_query_list
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
+
+# Validation thresholds for refined queries
+MIN_REFINED_WORDS = 3
+MAX_REFINED_WORDS = 10
+MAX_REFINED_OVERLAP = 0.8  # lenient — refinement should relate to original
 
 # Cached TavilyClient instance (avoids re-instantiation per search call)
 _tavily_client: object | None = None
@@ -234,8 +240,22 @@ Generate ONE follow-up search query that fills gaps in the research. Return ONLY
         if not refined:
             logger.warning("Empty refined query, using original query")
             return original_query
-        logger.info(f"Refined query: {refined}")
-        return refined
+
+        validated = validate_query_list(
+            [refined],
+            min_words=MIN_REFINED_WORDS,
+            max_words=MAX_REFINED_WORDS,
+            max_results=1,
+            reference_queries=[original_query],
+            max_reference_overlap=MAX_REFINED_OVERLAP,
+            label="Refined query",
+        )
+        if not validated:
+            logger.info("Refined query rejected by validation: %s", refined)
+            return original_query
+
+        logger.info("Refined query: %s", validated[0])
+        return validated[0]
     except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
         logger.warning(f"Query refinement failed: {e}, using original query")
         return original_query

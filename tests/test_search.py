@@ -235,6 +235,36 @@ class TestRefineQuery:
         assert "Summary 9" in user_content
         assert "Summary 10" not in user_content
 
+    def test_refine_query_rejects_too_short(self, mock_anthropic_response):
+        """Query with fewer than 3 words should fall back to original."""
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_anthropic_response("AI")
+
+        result = refine_query(mock_client, "original research query", ["summary"])
+
+        assert result == "original research query"
+
+    def test_refine_query_rejects_too_long(self, mock_anthropic_response):
+        """Query with more than 10 words should fall back to original."""
+        mock_client = MagicMock()
+        long_query = "one two three four five six seven eight nine ten eleven twelve"
+        mock_client.messages.create.return_value = mock_anthropic_response(long_query)
+
+        result = refine_query(mock_client, "original research query", ["summary"])
+
+        assert result == "original research query"
+
+    def test_refine_query_passes_valid_through_validation(self, mock_anthropic_response):
+        """A valid 3-8 word query should pass validation and be returned."""
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_anthropic_response(
+            "latest async concurrency benchmarks"
+        )
+
+        result = refine_query(mock_client, "python async patterns", ["summary"])
+
+        assert result == "latest async concurrency benchmarks"
+
 
 class TestTavilySearch:
     """Tests for Tavily search functionality."""
