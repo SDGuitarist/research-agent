@@ -120,7 +120,12 @@ class ResearchAgent:
 
     @property
     def source_counts(self) -> dict[str, int]:
-        """Per-query source counts from the most recent run."""
+        """Per-query source counts from the most recent run.
+
+        Returns a shallow copy — dict is mutable, so callers cannot
+        corrupt internal state.  Other properties (iteration_sections,
+        last_source_count, etc.) return immutable types and need no copy.
+        """
         return dict(self._source_counts)
 
     def _load_context_for(

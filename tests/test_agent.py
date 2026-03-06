@@ -2694,6 +2694,57 @@ class TestSourceCountsDeep:
             assert counts["deep refined query"] == 2
 
 
+class TestSourceCountsDefensiveCopy:
+    """Verify source_counts returns a copy that can't mutate agent state."""
+
+    def test_mutating_returned_dict_does_not_affect_agent(self):
+        """Callers who modify the returned dict should not corrupt internal state."""
+        agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
+        agent._source_counts = {"query1": 5, "query2": 3}
+
+        counts = agent.source_counts
+        counts["query1"] = 999
+        counts["injected"] = 1
+
+        assert agent.source_counts == {"query1": 5, "query2": 3}
+
+
+class TestIterationSectionsPopulation(TestQueryIteration):
+    """Verify _run_iteration populates iteration_sections via real code path."""
+
+    @pytest.mark.asyncio
+    async def test_run_iteration_sets_sections_from_mini_reports(self):
+        """_run_iteration should store synthesized mini-reports as iteration_sections."""
+        from research_agent.iterate import QueryGenerationResult
+
+        agent = self._make_agent()
+        evaluation = self._make_evaluation(
+            "full_report", surviving=self._make_summaries(4), total_scored=4,
+        )
+
+        refined = QueryGenerationResult(items=("refined q",), rationale="ok")
+        followup = QueryGenerationResult(items=(), rationale="none")
+
+        with patch("research_agent.agent.generate_refined_queries", return_value=refined), \
+             patch("research_agent.agent.generate_followup_questions", return_value=followup), \
+             patch.object(agent, "_search_sub_queries", new_callable=AsyncMock) as mock_search, \
+             patch.object(agent, "_fetch_extract_summarize", new_callable=AsyncMock) as mock_fes, \
+             patch("research_agent.agent.synthesize_mini_report") as mock_mini:
+
+            mock_search.return_value = [
+                SearchResult(title="New", url="https://new.com", snippet="S"),
+            ]
+            mock_fes.return_value = [
+                Summary(url="https://new.com", title="New", summary="Content"),
+            ]
+            mock_mini.return_value = "## Deeper Dive: refined q\n\nNew content."
+
+            report, added = await agent._run_iteration("test", "Base report", evaluation)
+
+            assert agent.iteration_sections == ("## Deeper Dive: refined q\n\nNew content.",)
+            assert "Deeper Dive" in report
+
+
 class TestDoubleHaikuRouting:
     """Integration test: both planning_model and relevance_model route to Haiku."""
 
