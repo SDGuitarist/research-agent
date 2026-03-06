@@ -26,6 +26,15 @@
 | `research_agent/results.py` | Added `model` + `planning_model` + `relevance_model` to ModeInfo | ModeInfo/ResearchMode drift |
 | `research_agent/query_validation.py` | `meaningful_words()` strips punctuation + splits hyphens | Validation correctness for complex queries |
 
+## Cross-Tool Review Protocol
+
+Codex is an independent second-opinion agent in this workflow. For reviews:
+1. Run Codex `review-branch-risks` first (independent findings)
+2. Then run Claude Code `/workflows:review` (compound review with learnings researcher)
+3. Merge both finding sets, deduplicate, and apply fix ordering per CLAUDE.md rules
+
+For planning: after Claude's `/workflows:plan`, optionally run Codex `codex-second-opinion-plan` to challenge assumptions and generate a focused handoff prompt.
+
 ## Plan Reference
 
 `docs/plans/2026-03-02-feat-tiered-model-routing-plan.md`
