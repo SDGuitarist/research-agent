@@ -265,6 +265,34 @@ class TestRefineQuery:
 
         assert result == "latest async concurrency benchmarks"
 
+    def test_refine_query_rejects_at_overlap_boundary(self, mock_anthropic_response):
+        """Query with >=80% word overlap with original should fall back."""
+        mock_client = MagicMock()
+        # 4 of 5 words match original → 4/5 = 0.8 overlap, hits threshold
+        mock_client.messages.create.return_value = mock_anthropic_response(
+            "python async patterns deep overview"
+        )
+
+        result = refine_query(
+            mock_client, "python async patterns overview", ["summary"]
+        )
+
+        assert result == "python async patterns overview"
+
+    def test_refine_query_accepts_just_below_overlap_boundary(self, mock_anthropic_response):
+        """Query with <80% word overlap should pass validation."""
+        mock_client = MagicMock()
+        # 3 of 5 words match original → 3/5 = 0.6 overlap, below 0.8
+        mock_client.messages.create.return_value = mock_anthropic_response(
+            "python async concurrency benchmarks performance"
+        )
+
+        result = refine_query(
+            mock_client, "python async patterns overview", ["summary"]
+        )
+
+        assert result == "python async concurrency benchmarks performance"
+
 
 class TestTavilySearch:
     """Tests for Tavily search functionality."""

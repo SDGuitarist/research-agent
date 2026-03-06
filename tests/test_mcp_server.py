@@ -452,6 +452,14 @@ class TestGenerateFollowups:
 # ---------------------------------------------------------------------------
 
 
+class TestMcpInstructions:
+    """Tests for MCP server instructions string."""
+
+    def test_instructions_mention_generate_followups(self):
+        """MCP instructions should mention generate_followups tool."""
+        assert "generate_followups" in mcp.instructions
+
+
 class TestRunResearchParams:
     @patch.dict("os.environ", ENV_BOTH, clear=True)
     @patch("research_agent.run_research_async")
