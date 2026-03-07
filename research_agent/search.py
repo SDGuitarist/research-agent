@@ -5,6 +5,7 @@ import os
 import random
 import time
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 from ddgs import DDGS
@@ -44,6 +45,35 @@ class SearchResult:
     url: str
     snippet: str
     raw_content: str = ""  # Full page content from Tavily (empty if unavailable)
+
+
+def filter_blocked_urls(
+    results: list[SearchResult],
+    blocked_domains: tuple[str, ...],
+) -> list[SearchResult]:
+    """Remove results whose URLs match any blocked domain.
+
+    Domain matching uses dot-boundary suffix: ``example.com`` blocks
+    ``sub.example.com`` but NOT ``notexample.com``.  Results with
+    malformed or missing URLs are kept (don't filter what you can't parse).
+    """
+    if not blocked_domains:
+        return results
+
+    blocked_lower = [d.lower() for d in blocked_domains]
+    filtered = []
+    for r in results:
+        host = urlparse(r.url).hostname or ""
+        if any(host == b or host.endswith(f".{b}") for b in blocked_lower):
+            continue
+        filtered.append(r)
+
+    removed = len(results) - len(filtered)
+    if removed:
+        logger.info("Blocked-domain filter removed %d of %d results", removed, len(results))
+    if removed and not filtered:
+        logger.warning("All %d results were blocked — check blocked_domains config", len(results))
+    return filtered
 
 
 def search(query: str, max_results: int = 5) -> list[SearchResult]:

@@ -11,7 +11,7 @@ import yaml
 
 from anthropic import Anthropic, AsyncAnthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
-from .search import search, refine_query, SearchResult
+from .search import search, refine_query, filter_blocked_urls, SearchResult
 from .fetch import fetch_urls
 from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all, Summary
@@ -573,6 +573,13 @@ class ResearchAgent:
         Args:
             quiet: If True, suppress step headers (used by deep mode pass 2).
         """
+        # Single blocked-domain filter — covers ALL search paths
+        blocked = ()
+        if self._run_context.profile:
+            blocked = self._run_context.profile.blocked_domains
+        if blocked:
+            results = filter_blocked_urls(results, blocked)
+
         prefetched, urls_to_fetch = self._split_prefetched(results)
         if not quiet:
             self._next_step(f"Fetching {len(results)} pages...")
