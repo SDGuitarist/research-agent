@@ -1,4 +1,4 @@
-"""Tests for the MCP server: all 5 tools, transports, and error paths."""
+"""Tests for the MCP server: all 7 tools, transports, and error paths."""
 
 import subprocess
 import sys
@@ -399,8 +399,65 @@ class TestCritiqueReport:
 
 
 # ---------------------------------------------------------------------------
+# generate_followups
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateFollowups:
+    async def test_invalid_filename_rejected(self, client):
+        """Invalid filename returns ToolError."""
+        with pytest.raises(ToolError, match="Invalid filename"):
+            await client.call_tool(
+                "generate_followups",
+                {"query": "test query", "report_filename": "../../.env"},
+            )
+
+    async def test_empty_query_rejected(self, client, tmp_path):
+        """Empty query returns ToolError."""
+        with pytest.raises(ToolError, match="non-empty string"):
+            await client.call_tool(
+                "generate_followups",
+                {"query": "", "report_filename": "test.md"},
+            )
+
+    @patch("research_agent.iterate.generate_followup_questions")
+    async def test_returns_numbered_questions(self, mock_gen, client, tmp_path):
+        """Successful generation returns formatted numbered list."""
+        from research_agent.iterate import QueryGenerationResult
+
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+        report_file = reports_dir / "test_report.md"
+        report_file.write_text("# Test Report\n\nBody here.")
+
+        mock_gen.return_value = QueryGenerationResult(
+            items=("What are the costs?", "How does it compare?"),
+            rationale="Missing pricing and comparison data",
+        )
+
+        with patch("research_agent.report_store.REPORTS_DIR", reports_dir):
+            result = await client.call_tool(
+                "generate_followups",
+                {"query": "test query", "report_filename": "test_report.md"},
+            )
+
+        text = result.data
+        assert "1. What are the costs?" in text
+        assert "2. How does it compare?" in text
+        assert "Missing pricing" in text
+
+
+# ---------------------------------------------------------------------------
 # run_research — skip_critique and max_sources params
 # ---------------------------------------------------------------------------
+
+
+class TestMcpInstructions:
+    """Tests for MCP server instructions string."""
+
+    def test_instructions_mention_generate_followups(self):
+        """MCP instructions should mention generate_followups tool."""
+        assert "generate_followups" in mcp.instructions
 
 
 class TestRunResearchParams:

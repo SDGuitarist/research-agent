@@ -56,6 +56,13 @@ Patterns that recurred across 3+ cycles or prevented entire categories of bugs. 
 | [process.md](docs/lessons/process.md) | 1, 4, 14 (review methodology), 17, 20 (validation Qs) | Planning, review cadence, testing discipline, prompting strategy, feed-forward |
 | [patterns-index.md](docs/lessons/patterns-index.md) | All | Flat searchable table with cycle mappings |
 
+## Cross-Tool Workflow (March 2026)
+
+| # | Pattern | Cycles | Category |
+|---|---------|--------|----------|
+| 13 | **Two independent reviewers > one self-reviewing tool** — Codex reviews first (fresh eyes), then Claude Code with learnings researcher. Deduplicate across both. | All future | [process.md](docs/lessons/process.md) |
+| 14 | **Handoff prompts start with "Read docs/plans/[file].md"** — Codex generates focused Claude prompts with file paths, scope, acceptance criteria, stop conditions. | All future | [process.md](docs/lessons/process.md) |
+
 ## How to Search
 
 **By pattern:** Open [`patterns-index.md`](docs/lessons/patterns-index.md) and search by keyword.

@@ -2347,6 +2347,54 @@ class TestQueryIteration:
         assert agent.iteration_status == "no_new_sources"
 
 
+class TestIterationSections(TestQueryIteration):
+    """Tests for iteration_sections property."""
+
+    @pytest.mark.asyncio
+    async def test_iteration_skipped_sections_empty(self):
+        """When iteration is skipped, iteration_sections is empty tuple."""
+        agent = self._make_agent(skip_iteration=True)
+        summaries = self._make_summaries(4)
+        full_eval = self._make_evaluation(
+            "full_report", surviving=summaries, total_scored=4,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=full_eval), \
+             patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
+             patch("research_agent.agent.synthesize_final", return_value="Full Report"):
+            mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
+
+            await agent._evaluate_and_synthesize("test query", summaries, "refined")
+
+        assert agent.iteration_sections == ()
+
+    @pytest.mark.asyncio
+    async def test_iteration_completed_sections_captured(self):
+        """When iteration completes, sections are stored as tuple."""
+        agent = self._make_agent()
+        summaries = self._make_summaries(4)
+        full_eval = self._make_evaluation(
+            "full_report", surviving=summaries, total_scored=4,
+        )
+
+        async def mock_run_iteration(query, report, evaluation):
+            agent._iteration_sections = ("## Deeper Dive: topic\n\nContent here.",)
+            return report + "\n\n## Deeper Dive: topic\n\nContent here.", 2
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=full_eval), \
+             patch("research_agent.agent.synthesize_draft", return_value="Draft"), \
+             patch("research_agent.agent.run_skeptic_combined", new_callable=AsyncMock) as mock_skeptic, \
+             patch("research_agent.agent.synthesize_final", return_value="Full Report"), \
+             patch.object(agent, "_run_iteration", new_callable=AsyncMock, side_effect=mock_run_iteration):
+            mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
+
+            await agent._evaluate_and_synthesize("test query", summaries, "refined")
+
+        assert len(agent.iteration_sections) == 1
+        assert "Deeper Dive" in agent.iteration_sections[0]
+
+
 class TestUrlsFromEvaluation:
     """Tests for _urls_from_evaluation() helper."""
 
@@ -2517,3 +2565,259 @@ class TestPlanningModelRouting:
 
             mock_refine.assert_called()
             assert mock_refine.call_args[1]["model"] == AUTO_DETECT_MODEL
+
+
+class TestSourceCounts:
+    """Tests for per-query source count observability."""
+
+    @pytest.mark.asyncio
+    async def test_standard_mode_populates_source_counts(self):
+        """Standard mode should populate source_counts with original + refined query counts."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_full_context") as mock_full_ctx, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
+
+            pass1 = [
+                SearchResult(title=f"R{i}", url=f"https://ex{i}.com", snippet="S")
+                for i in range(3)
+            ]
+            pass2 = [
+                SearchResult(title="R10", url="https://ex10.com", snippet="S"),
+                SearchResult(title="R0dup", url="https://ex0.com", snippet="S"),  # dup
+            ]
+            mock_search.side_effect = [pass1, pass2]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex0.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex0.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://ex0.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report",
+                decision_rationale="OK",
+                surviving_sources=tuple(summaries),
+                dropped_sources=(),
+                total_scored=1,
+                total_survived=1,
+                refined_query="refined query",
+            )
+            mock_draft.return_value = "Draft"
+            mock_skeptic.return_value = MagicMock(
+                lens="combined", checklist="[Observation] Test",
+                critical_count=0, concern_count=0,
+            )
+            mock_full_ctx.return_value = ContextResult.loaded("ctx")
+            mock_final.return_value = "Report"
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
+            await agent.research_async("test query")
+
+            counts = agent.source_counts
+            assert counts["test query"] == 3
+            # pass2 had 2 results but 1 was a dup, so 1 new
+            assert counts["refined query"] == 1
+
+
+class TestSourceCountsDeep:
+    """Tests for source_counts in _research_deep path."""
+
+    @pytest.mark.asyncio
+    async def test_deep_mode_populates_source_counts(self):
+        """Deep mode should populate source_counts with pass1 + refined query counts."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
+             patch("research_agent.agent.load_full_context") as mock_full_ctx, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
+
+            # Pass 1: 5 results
+            pass1 = [
+                SearchResult(title=f"R{i}", url=f"https://ex{i}.com", snippet="S")
+                for i in range(5)
+            ]
+            # Pass 2: 3 results, 1 dup from pass 1
+            pass2 = [
+                SearchResult(title="New1", url="https://new1.com", snippet="S"),
+                SearchResult(title="New2", url="https://new2.com", snippet="S"),
+                SearchResult(title="Dup", url="https://ex0.com", snippet="S"),
+            ]
+            mock_search.side_effect = [pass1, pass2]
+            mock_refine.return_value = "deep refined query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex0.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex0.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://ex0.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report",
+                decision_rationale="OK",
+                surviving_sources=tuple(summaries),
+                dropped_sources=(),
+                total_scored=1,
+                total_survived=1,
+                refined_query="deep refined query",
+            )
+            mock_draft.return_value = "Draft"
+            mock_skeptic.return_value = [MagicMock(
+                lens="evidence_alignment", checklist="[Observation] Test",
+                critical_count=0, concern_count=0,
+            )]
+            mock_full_ctx.return_value = ContextResult.loaded("ctx")
+            mock_final.return_value = "Report"
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
+            await agent.research_async("deep query")
+
+            counts = agent.source_counts
+            assert counts["deep query"] == 5
+            # pass2 had 3 results but 1 dup → 2 new
+            assert counts["deep refined query"] == 2
+
+
+class TestSourceCountsDefensiveCopy:
+    """Verify source_counts returns a copy that can't mutate agent state."""
+
+    def test_mutating_returned_dict_does_not_affect_agent(self):
+        """Callers who modify the returned dict should not corrupt internal state."""
+        agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
+        agent._source_counts = {"query1": 5, "query2": 3}
+
+        counts = agent.source_counts
+        counts["query1"] = 999
+        counts["injected"] = 1
+
+        assert agent.source_counts == {"query1": 5, "query2": 3}
+
+
+class TestIterationSectionsPopulation(TestQueryIteration):
+    """Verify _run_iteration populates iteration_sections via real code path."""
+
+    @pytest.mark.asyncio
+    async def test_run_iteration_sets_sections_from_mini_reports(self):
+        """_run_iteration should store synthesized mini-reports as iteration_sections."""
+        from research_agent.iterate import QueryGenerationResult
+
+        agent = self._make_agent()
+        evaluation = self._make_evaluation(
+            "full_report", surviving=self._make_summaries(4), total_scored=4,
+        )
+
+        refined = QueryGenerationResult(items=("refined q",), rationale="ok")
+        followup = QueryGenerationResult(items=(), rationale="none")
+
+        with patch("research_agent.agent.generate_refined_queries", return_value=refined), \
+             patch("research_agent.agent.generate_followup_questions", return_value=followup), \
+             patch.object(agent, "_search_sub_queries", new_callable=AsyncMock) as mock_search, \
+             patch.object(agent, "_fetch_extract_summarize", new_callable=AsyncMock) as mock_fes, \
+             patch("research_agent.agent.synthesize_mini_report") as mock_mini:
+
+            mock_search.return_value = [
+                SearchResult(title="New", url="https://new.com", snippet="S"),
+            ]
+            mock_fes.return_value = [
+                Summary(url="https://new.com", title="New", summary="Content"),
+            ]
+            mock_mini.return_value = "## Deeper Dive: refined q\n\nNew content."
+
+            report, added = await agent._run_iteration("test", "Base report", evaluation)
+
+            assert agent.iteration_sections == ("## Deeper Dive: refined q\n\nNew content.",)
+            assert "Deeper Dive" in report
+
+
+class TestDoubleHaikuRouting:
+    """Integration test: both planning_model and relevance_model route to Haiku."""
+
+    @pytest.mark.asyncio
+    async def test_planning_and_relevance_both_use_haiku(self):
+        """decompose_query gets planning_model, evaluate_sources gets mode with relevance_model."""
+        from research_agent.modes import AUTO_DETECT_MODEL
+        from research_agent.decompose import DecompositionResult
+
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.decompose_query") as mock_decompose, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_full_context") as mock_full_ctx, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
+
+            mock_decompose.return_value = DecompositionResult(
+                sub_queries=(), is_complex=False, reasoning="Simple query"
+            )
+            mock_search.return_value = [
+                SearchResult(title="R", url="https://ex1.com", snippet="S")
+            ]
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report",
+                decision_rationale="OK",
+                surviving_sources=tuple(summaries),
+                dropped_sources=(),
+                total_scored=1,
+                total_survived=1,
+                refined_query="refined query",
+            )
+            mock_draft.return_value = "Draft"
+            mock_skeptic.return_value = MagicMock(
+                lens="combined", checklist="[Observation] Test",
+                critical_count=0, concern_count=0,
+            )
+            mock_full_ctx.return_value = ContextResult.loaded("ctx")
+            mock_final.return_value = "Report"
+
+            mode = ResearchMode.standard()
+            agent = ResearchAgent(api_key="test-key", mode=mode)
+            await agent.research_async("test query")
+
+            # Verify decompose received planning_model (Haiku)
+            mock_decompose.assert_called_once()
+            decompose_model = mock_decompose.call_args[1]["model"]
+            assert decompose_model == AUTO_DETECT_MODEL
+
+            # Verify evaluate_sources received mode with relevance_model (Haiku)
+            mock_evaluate.assert_called_once()
+            eval_mode = mock_evaluate.call_args[1]["mode"]
+            assert eval_mode.relevance_model == AUTO_DETECT_MODEL
+
+            # Verify both are the same model (double-Haiku path)
+            assert mode.planning_model == mode.relevance_model == AUTO_DETECT_MODEL
+
+            # Verify planning/relevance model differs from synthesis model
+            # (confirms this actually routes to a cheaper model, not the default)
+            from research_agent.modes import DEFAULT_MODEL
+            assert decompose_model != DEFAULT_MODEL
+            assert eval_mode.relevance_model != eval_mode.model

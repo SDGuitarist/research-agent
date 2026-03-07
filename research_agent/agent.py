@@ -90,6 +90,8 @@ class ResearchAgent:
         self._last_gate_decision: str = ""
         self._last_critique: CritiqueResult | None = None
         self._iteration_status: str = "skipped"
+        self._iteration_sections: tuple[str, ...] = ()
+        self._source_counts: dict[str, int] = {}
 
     @property
     def last_source_count(self) -> int:
@@ -110,6 +112,21 @@ class ResearchAgent:
     def iteration_status(self) -> str:
         """Iteration outcome: 'completed', 'skipped', 'no_new_sources', 'error'."""
         return self._iteration_status
+
+    @property
+    def iteration_sections(self) -> tuple[str, ...]:
+        """Mini-report sections added during iteration, or empty tuple."""
+        return self._iteration_sections
+
+    @property
+    def source_counts(self) -> dict[str, int]:
+        """Per-query source counts from the most recent run.
+
+        Returns a shallow copy — dict is mutable, so callers cannot
+        corrupt internal state.  Other properties (iteration_sections,
+        last_source_count, etc.) return immutable types and need no copy.
+        """
+        return dict(self._source_counts)
 
     def _load_context_for(
         self, context_path: Path | None, no_context: bool,
@@ -341,6 +358,7 @@ class ResearchAgent:
 
         if appended_sections:
             report = report + "\n\n" + "\n\n".join(appended_sections)
+            self._iteration_sections = tuple(appended_sections)
 
         return report, sources_added
 
@@ -379,6 +397,8 @@ class ResearchAgent:
         self._last_gate_decision = ""
         self._last_critique = None
         self._iteration_status = "skipped"
+        self._iteration_sections = ()
+        self._source_counts = {}
         context_cache = new_context_cache()
 
         # Auto-detect context when no --context flag was given.
@@ -921,6 +941,7 @@ class ResearchAgent:
         except SearchError as e:
             raise ResearchError(f"Search failed: {e}")
 
+        self._source_counts[query] = len(pass1_results)
         seen_urls = {r.url for r in pass1_results}
 
         # Sub-query searches (additive)
@@ -930,6 +951,7 @@ class ResearchAgent:
             new_from_subs = await self._search_sub_queries(
                 sub_queries, per_sq_sources, seen_urls
             )
+            self._source_counts["(sub-queries)"] = len(new_from_subs)
             pass1_results.extend(new_from_subs)
 
         # Refine query using snippets
@@ -954,6 +976,8 @@ class ResearchAgent:
             logger.info("Refined pass failed, continuing with existing results")
             new_results = []
 
+        if refined_query != query:
+            self._source_counts[refined_query] = len(new_results)
         all_results = pass1_results + new_results
         logger.info("Total: %d unique sources", len(all_results))
 
@@ -984,6 +1008,7 @@ class ResearchAgent:
         except SearchError as e:
             raise ResearchError(f"Search failed: {e}")
 
+        self._source_counts[query] = len(results)
         seen_urls = {r.url for r in results}
 
         # Sub-query searches (additive)
@@ -993,6 +1018,7 @@ class ResearchAgent:
             new_from_subs = await self._search_sub_queries(
                 sub_queries, per_sq_sources, seen_urls
             )
+            self._source_counts["(sub-queries)"] = len(new_from_subs)
             results.extend(new_from_subs)
 
         # Pass 1: fetch -> extract -> cascade -> summarize
@@ -1019,6 +1045,8 @@ class ResearchAgent:
             )
             new_results = [r for r in pass2_results if r.url not in seen_urls]
             logger.info("Pass 2 found %d results (%d new)", len(pass2_results), len(new_results))
+            if refined_query != query:
+                self._source_counts[refined_query] = len(new_results)
 
             if new_results:
                 try:

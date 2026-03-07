@@ -1,15 +1,16 @@
 ---
-title: "Tiered Model Routing for Planning vs. Synthesis"
-date: 2026-03-03
+title: "Tiered Model Routing — Planning, Relevance Scoring, and Synthesis"
+date: 2026-03-06
 category: architecture
-tags: [model-routing, cost-optimization, planning-model, haiku, sonnet, frozen-dataclass]
-module: research_agent/modes.py, research_agent/agent.py, research_agent/results.py, research_agent/mcp_server.py
-symptoms: "All API calls (planning and synthesis) used Sonnet model, incurring unnecessary cost on cheap planning tasks like decompose, refine, gap analysis, follow-ups, and report evaluation."
+tags: [model-routing, cost-optimization, planning-model, relevance-model, haiku, sonnet, frozen-dataclass, a-b-testing]
+module: research_agent/modes.py, research_agent/agent.py, research_agent/relevance.py, research_agent/results.py, research_agent/mcp_server.py, research_agent/query_validation.py
+symptoms: "All API calls (planning, relevance scoring, and synthesis) used Sonnet model, incurring unnecessary cost on classification-like tasks."
 severity: medium
-summary: "Added planning_model field to ResearchMode dataclass defaulting to Haiku. Routed 7 planning call sites through planning_model; kept 8 synthesis/quality-critical call sites on Sonnet. Achieved ~4-7% cost savings and ~3-5s latency improvement on standard mode."
+cycle: 21
+summary: "Added planning_model and relevance_model fields to ResearchMode dataclass, both defaulting to Haiku. Routed 7 planning call sites through planning_model and relevance scoring through relevance_model; kept 8 synthesis/quality-critical call sites on Sonnet. Tier 1 validated with 14 queries, Tier 2 A/B tested with 9 queries (zero decision flips). Also fixed meaningful_words() validation bug hiding quality issues."
 ---
 
-# Tiered Model Routing for Planning vs. Synthesis
+# Tiered Model Routing — Planning, Relevance Scoring, and Synthesis
 
 ## Prior Phase Risk
 
@@ -19,7 +20,7 @@ Accepted risk: all 7 sites use the identical `model=self.mode.planning_model` pa
 
 ## Problem
 
-All 15 Claude API calls in the research pipeline used the same Sonnet model ($3/$15 per MTok). Seven of these are planning/classification tasks — decompose query, refine query, identify coverage gaps, generate refined queries, generate follow-up questions, evaluate report — that don't need Sonnet-level reasoning. This wasted ~4-7% of cost and added ~3-5s latency on the critical path.
+All 15+ Claude API calls in the research pipeline used the same Sonnet model ($3/$15 per MTok). Eight of these are classification-like tasks — seven planning calls (decompose query, refine query, identify coverage gaps, generate refined queries, generate follow-up questions, evaluate report) plus relevance scoring (score each source 1-5) — that don't need Sonnet-level reasoning. This wasted ~4-7% of cost and added ~3-5s latency on the critical path.
 
 ## Root Cause
 
@@ -29,14 +30,15 @@ This is the same trajectory that caused model string scatter before Cycle 15's u
 
 ## Solution
 
-### 1. Added `planning_model` field to `ResearchMode` (`modes.py`, line 32)
+### 1. Added `planning_model` and `relevance_model` fields to `ResearchMode` (`modes.py`)
 
 ```python
-model: str = DEFAULT_MODEL          # for synthesis and quality-critical calls
-planning_model: str = AUTO_DETECT_MODEL  # cheaper model for planning/classification steps
+model: str = DEFAULT_MODEL              # Sonnet — synthesis and quality-critical calls
+planning_model: str = AUTO_DETECT_MODEL  # Haiku — planning/classification steps
+relevance_model: str = AUTO_DETECT_MODEL # Haiku — relevance scoring (classification-like)
 ```
 
-Placed right after `model` to group model concerns. Frozen dataclass, single field (not a dict mapping) — right-sized for Tier 1. Default `AUTO_DETECT_MODEL` resolves to Haiku for all three modes with no explicit override needed.
+Placed right after `model` to group model concerns. Frozen dataclass, individual fields (not a dict mapping) — right-sized for the tiered approach. Default `AUTO_DETECT_MODEL` resolves to Haiku for all three modes with no explicit override needed.
 
 ### 2. Routed 7 planning call sites to `planning_model` (in `agent.py`)
 
@@ -54,9 +56,23 @@ Placed right after `model` to group model concerns. Frozen dataclass, single fie
 
 `summarize_all`, `synthesize_report`, `synthesize_draft`, `run_deep_skeptic_pass`, `run_skeptic_combined`, `synthesize_final`, `generate_insufficient_data_response`, `synthesize_mini_report`.
 
-### 4. One documented exception
+### 4. Relevance scoring promoted to Haiku (Tier 2)
 
-`evaluate_sources()` in `relevance.py` reads `mode.model` directly (not via agent.py kwarg). Intentionally stays on Sonnet — relevance scoring directly gates what enters reports. Candidate for Tier 2 but requires A/B testing due to score distribution sensitivity.
+`evaluate_sources()` in `relevance.py` now routes scoring through `mode.relevance_model` (Haiku). Initially stayed on Sonnet as a documented exception pending A/B testing. After testing 9 queries with both models and observing zero decision flips (no full_report ↔ short_report changes), `relevance_model` was promoted from a temporary env var (`RELEVANCE_MODEL`) to a permanent `ResearchMode` field.
+
+```python
+# relevance.py — evaluate_sources routes to relevance_model
+async def _score(summary: Summary) -> SourceScore:
+    return await score_source(
+        safe_query, summary, client,
+        model=mode.relevance_model,  # Haiku for classification-like scoring
+        critique_guidance=critique_guidance,
+    )
+```
+
+### 5. Validation bug fix (discovered during Tier 1 testing)
+
+`meaningful_words()` in `query_validation.py` didn't strip punctuation or split hyphens, causing `"standards,"` ≠ `"standards"` and `"post-quantum"` to not match `"quantum"`. This was silently degrading decomposition validation on all complex queries. Fixed by stripping `,.?!;:"'()[]` and splitting hyphenated words into components. This bug was discovered and fixed before the A/B comparison — essential for clean measurement.
 
 ### Key Design Decisions
 
@@ -85,9 +101,31 @@ Contrasts with Pattern B (dynamic routing via cost/latency thresholds) and Patte
 
 - **Cost**: ~4-7% savings on standard mode ($0.45 → ~$0.42-0.43)
 - **Latency**: ~3-5s improvement (Haiku typically 3-5x faster on classification tasks)
-- **Tests**: 874 passing (includes 2 new integration tests)
-- **Agent visibility**: `model` + `planning_model` fields added to ModeInfo and `list_modes()` output
+- **Tests**: 891 passing
+- **Agent visibility**: `model` + `planning_model` + `relevance_model` fields added to ModeInfo and `list_modes()` output
 - **Review**: 5 findings (0 P1, 3 P2, 2 P3), all fixed
+
+### Tier 2 A/B Test Results (9 queries, standard mode)
+
+| Report | Sonnet sources | Haiku sources | Decision change? |
+|--------|---------------|---------------|-----------------|
+| lodge | 6 | 7 | No (full→full) |
+| restaurants | 7 | 10 | No (full→full) |
+| zoning | 12 | 7 | No (full→full) |
+| pendry | 9 | 7 | No (full→full) |
+| hoteldel | 2 | 3 | No (short→short) |
+| luxury-trends | 7 | 7 | No (full→full) |
+| grant-writing | 12 | 12 | No (full→full) |
+| ai-jobs | 12 | 12 | No (full→full) |
+| ai-filmmaking | 11 | 9 | No (full→full) |
+
+**Verdict:** Zero decision flips. Source count differences are search variability, not scoring divergence. Haiku scores generic aggregators (TripAdvisor/Yelp/YouTube) consistently low (1/5), same as Sonnet.
+
+| Tier | Queries tested | Decision flips | Status |
+|------|---------------|----------------|--------|
+| Tier 1 (planning) | 14 | 0 | Shipped |
+| Tier 2 (relevance) | 9 | 0 | Shipped |
+| Tier 3 (summarization) | — | — | Deferred indefinitely |
 
 ## Review Findings Fixed
 
@@ -103,17 +141,29 @@ Contrasts with Pattern B (dynamic routing via cost/latency thresholds) and Patte
 
 - **New call sites**: When adding API calls in `agent.py`, decide planning vs. synthesis and use `self.mode.planning_model` or `self.mode.model` accordingly. Grep for both to see the established pattern.
 - **ModeInfo drift**: When adding fields to `ResearchMode`, immediately update `ModeInfo` in `results.py` and `list_modes()` in `mcp_server.py`. Make this a code review checklist item.
-- **Haiku quality monitoring**: Run the first 10-20 real queries with `-v` and check decompose output quality. Flag if sub-query count drops or queries become less targeted. This is the gate for Tier 2 decisions.
-- **Don't copy the evaluate_sources exception**: `evaluate_sources()` reading `mode.model` directly is a documented, intentional deviation. New modules should receive the model as a kwarg from `agent.py` — don't use this as a template.
-- **Tier 2 gate**: Don't expand Haiku routing (relevance scoring, summarization) without A/B comparison data on output quality. The safe default is Sonnet for anything user-facing.
+- **A/B test before promoting**: Cycle 21 established a two-step methodology: (1) add temporary env var override for testing, (2) promote to permanent field only after validation. Compare *decisions* (gate outcomes), not raw scores — a source scoring 4 vs 5 changes nothing if the cutoff is 3.
+- **Classify the task before choosing the model**: Ask "Is this structured output with constrained options, or open-ended reasoning?" Classification-like tasks (score 1-5, SIMPLE/COMPLEX, query lists) tolerate Haiku. Open-ended synthesis does not.
+- **Fix hidden bugs before measuring quality**: The `meaningful_words()` bug was silently degrading validation. Without fixing it first, the A/B comparison would have measured validation noise rather than model quality. Clean the measurement instrument before measuring.
+- **Tier 3 gate**: Don't expand Haiku to summarization without per-summary quality comparison (not just gate-level decisions). Summarization is 12-36 calls per run and directly affects user-facing content.
+- **Haiku borderline aggressiveness**: Monitor queries where Sonnet passes 8+ sources and Haiku passes significantly fewer. The zoning query (12→7) was the largest variance — gate decision didn't flip, but borderline sources may be scored more aggressively.
 
 ## Risk Resolution
 
-**Feed-forward risk from review:** "Whether Haiku decompose quality holds on complex queries — needs real run monitoring."
+### Tier 1 Risk (from review)
 
-**What happened:** The risk was accepted as a monitoring item rather than a blocking concern. All 7 review agents agreed the implementation is safe because: (1) prompt injection defense is architecture-dependent, not model-dependent, (2) all planning call sites have code-level output validation with safe defaults, and (3) the performance oracle confirmed Haiku capability is sufficient for structured classification tasks. The risk remains as a deferred monitoring item — first 10-20 real runs should be spot-checked before Tier 2 expansion.
+**Feed-forward risk:** "Whether Haiku decompose quality holds on complex queries — needs real run monitoring."
+
+**What happened:** Validated with 14 queries across simple and complex topics. No decomposition quality degradation. The `meaningful_words()` bug fix (discovered during validation) was the real quality issue — not the model switch.
 
 **Lesson:** When quality risk is hard to evaluate without production data, ship with monitoring rather than blocking on theoretical concerns. The frozen dataclass default (`AUTO_DETECT_MODEL`) makes rollback trivial — change one field value.
+
+### Tier 2 Risk (from HANDOFF.md)
+
+**Feed-forward risk:** "The zoning query dropped from 12→7 sources with Haiku scoring, worth monitoring borderline aggressiveness."
+
+**What happened:** A/B tested 9 queries. Zero decision flips across all queries. The zoning source count difference was attributed to search variability (Tavily returns different results across runs), not scoring divergence. Haiku scores generic aggregators consistently low, matching Sonnet's behavior.
+
+**Lesson:** Compare decisions, not raw metrics. Source count differences create noise; gate outcomes (full_report/short_report/insufficient_data) are the meaningful signal.
 
 ## Related
 
@@ -122,13 +172,15 @@ Contrasts with Pattern B (dynamic routing via cost/latency thresholds) and Patte
 - [`agent-native-return-structured-data.md`](agent-native-return-structured-data.md) — How `ResearchMode` flows through the pipeline as structured data.
 - [`mcp-server-boundary-protection-and-agent-parity.md`](../security/mcp-server-boundary-protection-and-agent-parity.md) — Agent-native parity checklist applied to ModeInfo update (fix 116).
 - [`pip-installable-package-and-public-api.md`](pip-installable-package-and-public-api.md) — Validation ownership pattern for frozen dataclass fields at boundaries.
-- `research_agent/modes.py` — The dataclass with both `model` and `planning_model` fields.
+- [`non-idempotent-sanitization-double-encode.md`](../security/non-idempotent-sanitization-double-encode.md) — Standing risk noted during Cycle 21 (sanitize_content not idempotent).
+- `research_agent/modes.py` — The dataclass with `model`, `planning_model`, and `relevance_model` fields.
 - `research_agent/agent.py` — The orchestrator routing 7 planning + 8 synthesis call sites.
+- `research_agent/relevance.py` — Relevance scoring using `mode.relevance_model`.
 
 ## Three Questions (Compound Phase)
 
-1. **Hardest pattern to extract from the fixes?** The relationship between "static task-based routing" as a general pattern and the specific decision about where to draw the planning/synthesis boundary. The 7/8 split is specific to this project's pipeline — the transferable insight is "classify pipeline stages by quality sensitivity, not by module."
+1. **Hardest pattern to extract from the fixes?** The two-step promotion pattern (env var → permanent field) as a general methodology for safely introducing model routing changes. The specific insight is: A/B test *decisions*, not raw scores — comparing gate outcomes (full_report vs short_report) catches real regressions while ignoring harmless noise from score variance.
 
-2. **What did you consider documenting but left out, and why?** Detailed per-call-site latency benchmarks. The plan had estimated ranges (e.g., decompose: 0.9-1.5s → 0.2-0.3s) but these are pre-production estimates. Including them would imply measured precision that doesn't exist yet. Better to document after real usage data.
+2. **What did you consider documenting but left out, and why?** Per-query score distribution comparisons between Haiku and Sonnet. Individual scores often differ by 1 point, but this noise is meaningless when the gate cutoff absorbs it. Including score-level detail would mislead future readers into thinking score parity matters — it doesn't; decision parity is the only signal.
 
-3. **What might future sessions miss that this solution doesn't cover?** The interaction between `planning_model` and the iteration system (Cycle 20). `iterate.py` calls `generate_refined_queries` and `generate_followup_questions` via `agent.py`, which now routes to Haiku. If iteration quality degrades on complex topics, the root cause might be traced to Haiku's planning quality rather than iteration logic itself. The debugging path isn't obvious because the model routing is invisible at the `iterate.py` level.
+3. **What might future sessions miss that this solution doesn't cover?** The interaction between `relevance_model` and the iteration system (Cycle 20). `iterate.py` generates refined queries via `agent.py` (routed to Haiku), and those queries' results get scored by `evaluate_sources` (also Haiku). Both hops are now on the cheaper model. If iteration produces poor refined queries *and* relevance scoring doesn't catch the low-quality results, the compound effect could degrade reports on complex multi-iteration queries. This double-Haiku path hasn't been specifically tested end-to-end.

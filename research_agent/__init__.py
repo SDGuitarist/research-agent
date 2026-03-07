@@ -148,6 +148,8 @@ async def run_research_async(
         status=agent.last_gate_decision or "error",
         critique=agent.last_critique,
         iteration_status=agent.iteration_status,
+        iteration_sections=agent.iteration_sections,
+        source_counts=agent.source_counts,
     )
 
 

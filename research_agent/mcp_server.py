@@ -21,6 +21,7 @@ mcp = FastMCP(
         "Use list_contexts to discover domain-specific context files. "
         "Reports auto-save for standard/deep modes — use list_saved_reports to find them. "
         "Use critique_report to evaluate report quality after research completes. "
+        "Use generate_followups to suggest what to research next based on a report. "
         "Set 'cwd' in your MCP client config to the research-agent project root."
     ),
 )
@@ -209,6 +210,61 @@ def critique_report(filename: str) -> str:
         lines.append(f"Weaknesses: {result.weaknesses}")
     if result.suggestions:
         lines.append(f"Suggestions: {result.suggestions}")
+    return "\n".join(lines)
+
+
+@mcp.tool
+def generate_followups(
+    query: str, report_filename: str, num_questions: int = 3
+) -> str:
+    """Generate follow-up research questions for a completed report.
+
+    Suggests what to research next based on gaps in the report.
+    Requires ANTHROPIC_API_KEY.
+
+    Args:
+        query: The original research query.
+        report_filename: Report to analyze. Use list_saved_reports to find files.
+        num_questions: Number of follow-up questions (1-5, default 3).
+    """
+    from anthropic import Anthropic
+    from fastmcp.exceptions import ToolError
+
+    from research_agent.iterate import generate_followup_questions
+    from research_agent.modes import AUTO_DETECT_MODEL
+
+    if not query or not query.strip():
+        raise ToolError("query must be a non-empty string.")
+
+    num_questions = max(1, min(5, num_questions))
+
+    try:
+        path = _validate_report_filename(report_filename)
+    except (ValueError, FileNotFoundError) as e:
+        raise ToolError(str(e))
+
+    report_text = path.read_text()
+
+    try:
+        client = Anthropic()
+        result = generate_followup_questions(
+            client, query.strip(), report_text, num_questions,
+            model=AUTO_DETECT_MODEL,
+        )
+    except Exception:
+        logger.exception("Unexpected error in generate_followups")
+        raise ToolError(
+            "Follow-up generation failed. Check that ANTHROPIC_API_KEY is configured."
+        )
+
+    if not result.items:
+        return f"No follow-up questions generated. Rationale: {result.rationale}"
+
+    lines = [f"Follow-up questions for: {query.strip()}", ""]
+    for i, q in enumerate(result.items, 1):
+        lines.append(f"{i}. {q}")
+    if result.rationale:
+        lines.append(f"\nRationale: {result.rationale}")
     return "\n".join(lines)
 
 
