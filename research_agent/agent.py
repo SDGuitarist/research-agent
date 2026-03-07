@@ -834,6 +834,7 @@ class ResearchAgent:
             label = "short report" if limited_sources else "report"
             self._next_step(f"Synthesizing {label} with {self.mode.model}...")
 
+            profile = self._run_context.profile
             report = synthesize_report(
                 self.client, query, surviving,
                 model=self.mode.model,
@@ -844,6 +845,7 @@ class ResearchAgent:
                 total_count=total_count,
                 context=self._run_context.content,
                 template=self._run_context.template,
+                synthesis_tone=profile.synthesis_tone if profile else "",
             )
             if self.schema_path and self._current_research_batch:
                 self._update_gap_states(evaluation.decision)
@@ -885,6 +887,7 @@ class ResearchAgent:
 
         self._next_step(f"Synthesizing final report with {self.mode.model}...")
 
+        profile = self._run_context.profile
         result = await asyncio.to_thread(
             synthesize_final,
             self.client, query, draft, findings, surviving,
@@ -897,6 +900,7 @@ class ResearchAgent:
             is_deep=self.mode.is_deep,
             critique_guidance=critique_context,
             template=template,
+            synthesis_tone=profile.synthesis_tone if profile else "",
         )
 
         # Query iteration: refine + follow-up after main synthesis
