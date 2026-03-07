@@ -5,7 +5,7 @@ status: active
 date: 2026-03-06
 origin: docs/brainstorms/2026-03-06-swappable-context-profiles-brainstorm.md
 feed_forward:
-  risk: "How preferred_domains scoring boost integrates with evaluate_sources() — the boost needs to happen post-LLM-scoring without distorting the gate decisions"
+  risk: "preferred_domains must have a real behavioral effect under integer scores/cutoff — +0.5 on int scores with int cutoff is a no-op"
   verify_first: true
 ---
 
@@ -15,7 +15,7 @@ feed_forward:
 
 > "Least confident: How `preferred_domains` scoring boost integrates with `evaluate_sources()` — this function currently sends content to Haiku for scoring. The boost needs to happen post-LLM-scoring without distorting the gate decisions."
 
-This plan addresses it by applying the boost post-aggregation in `evaluate_sources()` (after `_aggregate_by_source()`), keeping `SourceScore.score` as `int` internally and applying the float boost only at the gate comparison. See Session 3 for details.
+This plan addresses it by **deferring `preferred_domains` from this cycle**. Analysis showed the original +0.5 boost is a no-op: scores are `int` (1-5), `relevance_cutoff` is `int` (3 in all modes), so score 2 + 0.5 = 2.5 still drops, and score 3 already passes without any boost. A +1 boost would have real effect but was rejected as too aggressive — it would rescue genuinely low-quality sources just because they're from a preferred domain. The field is parsed and stored (for forward compatibility) but has no pipeline effect this cycle. See "Deferred: preferred_domains" section below.
 
 ## Overview
 
@@ -27,8 +27,8 @@ Enrich the existing `contexts/` system with four new YAML frontmatter fields and
 
 1. **Keep `--context`** — no rename to `--profile` (avoids CLI + MCP breakage)
 2. **Blocked domains: hard filter** — skip before fetch, all search entry points
-3. **Preferred domains: soft boost** — +0.5 post-aggregation in relevance scoring
-4. **Gap schema: path reference only** — warn if missing, CLI `--schema` takes precedence
+3. **Preferred domains: deferred** — parsed and stored but no pipeline effect this cycle (see rationale in Prior Phase Risk)
+4. **Gap schema: path reference only** — warn if missing, profile-only (no CLI `--schema` flag this cycle)
 5. **Synthesis tone: presets + custom** — `executive`/`technical`/`casual` presets, or free-text
 6. **`--list-contexts` CLI flag** — show name, description, configured fields
 
@@ -58,10 +58,10 @@ These gaps were identified by flow analysis and resolved here:
 |-----|-----------|
 | **Where do new fields live?** (Q1) | New `ContextProfile` dataclass on `ContextResult`, separate from `ReportTemplate` |
 | **Tone prompt injection** (Q2) | `sanitize_content()` + wrap in `<tone_instruction>` XML tag with "style only" guard. Context files are trusted-author input, same trust level as template sections |
-| **--schema vs gap_schema precedence** (Q3) | CLI `--schema` wins. Log warning if both are set. If no `--schema`, use profile's `gap_schema` |
+| **gap_schema source** (Q3) | Profile-only this cycle. No CLI `--schema` flag exists; adding one is out of scope. `gap_schema` from profile is used as fallback when `self.schema_path` is None |
 | **blocked_domains scope** (Q4) | All entry points. Single `filter_blocked_urls()` helper in `search.py`, called after every search |
 | **Domain matching** (Q5) | Suffix matching with dot-boundary: `example.com` blocks `sub.example.com` but NOT `notexample.com` |
-| **Boost application point** (Q6) | Post-aggregation. Keep `SourceScore.score` as `int`. Apply boost as float only at gate comparison |
+| **Boost application point** (Q6) | Deferred. +0.5 on int scores with int cutoff is a no-op. Field is parsed/stored for forward compatibility only |
 | **Which synthesis functions get tone** (Q7) | `synthesize_report()` and `synthesize_final()` only. Skip `synthesize_draft()` (objective) and `synthesize_mini_report()` (internal) |
 | **Preset definitions** (Q8) | Constants dict in `synthesize.py` (co-located with consumers) |
 | **gap_schema path validation** (Q9) | Reject absolute paths and `..` components. Resolve relative to project root |
@@ -72,7 +72,7 @@ These gaps were identified by flow analysis and resolved here:
 ## System-Wide Impact
 
 - **Interaction graph:** YAML parsing → `ContextProfile` → carried on `ContextResult` → read by `agent.py` → passed to `search.py` (blocked), `relevance.py` (preferred), `synthesize.py` (tone), `agent.py` (gap_schema fallback)
-- **Error propagation:** Malformed YAML fields → caught in `_parse_template()` → `ContextResult.failed()` → research aborts with clear error. Missing gap_schema file → `logger.warning()` → research continues without gaps
+- **Error propagation:** Malformed optional profile fields (bad type for `blocked_domains`, etc.) → `logger.warning()` → field defaults to empty → research continues with partial/no profile. This preserves the existing tolerant `_parse_template()` contract ("never raises — returns `(raw, None)` on any error"). Missing gap_schema file → `logger.warning()` → research continues without gaps
 - **State lifecycle risks:** None — all new fields are read-only configuration. No persistent state changes
 - **API surface parity:** MCP `list_contexts` tool already exists. No new MCP tools needed, but MCP instructions string needs updating if behavior changes. New fields are transparent — they affect pipeline behavior, not MCP interface
 
@@ -84,16 +84,15 @@ These gaps were identified by flow analysis and resolved here:
 - [ ] `filter_blocked_urls(results, blocked_domains)` helper in `search.py`
 - [ ] Blocked domain filter applied at ALL search entry points (pass1, pass2, sub-queries, iteration, coverage retry)
 - [ ] Subdomain matching: `example.com` blocks `sub.example.com` but not `notexample.com`
-- [ ] Preferred domain boost (+0.5) applied post-aggregation in `evaluate_sources()`
-- [ ] `SourceScore.score` stays `int`; boost applied only at gate comparison
+- [ ] `preferred_domains` parsed and stored on `ContextProfile` but no pipeline effect (deferred — see rationale)
 - [ ] `gap_schema` path validated (no `..`, no absolute), resolved relative to project root
-- [ ] CLI `--schema` takes precedence over profile `gap_schema`; warning logged if both set
+- [ ] `gap_schema` used as fallback when `self.schema_path` is None (no CLI `--schema` flag this cycle)
 - [ ] Tone presets (`executive`, `technical`, `casual`) defined as constants
 - [ ] Tone injected into `synthesize_report()` and `synthesize_final()` only
 - [ ] Free-text tone sanitized + wrapped in `<tone_instruction>` XML tag
 - [ ] `--list-contexts` CLI flag shows name + configured field summary
 - [ ] `pfe.md` updated with example profile fields
-- [ ] Tests for: parsing (valid, missing, malformed), domain filtering, domain matching, boost application, tone injection, gap_schema resolution, --list-contexts output
+- [ ] Tests for: parsing (valid, missing, malformed + tolerant defaults), domain filtering, domain matching, tone injection, gap_schema resolution, --list-contexts output, `list_available_contexts()` shape regression
 - [ ] All existing tests pass (920+)
 
 ## Implementation Phases
@@ -106,11 +105,12 @@ These gaps were identified by flow analysis and resolved here:
 1. Add `ContextProfile` frozen dataclass to `context_result.py`
 2. Add `profile: ContextProfile | None = None` field to `ContextResult`
 3. Update `ContextResult.loaded()` factory to accept `profile` parameter
-4. Extend `_parse_template()` in `context.py` to extract new YAML fields:
-   - `preferred_domains` → `tuple[str, ...]` (sanitize each, convert list to tuple)
-   - `blocked_domains` → `tuple[str, ...]` (same)
-   - `gap_schema` → `str` (validate: no `..`, no absolute path)
-   - `synthesis_tone` → `str` (sanitize)
+4. Extend `_parse_template()` in `context.py` to extract new YAML fields **tolerantly** (preserving the existing "never raises" contract — `context.py:49`):
+   - `preferred_domains` → `tuple[str, ...]` (sanitize each, convert list to tuple). If wrong type → `logger.warning()`, default `()`
+   - `blocked_domains` → `tuple[str, ...]` (same). If wrong type → `logger.warning()`, default `()`
+   - `gap_schema` → `str` (validate: no `..`, no absolute path). If invalid → `logger.warning()`, default `""`
+   - `synthesis_tone` → `str` (sanitize). If wrong type → `logger.warning()`, default `""`
+   - **Contract:** Malformed optional profile fields must NOT cause `_parse_template()` to return `(raw, None)` or `ContextResult.failed()`. The template and body parse normally; only the bad field defaults to empty. This matches the existing behavior where `context_usage` defaults to `""` if missing.
 5. Validate `blocked_domains` ∩ `preferred_domains` overlap → `logger.warning()`
 6. Construct `ContextProfile` and pass to `ContextResult.loaded()`
 7. Update `pfe.md` with example fields
@@ -119,8 +119,9 @@ These gaps were identified by flow analysis and resolved here:
 - Parse valid profile with all fields
 - Parse profile with no new fields (backwards compatibility)
 - Parse profile with partial fields (only blocked_domains)
-- Malformed fields (blocked_domains as string instead of list)
-- gap_schema path validation (reject `../`, absolute paths)
+- Malformed fields (blocked_domains as string instead of list) → field defaults to empty, template still parses
+- Malformed profile field does NOT break template parsing (template returned, profile field just defaults)
+- gap_schema path validation (reject `../`, absolute paths) → defaults to empty string
 - Overlap warning between blocked and preferred
 - Sanitization applied to domain strings and tone
 
@@ -155,38 +156,18 @@ These gaps were identified by flow analysis and resolved here:
 
 **Commit:** `feat(24-2): add blocked_domains hard filter across all search paths`
 
-### Session 3: Preferred Domains Boost (~40 lines)
+### Session 3: DEFERRED — Preferred Domains Boost
 
-**Files:** `relevance.py`, `agent.py`
+**Status:** Deferred from this cycle. The field is parsed and stored on `ContextProfile` (Session 1) but has no pipeline effect.
 
-**Tasks:**
-1. Add `preferred_domains: tuple[str, ...] = ()` parameter to `evaluate_sources()`
-2. After `_aggregate_by_source()` returns `source_scores` (line 305), apply boost:
-   ```python
-   # Post-aggregation boost for preferred domains
-   for source in source_scores:
-       domain = _extract_domain(source["url"])
-       if _is_preferred(domain, preferred_domains):
-           source["_boosted_score"] = source["score"] + 0.5
-       else:
-           source["_boosted_score"] = source["score"]
-   ```
-3. Use `source["_boosted_score"]` for the gate comparison (line 316) instead of `source["score"]`
-4. Log the boost: `"Source %d (%s): score %d/5 (+0.5 preferred) — %s"`
-5. `_is_preferred()` uses same suffix matching as blocked domains
-6. Thread `preferred_domains` from `self._run_context.profile` through `agent.py` into `evaluate_sources()`
+**Why deferred:** The original +0.5 boost is a no-op under current scoring. Scores are `int` (1-5), `relevance_cutoff` is `int` (3 in all modes). Score 2 + 0.5 = 2.5 → still < 3 → still drops. Score 3 already passes the `>= 3` gate without any boost. The +0.5 literally changes zero KEEP/DROP decisions.
 
-**Key design:** `SourceScore.score` stays `int`. The `_boosted_score` is a transient float used only for the KEEP/DROP decision. Logging shows the original int score with a "(+0.5 preferred)" annotation. This avoids rippling type changes through the codebase.
+**Alternatives considered and rejected:**
+- **+1 boost:** Would rescue score-2 sources to score 3 (KEEP). Rejected — too aggressive. A source the LLM rated 2/5 for relevance shouldn't be kept just because it's from a preferred domain. That defeats the purpose of relevance gating.
+- **Tiebreaker ordering:** When multiple sources have the same score, prefer preferred-domain sources. This changes ordering but not KEEP/DROP, so still no relevance-gate effect.
+- **Lower cutoff for preferred domains:** e.g., cutoff 2 instead of 3. Rejected — creates a parallel gating path, adding complexity for unclear benefit.
 
-**Tests (~10):**
-- Boost applied to preferred domain source
-- Boost causes a source at cutoff-1 to survive (e.g., score 2 + 0.5 with cutoff 3 → still drops; score 3 + 0.5 → keeps)
-- No boost for non-preferred domains
-- Subdomain matching for preferred
-- Empty preferred_domains (no-op)
-- Boost does not change stored score (only gate comparison)
-
-**Commit:** `feat(24-3): add preferred_domains relevance boost`
+**Future cycle options:** When a real use case emerges (e.g., configurable cutoff per profile, or a scoring model that produces float scores), revisit. The `preferred_domains` field is already on `ContextProfile` and will round-trip through parse/store correctly.
 
 ### Session 4: Synthesis Tone (~50 lines)
 
@@ -243,21 +224,24 @@ These gaps were identified by flow analysis and resolved here:
    - If `self.schema_path` is None and profile has `gap_schema`, resolve it relative to project root
    - Validate: reject `..` and absolute paths (reuse validation from Session 1)
    - If file doesn't exist, `logger.warning()` and proceed without gap awareness
-   - If both `--schema` and profile `gap_schema` are set, `logger.warning()` and use `--schema`
+   - No CLI `--schema` flag exists and none is added this cycle — `gap_schema` is profile-only
 2. **`--list-contexts` CLI flag** in `cli.py`:
    - Add `parser.add_argument("--list-contexts", action="store_true")`
    - Add early exit block (after `--list` check)
-   - Implement `list_contexts_cli()`:
+   - Add new `list_context_details()` helper in `context.py` (separate from `list_available_contexts()`):
      - For each context file, call `_parse_template()` to get full profile data
+     - Returns richer metadata (name, profile fields summary)
+     - Handle parse errors gracefully (return name + "parse error")
+   - **Do NOT modify `list_available_contexts()`** — its `list[tuple[str, str]]` return shape is a stable contract used by `auto_detect_context()` and MCP `list_contexts`. Changing it would break both.
+   - Implement `list_contexts_cli()` in `cli.py` using the new `list_context_details()`:
      - Display: name, configured fields (e.g., "blocked: 2 domains, tone: executive, gap_schema: gaps/pfe.yaml")
-     - Handle parse errors gracefully (show name + "parse error")
-3. Update `list_available_contexts()` in `context.py` if needed for richer data
 
 **Tests (~8):**
-- gap_schema fallback when no --schema CLI arg
-- --schema CLI takes precedence over gap_schema
+- gap_schema fallback when `self.schema_path` is None
 - gap_schema missing file → warning, continues
 - gap_schema path traversal rejection
+- `list_context_details()` returns profile metadata
+- `list_available_contexts()` unchanged — returns `(name, preview)` tuples (regression test)
 - --list-contexts output format
 - --list-contexts with no context files
 - --list-contexts with parse error in one file
@@ -269,21 +253,21 @@ These gaps were identified by flow analysis and resolved here:
 1. **Add fields to `ReportTemplate`** — Rejected: breaks every test that constructs `ReportTemplate`, mixes report-structure and pipeline-behavior concerns
 2. **Store profile data directly on `ContextResult`** (flat fields) — Rejected: clutters an already 5-field dataclass. A separate `ContextProfile` is cleaner and more extensible
 3. **Filter blocked domains in `fetch.py`** — Rejected: too late — we'd still waste search result slots on blocked URLs. Filtering in `search.py` (post-search, pre-fetch) is the right level
-4. **Change `SourceScore.score` to `float`** — Rejected: ripples through logging, display, gate comparison. Transient `_boosted_score` avoids all type changes
+4. **Change `SourceScore.score` to `float`** — Not needed: `preferred_domains` deferred from this cycle. Would have rippled through logging, display, gate comparison
 
 ## Dependencies & Risks
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | Missing a search entry point for blocked_domains | HIGH | SpecFlow identified 6 sites. Grep for all `search(` and `_search_sub_queries` calls. Test with a blocked domain in deep mode |
-| preferred_domains boost distorting gate decisions | MEDIUM | +0.5 on a 1-5 scale is small. A score-2 source can't jump to KEEP (cutoff 3). Only score-3 sources get meaningfully boosted. Verify with edge case tests |
+| preferred_domains deferred — no pipeline effect | LOW | Field parsed/stored but no boost applied. Avoids the no-op problem (+0.5 on int scores/cutoff changes nothing). Re-evaluate when scoring or cutoff model changes |
 | Tone prompt injection | LOW | Context files are trusted-author input. `sanitize_content()` + XML tag boundary provides adequate defense. Same trust level as existing `context_usage` field |
 | Breaking existing tests | MEDIUM | `ContextProfile` has all-default fields. `ReportTemplate` unchanged. `ContextResult.loaded()` gets a new optional kwarg. Existing callers unaffected |
 
 ## Success Metrics
 
 - All 920+ existing tests pass
-- ~53 new tests covering all new fields and integration points
+- ~43 new tests covering parsing, blocked domains, tone, gap_schema, and CLI
 - `pfe.md` demonstrates all 4 new fields
 - `--list-contexts` shows clean output with field summary
 - Pipeline behavior unchanged when no new fields are configured (backwards compatible)
@@ -311,8 +295,22 @@ These gaps were identified by flow analysis and resolved here:
 - Place new frozen dataclass fields near related concerns (`tiered-model-routing-planning-vs-synthesis.md`)
 - Use four-state results, not None (`context-path-traversal-defense-and-sanitization.md`)
 
+## Deferred: preferred_domains
+
+`preferred_domains` is parsed and stored on `ContextProfile` but has **no behavioral effect** this cycle. The +0.5 boost proposed in the brainstorm is a no-op under the current integer scoring model (scores 1-5 int, cutoff 3 int). See Session 3 for full analysis and rejected alternatives.
+
+**Future cycle trigger:** When scoring changes to float, or when configurable per-profile cutoffs are added, revisit this. The field round-trips through YAML → parse → `ContextProfile` → serialize correctly today.
+
+## Revision Log
+
+**v2 (2026-03-06):** Plan-only revision fixing four issues from code review:
+1. `preferred_domains` +0.5 boost is a no-op on int scores with int cutoff → deferred (parsed/stored, no pipeline effect)
+2. `--schema` CLI flag doesn't exist → removed all CLI-precedence language for `gap_schema`; it's profile-only this cycle
+3. Plan said malformed fields → `ContextResult.failed()` → abort. This breaks the tolerant `_parse_template()` contract (`context.py:49`: "Never raises"). Fixed: malformed optional fields → `logger.warning()` → field defaults to empty → research continues
+4. Plan said "update `list_available_contexts()` if needed". This would break `auto_detect_context()` and MCP `list_contexts` which depend on the `(name, preview)` return shape. Fixed: add new `list_context_details()` helper instead; `list_available_contexts()` is untouched
+
 ## Feed-Forward
 
-- **Hardest decision:** Whether to put new fields on `ReportTemplate` or create a separate `ContextProfile`. Chose separation — `ReportTemplate` is about report structure, profile fields are about pipeline behavior. Different concerns, different dataclass.
-- **Rejected alternatives:** Flat fields on `ContextResult` (clutters), `SourceScore.score` as float (type ripple), filtering in `fetch.py` (too late), blocking in relevance scoring (soft filter complexity).
+- **Hardest decision:** Deferring `preferred_domains` pipeline effect. The brainstorm assumed a +0.5 boost would work, but code analysis proved it's a no-op with integer scores and integer cutoff. Every alternative (+1 boost, parallel cutoff, tiebreaker) was either too aggressive or had no gate effect.
+- **Rejected alternatives:** +1 boost (rescues bad sources), changing cutoff to float (complex for unclear benefit), `--schema` CLI flag (adds scope for a feature that works fine as profile-only), modifying `list_available_contexts()` return shape (breaks auto-detect + MCP).
 - **Least confident:** Session 2's blocked_domains coverage across all 6+ search entry points. SpecFlow identified the sites, but the actual `agent.py` plumbing is complex with deep/standard/quick branching. The work session should grep for ALL search calls and verify each one gets the filter. If one is missed, blocked content leaks through in specific modes.
