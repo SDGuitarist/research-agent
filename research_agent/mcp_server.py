@@ -17,9 +17,11 @@ mcp = FastMCP(
     "Research Agent",
     instructions=(
         "Research agent that searches the web and generates structured markdown reports. "
+        "Use run_research to execute a query in quick/standard/deep mode. "
         "Use list_research_modes to see available modes before running research. "
         "Use list_contexts to discover domain-specific context files. "
         "Reports auto-save for standard/deep modes — use list_saved_reports to find them. "
+        "Use get_report to retrieve a saved report by filename. "
         "Use critique_report to evaluate report quality after research completes. "
         "Use generate_followups to suggest what to research next based on a report. "
         "Set 'cwd' in your MCP client config to the research-agent project root."
