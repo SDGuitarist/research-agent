@@ -228,7 +228,7 @@ class TestParseTemplate:
             "---\n"
             "Body content.\n"
         )
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is not None
         assert template.name == "Test"
         assert template.draft_sections == (("Summary", "Overview."),)
@@ -239,28 +239,28 @@ class TestParseTemplate:
     def test_no_frontmatter_returns_none(self):
         """No --- delimiters should return (raw, None)."""
         raw = "# Just content\nNo YAML."
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is None
         assert body == raw
 
     def test_missing_closing_delimiter(self):
         """Missing closing --- should return (raw, None)."""
         raw = "---\nname: test\nno closing delimiter"
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is None
         assert body == raw
 
     def test_malformed_yaml_returns_none(self):
         """Invalid YAML should return (raw, None), never crash."""
         raw = "---\n{{bad yaml\n---\nBody."
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is None
         assert body == raw
 
     def test_yaml_without_template_key(self):
         """YAML with no 'template' key returns body and None template."""
         raw = "---\nname: Test\nauthor: Me\n---\nBody."
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is None
         assert "Body" in body
 
@@ -277,14 +277,14 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is None
         assert "Body" in body
 
     def test_template_not_a_dict(self):
         """template: 'string' should degrade to None template."""
         raw = "---\nname: Bad\ntemplate: not a dict\n---\nBody."
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is None
 
     def test_empty_draft_and_final_rejects_template(self):
@@ -299,7 +299,7 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is None
         assert "Body" in body
 
@@ -315,7 +315,7 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is not None
         assert template.draft_sections == ()
         assert len(template.final_sections) == 1
@@ -332,7 +332,7 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is not None
         assert template.context_usage == ""
 
@@ -348,7 +348,7 @@ class TestParseTemplate:
             "  context_usage: Use context.\n"
             "---\n"
         )
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is not None
         assert body == ""
         assert "---" not in body
@@ -357,7 +357,7 @@ class TestParseTemplate:
     def test_yaml_without_template_key_empty_body(self):
         """YAML frontmatter with no template key and no body returns empty string."""
         raw = "---\nname: Test\nauthor: Me\n---\n"
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is None
         assert body == ""
 
@@ -374,7 +374,7 @@ class TestParseTemplate:
             "---\n"
             "Body content.\n"
         )
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is not None
         assert template.name == "Test"
         assert "Body content" in body
@@ -393,7 +393,7 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is not None
         assert "&amp;" in template.name
         assert "<" not in template.name or "&lt;" in template.name
@@ -408,7 +408,7 @@ class TestParseTemplate:
     def test_empty_frontmatter_returns_none(self):
         """Empty frontmatter (---\\n---) should return body and None template."""
         raw = "---\n---\nBody content."
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert template is None
         assert "Body content" in body
 
@@ -425,7 +425,7 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        _, template = _parse_template(raw)
+        _, template, _ = _parse_template(raw)
         assert template is not None
         with pytest.raises(dataclasses.FrozenInstanceError):
             template.name = "changed"
@@ -436,7 +436,7 @@ class TestParseTemplate:
         raw = (
             f"---\ntemplate:\n  name: big\n  filler: {big_value}\n---\nBody.\n"
         )
-        body, template = _parse_template(raw)
+        body, template, _ = _parse_template(raw)
         assert body == raw
         assert template is None
 

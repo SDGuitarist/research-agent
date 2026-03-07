@@ -1,5 +1,10 @@
 ---
 name: Pacific Flow Entertainment
+blocked_domains:
+  - thumbtack.com
+  - bark.com
+synthesis_tone: executive
+gap_schema: gaps/pfe.yaml
 template:
   draft:
     - Executive Summary: "2-3 paragraph overview of key findings."

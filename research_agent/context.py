@@ -1,13 +1,14 @@
 """Context loading and auto-detection."""
 
 import logging
+import os
 from collections import Counter
 from pathlib import Path
 
 import yaml
 from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
-from .context_result import ContextResult, ReportTemplate
+from .context_result import ContextProfile, ContextResult, ReportTemplate
 from .critique import DIMENSIONS
 from .errors import ANTHROPIC_TIMEOUT
 from .modes import AUTO_DETECT_MODEL, DEFAULT_MODEL
@@ -36,26 +37,30 @@ def _parse_sections(raw_sections: list[dict[str, str]]) -> tuple[tuple[str, str]
     return tuple(result)
 
 
-def _parse_template(raw: str) -> tuple[str, ReportTemplate | None]:
-    """Extract YAML frontmatter template from a context file.
+def _parse_template(
+    raw: str,
+) -> tuple[str, ReportTemplate | None, ContextProfile | None]:
+    """Extract YAML frontmatter template and profile from a context file.
 
     Args:
         raw: Full file content (may or may not have YAML frontmatter).
 
     Returns:
-        (body, template) — body is the content after the closing ``---``,
-        template is the parsed ReportTemplate or None if no valid template.
+        (body, template, profile) — body is the content after the closing
+        ``---``, template is the parsed ReportTemplate or None if no valid
+        template, profile is the parsed ContextProfile or None if no profile
+        fields are present.
 
-    Never raises — logs a warning and returns (raw, None) on any error.
+    Never raises — logs a warning and returns (raw, None, None) on any error.
     """
     stripped = raw.strip()
     if not stripped.startswith("---"):
-        return (raw, None)
+        return (raw, None, None)
 
     # Find the closing --- delimiter (must be on its own line)
     end = stripped.find("\n---", 3)
     if end == -1:
-        return (raw, None)
+        return (raw, None, None)
 
     yaml_block = stripped[3:end]
     body = stripped[end + 4:].lstrip("\n")
@@ -66,17 +71,71 @@ def _parse_template(raw: str) -> tuple[str, ReportTemplate | None]:
             "YAML frontmatter exceeds size limit (%d bytes)",
             len(yaml_block.encode()),
         )
-        return (raw, None)
+        return (raw, None, None)
 
     try:
         data = yaml.safe_load(yaml_block)
     except yaml.YAMLError as e:
         logger.warning("Failed to parse YAML frontmatter: %s", e)
-        return (raw, None)
+        return (raw, None, None)
 
-    if not isinstance(data, dict) or "template" not in data:
-        # Valid YAML but no template key — return body without template
-        return (body, None)
+    if not isinstance(data, dict):
+        return (body, None, None)
+
+    # --- Profile extraction (per-field try/except) ---
+    # Each field is independent: a bad field defaults to empty, does not
+    # affect other profile fields or template parsing.
+    profile_fields: dict = {}
+
+    try:
+        raw_blocked = data.get("blocked_domains", [])
+        if isinstance(raw_blocked, bool):
+            raise ValueError("blocked_domains must be a list")
+        if not isinstance(raw_blocked, list):
+            raise ValueError("blocked_domains must be a list")
+        cleaned = tuple(
+            sanitize_content(d) for d in raw_blocked if isinstance(d, str)
+        )
+        if cleaned:
+            profile_fields["blocked_domains"] = cleaned
+    except (ValueError, TypeError) as e:
+        logger.warning("Invalid blocked_domains in YAML frontmatter: %s", e)
+
+    try:
+        raw_schema = data.get("gap_schema", "")
+        if not isinstance(raw_schema, str):
+            raise ValueError("gap_schema must be a string")
+        raw_schema = raw_schema.strip()
+        if raw_schema:
+            if "\x00" in raw_schema:
+                raise ValueError("gap_schema contains null bytes")
+            if ".." in raw_schema or os.path.isabs(raw_schema):
+                raise ValueError(
+                    "gap_schema must be relative, no '..' components"
+                )
+            # Layer 2 (resolve containment) is applied at runtime in agent.py
+            profile_fields["gap_schema"] = sanitize_content(raw_schema)
+    except (ValueError, TypeError) as e:
+        logger.warning("Invalid gap_schema in YAML frontmatter: %s", e)
+
+    try:
+        raw_tone = data.get("synthesis_tone", "")
+        if not isinstance(raw_tone, str):
+            raise ValueError("synthesis_tone must be a string")
+        raw_tone = raw_tone.strip()
+        if len(raw_tone) > 500:
+            logger.warning("synthesis_tone exceeds 500 chars, truncating")
+            raw_tone = raw_tone[:500]
+        if raw_tone:
+            profile_fields["synthesis_tone"] = sanitize_content(raw_tone)
+    except (ValueError, TypeError) as e:
+        logger.warning("Invalid synthesis_tone in YAML frontmatter: %s", e)
+
+    profile = ContextProfile(**profile_fields) if profile_fields else None
+
+    # --- Template extraction ---
+    if "template" not in data:
+        return (body, None, profile)
 
     try:
         tmpl = data["template"]
@@ -103,7 +162,7 @@ def _parse_template(raw: str) -> tuple[str, ReportTemplate | None]:
 
         if not draft_sections and not final_sections:
             logger.warning("Template has no sections defined — ignoring")
-            return (body, None)
+            return (body, None, profile)
 
         name = data.get("name", "")
         if not isinstance(name, str):
@@ -116,11 +175,11 @@ def _parse_template(raw: str) -> tuple[str, ReportTemplate | None]:
             final_sections=final_sections,
             context_usage=context_usage,
         )
-        return (body, template)
+        return (body, template, profile)
 
     except (ValueError, TypeError, AttributeError) as e:
         logger.warning("Invalid template structure in YAML frontmatter: %s", e)
-        return (body, None)
+        return (body, None, profile)
 
 
 def new_context_cache() -> dict[str, ContextResult]:
@@ -203,10 +262,12 @@ def load_full_context(
             return result
         # Parse YAML template before sanitization — YAML is trusted author
         # input and sanitization would break YAML parsing by escaping & and <.
-        body, template = _parse_template(raw_content)
+        body, template, profile = _parse_template(raw_content)
         content = sanitize_content(body)
         logger.info("Loaded research context from %s", path)
-        result = ContextResult.loaded(content, source=source, template=template)
+        result = ContextResult.loaded(
+            content, source=source, template=template, profile=profile,
+        )
         if cache is not None:
             cache[source] = result
         return result

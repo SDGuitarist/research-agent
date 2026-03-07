@@ -33,6 +33,21 @@ class ReportTemplate:
 
 
 @dataclass(frozen=True)
+class ContextProfile:
+    """Operational pipeline parameters parsed from context file YAML frontmatter.
+
+    Attributes:
+        blocked_domains: Domains to exclude from search results.
+        gap_schema: Relative path to a gap schema YAML file.
+        synthesis_tone: Preset name or free-text tone instruction (max 500 chars).
+    """
+
+    blocked_domains: tuple[str, ...] = ()
+    gap_schema: str = ""
+    synthesis_tone: str = ""
+
+
+@dataclass(frozen=True)
 class ContextResult:
     """Result of a context loading operation.
 
@@ -48,6 +63,7 @@ class ContextResult:
     source: str = ""
     error: str = ""
     template: ReportTemplate | None = None
+    profile: ContextProfile | None = None
 
     def __bool__(self) -> bool:
         """True only when content was successfully loaded."""
@@ -59,6 +75,7 @@ class ContextResult:
         content: str,
         source: str = "",
         template: ReportTemplate | None = None,
+        profile: ContextProfile | None = None,
     ) -> "ContextResult":
         """Create a result for successfully loaded content.
 
@@ -72,6 +89,7 @@ class ContextResult:
             status=ContextStatus.LOADED,
             source=source,
             template=template,
+            profile=profile,
         )
 
     @classmethod
