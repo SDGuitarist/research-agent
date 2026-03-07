@@ -475,6 +475,17 @@ class ResearchAgent:
                 logger.info("Simple query — skipping decomposition")
 
         # Pre-research gap check (if schema configured)
+        # Gap schema fallback: if no --schema was passed, check profile
+        if not self.schema_path and self._run_context.profile and self._run_context.profile.gap_schema:
+            gap_rel = self._run_context.profile.gap_schema
+            project_root = Path.cwd()
+            gap_path = (project_root / gap_rel).resolve()
+            if gap_path.is_relative_to(project_root.resolve()) and gap_path.is_file():
+                self.schema_path = gap_path
+                logger.info("Using gap_schema from profile: %s", gap_path)
+            else:
+                logger.warning("gap_schema file not found or outside project: %s", gap_rel)
+
         if self.schema_path:
             schema_result = load_schema(self.schema_path)
             if schema_result.is_loaded:

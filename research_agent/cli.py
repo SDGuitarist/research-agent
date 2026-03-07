@@ -13,7 +13,12 @@ from dotenv import load_dotenv
 
 from research_agent import ResearchAgent
 from research_agent.agent import META_DIR
-from research_agent.context import load_critique_history, resolve_context_path
+from research_agent.context import (
+    CONTEXTS_DIR,
+    _parse_template,
+    load_critique_history,
+    resolve_context_path,
+)
 from research_agent.critique import critique_report_file, save_critique
 from research_agent.errors import ResearchError
 from research_agent.modes import ResearchMode
@@ -190,12 +195,47 @@ Examples:
         metavar="NAME",
         help='Context file to load from contexts/ (e.g. "pfe", "none" for no context)',
     )
+    parser.add_argument(
+        "--list-contexts",
+        action="store_true",
+        help="List available context profiles with configured fields and exit",
+    )
 
     args = parser.parse_args()
 
     # --list: show saved reports and exit (highest priority)
     if args.list:
         list_reports()
+        sys.exit(0)
+
+    # --list-contexts: show context profiles with field summary and exit
+    if args.list_contexts:
+        if not CONTEXTS_DIR.is_dir():
+            print("No contexts/ directory found.")
+            sys.exit(0)
+        context_files = sorted(CONTEXTS_DIR.glob("*.md"))
+        if not context_files:
+            print("No context files found in contexts/.")
+            sys.exit(0)
+        for path in context_files:
+            name = path.stem
+            try:
+                raw = path.read_text()
+                _, template, profile = _parse_template(raw)
+                fields = []
+                if profile:
+                    if profile.blocked_domains:
+                        fields.append(f"blocked: {len(profile.blocked_domains)} domains")
+                    if profile.synthesis_tone:
+                        fields.append(f"tone: {profile.synthesis_tone}")
+                    if profile.gap_schema:
+                        fields.append(f"gap_schema: {profile.gap_schema}")
+                if template:
+                    fields.append(f"template: {template.name or 'unnamed'}")
+                summary = ", ".join(fields) if fields else "no profile fields"
+                print(f"  {name}: {summary}")
+            except OSError:
+                print(f"  {name}: (parse error)")
         sys.exit(0)
 
     # --cost: show costs and exit (no API keys needed)
