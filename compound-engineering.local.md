@@ -2,24 +2,26 @@
 
 ## Risk Chain
 
-**Plan risk:** "Double-Haiku path (iterate planning + relevance scoring) not tested end-to-end"
+**Brainstorm risk:** "How `preferred_domains` scoring boost integrates with `evaluate_sources()` — the boost needs to happen post-LLM-scoring without distorting the gate decisions."
 
-**Plan mitigation:** Item 5 added a dedicated e2e routing test verifying both `planning_model` and `relevance_model` route to `AUTO_DETECT_MODEL`.
+**Plan mitigation:** Removed `preferred_domains` entirely (YAGNI — +0.5 boost is a no-op on int scores with int cutoff). Consolidated blocked_domains to single-funnel filter in `_fetch_extract_summarize()`.
 
-**Work risk (from Feed-Forward):** "Whether `generate_followups` MCP tool needs its own `query` parameter or should extract it from report metadata."
+**Work risk (from Feed-Forward):** "Per-field try/except structure in `_parse_template()` — verify that a malformed `blocked_domains` field truly does NOT prevent `synthesis_tone` from parsing."
 
-**Review resolution:** 0 code bugs, coverage gaps only. Zero P1s. Two fix batches added edge-case tests (overlap boundary, MCP instructions, defensive copy mutation, real-code-path iteration_sections).
+**Review resolution:** 4 findings (0 P1, 2 P2, 2 P3). Top finding: blocked domains leak into `refine_query()` inputs before reaching the single-funnel filter. All 4 resolved with 18 new tests.
 
-**Compound lesson:** Batch small deferred items into housekeeping cycles every 3-5 cycles. Validate every LLM output path at introduction time. Expose structured data alongside concatenated strings.
+**Compound lesson:** Single-funnel filtering is necessary but not sufficient — trace ALL upstream consumers of unfiltered data. Document "already sanitized" at consumption sites, not just the sanitization site.
 
 ## Files to Scrutinize
 
 | File | What changed | Risk area |
 |------|-------------|-----------|
-| `research_agent/search.py` | Added `validate_query_list()` to `refine_query()` | 0.8 overlap threshold (intentionally different from 0.6 in iterate.py) |
-| `research_agent/mcp_server.py` | New `generate_followups` tool + instructions update | MCP instructions string manually maintained — no parity lint |
-| `research_agent/results.py` | `iteration_sections` (tuple) + `source_counts` (dict) fields | Defensive copy on dict, direct return on tuple |
-| `research_agent/agent.py` | Populates both new fields + `_iteration_sections` list | Mutation safety of internal list before tuple conversion |
+| `research_agent/context_result.py` | New `ContextProfile` frozen dataclass | Carries on `ContextResult` — any new field needs default |
+| `research_agent/context.py` | Per-field profile parsing in `_parse_template()` | Nested try/except complexity, sanitize-once boundary |
+| `research_agent/search.py` | `filter_blocked_urls()` with dot-boundary matching | Domain matching edge cases (IDN/punycode bypass known) |
+| `research_agent/agent.py` | Early filter + funnel filter, gap_schema fallback, tone threading | `self.schema_path` must be set by fallback path |
+| `research_agent/synthesize.py` | `TONE_PRESETS`, `_build_tone_instruction()`, tone params | Tone tag OUTSIDE `<instructions>` block |
+| `research_agent/cli.py` | `--list-contexts` with `_parse_template` private import | Coupling to private function |
 
 ## Cross-Tool Review Protocol
 
@@ -30,4 +32,4 @@ Codex is an independent second-opinion agent in this workflow. For reviews:
 
 ## Plan Reference
 
-`docs/plans/2026-03-06-refactor-cycle-22-quick-wins-plan.md`
+`docs/plans/2026-03-06-feat-swappable-context-profiles-plan.md`
