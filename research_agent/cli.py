@@ -232,10 +232,18 @@ Examples:
                         fields.append(f"gap_schema: {profile.gap_schema}")
                 if template:
                     fields.append(f"template: {template.name or 'unnamed'}")
-                summary = ", ".join(fields) if fields else "no profile fields"
+                # Distinguish "no fields" from "frontmatter parse failed"
+                if not fields:
+                    has_frontmatter = raw.strip().startswith("---")
+                    if has_frontmatter and template is None and profile is None:
+                        summary = "(frontmatter parse error)"
+                    else:
+                        summary = "no profile fields"
+                else:
+                    summary = ", ".join(fields)
                 print(f"  {name}: {summary}")
             except OSError:
-                print(f"  {name}: (parse error)")
+                print(f"  {name}: (read error)")
         sys.exit(0)
 
     # --cost: show costs and exit (no API keys needed)

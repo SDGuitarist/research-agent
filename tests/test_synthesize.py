@@ -9,8 +9,10 @@ from research_agent.synthesize import (
     _build_default_final_sections,
     _build_draft_sections,
     _build_final_sections,
+    _build_tone_instruction,
     _DEFAULT_FINAL_START,
     _format_skeptic_findings,
+    TONE_PRESETS,
     synthesize_report,
     synthesize_draft,
     synthesize_final,
@@ -982,3 +984,40 @@ class TestSynthesizeMiniReport:
         )
         call_args = client.messages.create.call_args
         assert call_args.kwargs["max_tokens"] == 400
+
+
+class TestBuildToneInstruction:
+    """Tests for _build_tone_instruction()."""
+
+    def test_preset_expansion(self):
+        result = _build_tone_instruction("executive")
+        assert TONE_PRESETS["executive"] in result
+        assert "<tone_instruction>" in result
+
+    def test_case_insensitive_preset(self):
+        result = _build_tone_instruction("EXECUTIVE")
+        assert TONE_PRESETS["executive"] in result
+
+    def test_free_text_passthrough(self):
+        result = _build_tone_instruction("Write like a pirate")
+        assert "Write like a pirate" in result
+        assert "<tone_instruction>" in result
+
+    def test_empty_tone_returns_empty(self):
+        assert _build_tone_instruction("") == ""
+
+    def test_whitespace_only_returns_empty(self):
+        assert _build_tone_instruction("   ") == ""
+
+    def test_free_text_no_double_sanitization(self):
+        """Tone with & should NOT be double-escaped (already sanitized at parse time)."""
+        result = _build_tone_instruction("R&amp;D focused")
+        # Should contain the pre-sanitized value as-is, not &amp;amp;
+        assert "&amp;" in result
+        assert "&amp;amp;" not in result
+
+    def test_free_text_truncated_over_500(self):
+        long_tone = "x" * 600
+        result = _build_tone_instruction(long_tone)
+        # The tone text inside should be at most 500 chars
+        assert "x" * 501 not in result

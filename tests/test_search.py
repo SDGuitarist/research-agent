@@ -8,6 +8,7 @@ from research_agent.search import (
     search,
     _search_tavily,
     refine_query,
+    filter_blocked_urls,
     SearchResult,
 )
 from research_agent.errors import SearchError
@@ -417,3 +418,53 @@ class TestTavilySearch:
 
             assert len(results) == 1
             assert results[0].title == "Has URL"
+
+
+class TestFilterBlockedUrls:
+    """Tests for filter_blocked_urls()."""
+
+    def _make_result(self, url: str) -> SearchResult:
+        return SearchResult(title="t", url=url, snippet="s")
+
+    def test_exact_domain_blocked(self):
+        results = [self._make_result("https://example.com/page")]
+        filtered = filter_blocked_urls(results, ("example.com",))
+        assert len(filtered) == 0
+
+    def test_subdomain_blocked(self):
+        results = [self._make_result("https://sub.example.com/page")]
+        filtered = filter_blocked_urls(results, ("example.com",))
+        assert len(filtered) == 0
+
+    def test_similar_domain_not_blocked(self):
+        """notexample.com should NOT be blocked by example.com."""
+        results = [self._make_result("https://notexample.com/page")]
+        filtered = filter_blocked_urls(results, ("example.com",))
+        assert len(filtered) == 1
+
+    def test_empty_blocked_domains_noop(self):
+        results = [self._make_result("https://example.com/page")]
+        filtered = filter_blocked_urls(results, ())
+        assert len(filtered) == 1
+
+    def test_malformed_url_kept(self):
+        """Results with unparseable URLs should be kept, not filtered."""
+        results = [self._make_result("not-a-url")]
+        filtered = filter_blocked_urls(results, ("example.com",))
+        assert len(filtered) == 1
+
+    def test_url_with_port_blocked(self):
+        """hostname is extracted without port number."""
+        results = [self._make_result("https://example.com:8080/page")]
+        filtered = filter_blocked_urls(results, ("example.com",))
+        assert len(filtered) == 0
+
+    def test_mixed_results_partial_filter(self):
+        results = [
+            self._make_result("https://blocked.com/a"),
+            self._make_result("https://allowed.com/b"),
+            self._make_result("https://sub.blocked.com/c"),
+        ]
+        filtered = filter_blocked_urls(results, ("blocked.com",))
+        assert len(filtered) == 1
+        assert filtered[0].url == "https://allowed.com/b"

@@ -964,6 +964,15 @@ class ResearchAgent:
             raise ResearchError(f"Search failed: {e}")
 
         self._source_counts[query] = len(pass1_results)
+
+        # Filter blocked domains BEFORE building seen_urls/snippets
+        # so blocked results don't influence query refinement
+        blocked = ()
+        if self._run_context.profile:
+            blocked = self._run_context.profile.blocked_domains
+        if blocked:
+            pass1_results = filter_blocked_urls(pass1_results, blocked)
+
         seen_urls = {r.url for r in pass1_results}
 
         # Sub-query searches (additive)
@@ -1031,6 +1040,15 @@ class ResearchAgent:
             raise ResearchError(f"Search failed: {e}")
 
         self._source_counts[query] = len(results)
+
+        # Filter blocked domains BEFORE building seen_urls
+        # so blocked results don't influence deep mode pass 2
+        blocked = ()
+        if self._run_context.profile:
+            blocked = self._run_context.profile.blocked_domains
+        if blocked:
+            results = filter_blocked_urls(results, blocked)
+
         seen_urls = {r.url for r in results}
 
         # Sub-query searches (additive)

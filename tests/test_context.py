@@ -961,3 +961,47 @@ class TestSummarizePatterns:
         assert "&amp;" in result
         # Must NOT be double-encoded to &amp;amp;
         assert "&amp;amp;" not in result
+
+
+class TestParseTemplateFrontmatterDetection:
+    """Tests for distinguishing malformed frontmatter from no-frontmatter files."""
+
+    def test_malformed_yaml_returns_raw_as_body(self):
+        """Malformed YAML returns (raw, None, None) — body equals raw input."""
+        raw = "---\n{{bad yaml\n---\nBody."
+        body, template, profile = _parse_template(raw)
+        assert template is None
+        assert profile is None
+        assert body == raw  # body == raw signals parse failure
+
+    def test_valid_frontmatter_no_profile_returns_body_not_raw(self):
+        """Valid YAML with no profile fields returns body != raw (frontmatter stripped)."""
+        raw = "---\nname: Test\n---\nBody content."
+        body, template, profile = _parse_template(raw)
+        assert profile is None
+        assert "Body content" in body
+        assert "---" not in body  # frontmatter was stripped
+
+    def test_no_frontmatter_returns_raw_unchanged(self):
+        """File with no --- at start returns (raw, None, None)."""
+        raw = "Just plain content, no frontmatter."
+        body, template, profile = _parse_template(raw)
+        assert body == raw
+        assert template is None
+        assert profile is None
+
+    def test_cli_can_distinguish_parse_error_from_empty(self):
+        """Verify the heuristic: has_frontmatter + both None = parse error."""
+        # Malformed YAML: has --- but parse fails
+        malformed = "---\n{{bad\n---\nBody."
+        body, template, profile = _parse_template(malformed)
+        has_frontmatter = malformed.strip().startswith("---")
+        is_parse_error = has_frontmatter and template is None and profile is None
+        assert is_parse_error
+
+        # No frontmatter: no --- prefix
+        plain = "Just content."
+        body2, tmpl2, prof2 = _parse_template(plain)
+        has_fm2 = plain.strip().startswith("---")
+        is_error2 = has_fm2 and tmpl2 is None and prof2 is None
+        assert not is_error2  # not a parse error — just no frontmatter

@@ -69,8 +69,8 @@ def _build_tone_instruction(tone: str) -> str:
         if len(tone) > 500:
             logger.warning("Free-text tone exceeds 500 chars, truncating")
             tone = tone[:500]
-        # Sanitize free-text (presets are trusted literals)
-        tone_text = sanitize_content(tone)
+        # Free-text is already sanitized at parse time in context.py
+        tone_text = tone
 
     return (
         "\n<tone_instruction>\n"

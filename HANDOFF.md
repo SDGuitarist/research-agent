@@ -1,52 +1,45 @@
 # HANDOFF — Research Agent
 
-**Date:** 2026-03-06
+**Date:** 2026-03-08
 **Branch:** `main`
-**Phase:** Plan revised → Work
+**Phase:** Fix COMPLETE — next phase is Compound
 
 ## Current State
 
-Cycle 24 (Swappable Context Profiles) brainstormed, planned, and plan revised (v2). 920 tests passing on main.
+Cycle 24 (Swappable Context Profiles) review fixes applied. All 4 findings from `docs/reviews/2026-03-06-cycle-24-codex-findings.md` resolved.
 
-## What Was Done This Session
+Full suite result: `python3 -m pytest tests/ -v` -> `938 passed in 140.94s` (18 new tests).
 
-Plan-only revision fixing four issues found during code review:
+## What Was Done
 
-1. **`preferred_domains` no-op fixed:** +0.5 boost on int scores (1-5) with int cutoff (3) changes zero KEEP/DROP decisions. Deferred from this cycle — field is parsed/stored but has no pipeline effect.
-2. **`--schema` ghost flag removed:** CLI has no `--schema` argument. All CLI-precedence language for `gap_schema` removed; it's profile-only.
-3. **Tolerant parsing preserved:** Plan said malformed fields → `ContextResult.failed()` → abort. This would break `_parse_template()` contract ("never raises"). Fixed: malformed optional fields → `logger.warning()` → defaults.
-4. **`list_available_contexts()` kept stable:** Plan said "update if needed." Would break auto-detect + MCP `list_contexts`. Fixed: new `list_context_details()` helper instead.
+### Fix 1: Blocked domains leak into query refinement (P2 blocker)
+- Added early `filter_blocked_urls()` call in `_research_with_refinement()` BEFORE `seen_urls` and `snippets` are built (agent.py ~line 969)
+- Added same early filter in `_research_deep()` BEFORE `seen_urls` is built (agent.py ~line 1045)
+- The existing filter in `_fetch_extract_summarize()` remains as defense-in-depth
 
-**No code changes** — plan doc updated only.
+### Fix 2: `--list-contexts` hides malformed frontmatter (P2 advisory)
+- Added heuristic in cli.py: if file has `---` frontmatter markers but both template and profile are None, display `(frontmatter parse error)` instead of `no profile fields`
+- Changed `OSError` catch message from `(parse error)` to `(read error)` for clarity
 
-## Key Artifacts
+### Fix 3: Free-text tone double-sanitized (P3 advisory)
+- Removed `sanitize_content()` call from `_build_tone_instruction()` in synthesize.py
+- Tone is already sanitized at parse time in context.py — applying it again would double-escape `&`, `<`, `>`
 
-| Phase | Location |
-|-------|----------|
-| Brainstorm | `docs/brainstorms/2026-03-06-swappable-context-profiles-brainstorm.md` |
-| Plan (v2) | `docs/plans/2026-03-06-feat-swappable-context-profiles-plan.md` |
-
-## Summary
-
-4-session plan (Session 3 deferred) adding 3 active YAML frontmatter fields + `--list-contexts` CLI flag:
-1. **Session 1:** `ContextProfile` dataclass + tolerant YAML parsing (~80 lines)
-2. **Session 2:** `blocked_domains` hard filter across all search paths (~60 lines)
-3. **Session 3:** DEFERRED — `preferred_domains` parsed/stored but no pipeline effect
-4. **Session 4:** `synthesis_tone` presets + custom injection (~50 lines)
-5. **Session 5:** `gap_schema` fallback (profile-only) + `--list-contexts` CLI via new `list_context_details()` (~50 lines)
-
-## Feed-Forward Risk
-
-Plan flagged: blocked_domains coverage across all 6+ search entry points. Work session must grep for ALL search calls and verify each gets the filter.
+### Fix 4: Missing focused regression tests (P3 advisory)
+- Added 7 tests in `TestFilterBlockedUrls` (test_search.py): exact match, subdomain, similar domain, empty list, malformed URL, port, mixed results
+- Added 7 tests in `TestBuildToneInstruction` (test_synthesize.py): preset expansion, case-insensitive, free-text, empty, whitespace, no double-sanitize, truncation
+- Added 4 tests in `TestParseTemplateFrontmatterDetection` (test_context.py): malformed YAML, valid no-profile, no frontmatter, CLI heuristic distinction
 
 ## Three Questions
 
-1. **Hardest decision?** Deferring `preferred_domains` pipeline effect. The brainstorm was confident about +0.5 boost, but code proved it's a no-op. Had to accept that "parsed but inert" is better than shipping dead code that looks active.
-2. **What was rejected?** +1 boost (too aggressive — rescues genuinely bad sources), `--schema` CLI flag (out of scope, works fine as profile-only), modifying `list_available_contexts()` (breaks two consumers).
-3. **Least confident about?** Blocked domains coverage across all search entry points (6+ sites in agent.py). SpecFlow identified them but the actual plumbing is complex.
+1. **Hardest fix in this batch?** The blocked-domain leak (fix 1). The filter already existed in `_fetch_extract_summarize()`, but the issue was that `_research_with_refinement()` uses results BEFORE that filter runs — for `seen_urls` (dedup) and `snippets` (which feed `refine_query()`). Adding early filtering in both `_research_with_refinement()` and `_research_deep()` means blocked domains are now filtered twice (early + in `_fetch_extract_summarize`), but `filter_blocked_urls` is a no-op on already-filtered results, so this is harmless defense-in-depth.
+
+2. **What did you consider fixing differently, and why didn't you?** Considered removing the filter from `_fetch_extract_summarize()` now that early filtering exists, but keeping it provides defense-in-depth — any future search path that bypasses the early filter still gets caught.
+
+3. **Least confident about going into the next batch or compound phase?** The `--list-contexts` parse error heuristic (fix 2). It works because malformed YAML returns `body == raw` (frontmatter not stripped), but a file with valid YAML frontmatter containing ONLY unrecognized keys (no template, no profile fields) would also show as `(frontmatter parse error)`. This is actually the correct behavior — such a file IS misconfigured — but it's worth noting.
 
 ### Prompt for Next Session
 
 ```
-Read docs/plans/2026-03-06-feat-swappable-context-profiles-plan.md. Implement Session 1: ContextProfile dataclass + tolerant YAML parsing. Relevant files: research_agent/context_result.py, research_agent/context.py, contexts/pfe.md, tests/test_context.py, tests/test_context_result.py. Key contract: malformed optional profile fields default to empty, never cause parse failure. Do only this session — commit and stop.
+Read HANDOFF.md. Run the compound phase for Cycle 24 (Swappable Context Profiles). Write a solution doc in docs/solutions/ and run /update-learnings.
 ```
