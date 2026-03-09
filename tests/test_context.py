@@ -15,7 +15,7 @@ from research_agent.context import (
     CONTEXTS_DIR,
     _validate_critique_yaml,
     _summarize_patterns,
-    _parse_template,
+    parse_context_file,
 )
 from research_agent.context_result import ContextResult, ContextStatus, ReportTemplate
 
@@ -212,7 +212,7 @@ class TestLoadFullContext:
 
 
 class TestParseTemplate:
-    """Tests for _parse_template() helper."""
+    """Tests for parse_context_file() public wrapper."""
 
     def test_valid_yaml_returns_template(self):
         """Valid YAML frontmatter should return body and template."""
@@ -228,7 +228,7 @@ class TestParseTemplate:
             "---\n"
             "Body content.\n"
         )
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is not None
         assert template.name == "Test"
         assert template.draft_sections == (("Summary", "Overview."),)
@@ -239,28 +239,28 @@ class TestParseTemplate:
     def test_no_frontmatter_returns_none(self):
         """No --- delimiters should return (raw, None)."""
         raw = "# Just content\nNo YAML."
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is None
         assert body == raw
 
     def test_missing_closing_delimiter(self):
         """Missing closing --- should return (raw, None)."""
         raw = "---\nname: test\nno closing delimiter"
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is None
         assert body == raw
 
     def test_malformed_yaml_returns_none(self):
         """Invalid YAML should return (raw, None), never crash."""
         raw = "---\n{{bad yaml\n---\nBody."
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is None
         assert body == raw
 
     def test_yaml_without_template_key(self):
         """YAML with no 'template' key returns body and None template."""
         raw = "---\nname: Test\nauthor: Me\n---\nBody."
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is None
         assert "Body" in body
 
@@ -277,14 +277,14 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is None
         assert "Body" in body
 
     def test_template_not_a_dict(self):
         """template: 'string' should degrade to None template."""
         raw = "---\nname: Bad\ntemplate: not a dict\n---\nBody."
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is None
 
     def test_empty_draft_and_final_rejects_template(self):
@@ -299,7 +299,7 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is None
         assert "Body" in body
 
@@ -315,7 +315,7 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is not None
         assert template.draft_sections == ()
         assert len(template.final_sections) == 1
@@ -332,7 +332,7 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is not None
         assert template.context_usage == ""
 
@@ -348,7 +348,7 @@ class TestParseTemplate:
             "  context_usage: Use context.\n"
             "---\n"
         )
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is not None
         assert body == ""
         assert "---" not in body
@@ -357,7 +357,7 @@ class TestParseTemplate:
     def test_yaml_without_template_key_empty_body(self):
         """YAML frontmatter with no template key and no body returns empty string."""
         raw = "---\nname: Test\nauthor: Me\n---\n"
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is None
         assert body == ""
 
@@ -374,7 +374,7 @@ class TestParseTemplate:
             "---\n"
             "Body content.\n"
         )
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is not None
         assert template.name == "Test"
         assert "Body content" in body
@@ -393,7 +393,7 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is not None
         assert "&amp;" in template.name
         assert "<" not in template.name or "&lt;" in template.name
@@ -408,7 +408,7 @@ class TestParseTemplate:
     def test_empty_frontmatter_returns_none(self):
         """Empty frontmatter (---\\n---) should return body and None template."""
         raw = "---\n---\nBody content."
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert template is None
         assert "Body content" in body
 
@@ -425,7 +425,7 @@ class TestParseTemplate:
             "---\n"
             "Body.\n"
         )
-        _, template, _ = _parse_template(raw)
+        _, template, _ = parse_context_file(raw)
         assert template is not None
         with pytest.raises(dataclasses.FrozenInstanceError):
             template.name = "changed"
@@ -436,7 +436,7 @@ class TestParseTemplate:
         raw = (
             f"---\ntemplate:\n  name: big\n  filler: {big_value}\n---\nBody.\n"
         )
-        body, template, _ = _parse_template(raw)
+        body, template, _ = parse_context_file(raw)
         assert body == raw
         assert template is None
 
@@ -969,7 +969,7 @@ class TestParseTemplateFrontmatterDetection:
     def test_malformed_yaml_returns_raw_as_body(self):
         """Malformed YAML returns (raw, None, None) — body equals raw input."""
         raw = "---\n{{bad yaml\n---\nBody."
-        body, template, profile = _parse_template(raw)
+        body, template, profile = parse_context_file(raw)
         assert template is None
         assert profile is None
         assert body == raw  # body == raw signals parse failure
@@ -977,7 +977,7 @@ class TestParseTemplateFrontmatterDetection:
     def test_valid_frontmatter_no_profile_returns_body_not_raw(self):
         """Valid YAML with no profile fields returns body != raw (frontmatter stripped)."""
         raw = "---\nname: Test\n---\nBody content."
-        body, template, profile = _parse_template(raw)
+        body, template, profile = parse_context_file(raw)
         assert profile is None
         assert "Body content" in body
         assert "---" not in body  # frontmatter was stripped
@@ -985,7 +985,7 @@ class TestParseTemplateFrontmatterDetection:
     def test_no_frontmatter_returns_raw_unchanged(self):
         """File with no --- at start returns (raw, None, None)."""
         raw = "Just plain content, no frontmatter."
-        body, template, profile = _parse_template(raw)
+        body, template, profile = parse_context_file(raw)
         assert body == raw
         assert template is None
         assert profile is None
@@ -994,14 +994,14 @@ class TestParseTemplateFrontmatterDetection:
         """Verify the heuristic: has_frontmatter + both None = parse error."""
         # Malformed YAML: has --- but parse fails
         malformed = "---\n{{bad\n---\nBody."
-        body, template, profile = _parse_template(malformed)
+        body, template, profile = parse_context_file(malformed)
         has_frontmatter = malformed.strip().startswith("---")
         is_parse_error = has_frontmatter and template is None and profile is None
         assert is_parse_error
 
         # No frontmatter: no --- prefix
         plain = "Just content."
-        body2, tmpl2, prof2 = _parse_template(plain)
+        body2, tmpl2, prof2 = parse_context_file(plain)
         has_fm2 = plain.strip().startswith("---")
         is_error2 = has_fm2 and tmpl2 is None and prof2 is None
         assert not is_error2  # not a parse error — just no frontmatter

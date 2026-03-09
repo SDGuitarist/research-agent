@@ -15,7 +15,7 @@ from research_agent import ResearchAgent
 from research_agent.agent import META_DIR
 from research_agent.context import (
     CONTEXTS_DIR,
-    _parse_template,
+    parse_context_file,
     load_critique_history,
     resolve_context_path,
 )
@@ -221,7 +221,7 @@ Examples:
             name = path.stem
             try:
                 raw = path.read_text()
-                _, template, profile = _parse_template(raw)
+                _, template, profile = parse_context_file(raw)
                 fields = []
                 if profile:
                     if profile.blocked_domains:

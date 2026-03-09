@@ -182,6 +182,28 @@ def _parse_template(
         return (body, None, profile)
 
 
+def parse_context_file(
+    raw: str,
+) -> tuple[str, ReportTemplate | None, ContextProfile | None]:
+    """Parse a context file's YAML frontmatter and body.
+
+    Public wrapper around the internal template parser. Use this
+    for any code outside context.py that needs to parse context files.
+
+    Args:
+        raw: Full file content (may or may not have YAML frontmatter).
+
+    Returns:
+        (body, template, profile) — body is the content after the closing
+        ``---``, template is the parsed ReportTemplate or None if no valid
+        template, profile is the parsed ContextProfile or None if no profile
+        fields are present.
+
+    Never raises — returns (raw, None, None) on any error.
+    """
+    return _parse_template(raw)
+
+
 def new_context_cache() -> dict[str, ContextResult]:
     """Create a fresh per-run context cache.
 
