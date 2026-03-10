@@ -24,6 +24,7 @@ mcp = FastMCP(
         "Use get_report to retrieve a saved report by filename. "
         "Use critique_report to evaluate report quality after research completes. "
         "Use generate_followups to suggest what to research next based on a report. "
+        "Typical workflow: list_research_modes → run_research → critique_report → generate_followups. "
         "Set 'cwd' in your MCP client config to the research-agent project root."
     ),
 )
