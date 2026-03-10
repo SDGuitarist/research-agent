@@ -2,11 +2,11 @@
 
 **Date:** 2026-03-10
 **Branch:** `main`
-**Phase:** Cycle 26 — Review COMPLETE, one blocker found
+**Phase:** Cycle 26 — COMPLETE (compound phase done)
 
 ## Current State
 
-Cycle 26 code review is complete. Findings are in `docs/reviews/2026-03-10-cycle-26-code-review-findings.md`. Local verification passed for the shipped work (`python3 scripts/lint_mcp_parity.py` and `python3 -m pytest tests/ -v`), but the review found one blocker: `pyproject.toml` widened `fastmcp` from `<3.0` to `<4.0`, reopening a previously fixed dependency-drift risk for fresh installs and required CI.
+Cycle 26 is fully complete. MCP parity lint script with CI enforcement shipped across PRs #6 and #7. Review found 8 findings (0 P1, 6 P2, 2 P3) — 7 resolved, 1 deferred (pre-existing MCP tool gaps). Solution documented, learnings propagated. 938 tests passing.
 
 ## Key Artifacts
 
@@ -14,30 +14,27 @@ Cycle 26 code review is complete. Findings are in `docs/reviews/2026-03-10-cycle
 |-------|----------|
 | Brainstorm | `docs/brainstorms/2026-03-08-cycle-26-mcp-parity-lint-brainstorm.md` |
 | Plan | `docs/plans/2026-03-08-cycle-26-mcp-parity-lint-plan.md` |
-| Plan Review Findings | `docs/reviews/2026-03-08-cycle-26-codex-plan-findings.md` |
-| Code Review Handoff | `docs/reviews/2026-03-10-cycle-26-codex-review-handoff.md` |
-| Code Review Findings | `docs/reviews/2026-03-10-cycle-26-code-review-findings.md` |
-| PR | https://github.com/SDGuitarist/research-agent/pull/6 (merged) |
+| Plan Review | `docs/reviews/2026-03-08-cycle-26-codex-plan-findings.md` |
+| Code Review | `docs/reviews/2026-03-10-cycle-26-claude-code-review-findings.md` |
+| Solution | `docs/solutions/workflow/mcp-parity-lint-ci-enforcement.md` |
+| PR #6 | https://github.com/SDGuitarist/research-agent/pull/6 (feature, merged) |
+| PR #7 | https://github.com/SDGuitarist/research-agent/pull/7 (review fixes, merged) |
 
 ## Deferred Items
 
 - **Tier 3 model routing** (summarization) — deferred indefinitely; too risky for user-facing content
 - **IDN/punycode domain matching** — known limitation in blocked_domains, acceptable
-- **Entropy fixes (10 findings)** — planned for cycles 27-30, after cycle 26 completes
+- **MCP `--cost` + `--critique-history` tools** (#123) — deferral count: 1. Promote-or-drop if deferred again.
+- **Entropy fixes (10 findings)** — planned for cycles 27-30. See `docs/research/2026-03-09-entropy-fixes-roadmap.md`
 
 ## Three Questions
 
-1. **Hardest judgment call in this review?** Whether the widened FastMCP cap is a blocker even though the shipped code passes locally on 3.0.2. Treated it as a blocker because it changes clean-install behavior for the whole package, not just the lint script.
-2. **What did you consider flagging but chose not to, and why?** The substring-matching logic in the lint script and the `asyncio.run()` call. Left them unflagged because the current tool names are explicit and the script is only used as a standalone command.
-3. **What might this review have missed?** A future FastMCP 3.x release could still break a code path outside the lint script, because this review only verified the current 3.0.2 environment and the existing local test suite.
+1. **Hardest pattern to extract?** Whether "promote-or-drop at deferral #2" is a real process rule or just hindsight from the 4-deferral pattern. Chose to document it as a rule and rely on MEMORY.md tracking.
+2. **What was left out?** CI hardening checklist as a standalone doc — left inline in the solution doc since the project has only one workflow.
+3. **Least confident about?** The deferred `--cost` and `--critique-history` MCP tools (#123) are at deferral #1. If they hit #2, the new promote-or-drop rule applies.
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md for context. This is Research Agent, a Python CLI research agent.
-Cycle 26 review is complete. Read docs/reviews/2026-03-10-cycle-26-code-review-findings.md
-and fix the FastMCP version-range blocker before starting a new cycle. Re-run
-python3 scripts/lint_mcp_parity.py and python3 -m pytest tests/ -v after the fix.
-Relevant files: HANDOFF.md, docs/reviews/2026-03-10-cycle-26-code-review-findings.md,
-pyproject.toml, scripts/lint_mcp_parity.py, .github/workflows/mcp-lint.yml.
+Read HANDOFF.md for context. This is Research Agent, a Python CLI that searches the web and generates structured markdown reports with citations using Claude. Cycle 26 is complete. Next: start Cycle 27 (entropy fixes — input validation + sanitization). Roadmap: docs/research/2026-03-09-entropy-fixes-roadmap.md.
 ```

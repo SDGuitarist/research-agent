@@ -2,35 +2,33 @@
 
 ## Risk Chain
 
-**Entropy audit risk:** "The code is the prompter — every entropy principle applies at the system level, but with no human review of intermediate prompts."
+**Brainstorm risk:** "Whether the GitHub Actions workflow will work correctly on first try — Python version, dependency installation, and whether fastmcp tools register at import time."
 
-**Audit findings:** 10 findings across 5 entropy problem categories. Highest severity: no vague query detection (#1), skeptic findings not enforced (#7), quick mode single-source reports (#9).
+**Plan mitigation:** Verified locally that `@mcp.tool` decorators register at import time — no server startup needed. Documented `pip install -e .` as install method matching local dev. Identified `apt-get install libxml2-dev` as fallback if CI runner lacks system packages.
 
-**Roadmap:** 4 cycles (27-30) planned, dependency-ordered. Cycle 27 targets input validation + sanitization. See `docs/research/2026-03-09-entropy-fixes-roadmap.md`.
+**Work risk (from Feed-Forward):** "Whether `pip install -e .` on ubuntu-latest will succeed without additional system packages."
 
-**Current cycle status:** Cycle 26 (MCP parity lint) in progress. Entropy fixes start at Cycle 27.
+**Review resolution:** 8 findings (0 P1, 6 P2, 2 P3) from 6 agents. Top finding: substring matching false-positive risk (#122, 3 agents converged). FastMCP version blocker caught by Codex review and fixed. CI passed on first run — the flagged risk was a non-issue.
 
-## Files to Scrutinize (Entropy Audit — Future Cycles)
+**Compound lesson:** Import-time registration is a FastMCP design guarantee. Document framework behavior assumptions in plans so they don't block future cycles.
 
-| File | Finding | Risk area |
-|------|---------|-----------|
-| `research_agent/decompose.py` | #1 — No vague query validation | Noise enters pipeline unchecked |
-| `research_agent/sanitize.py` | #8 — Non-idempotent sanitization | Data corruption across all stages |
-| `research_agent/relevance.py` | #2, #3 — Permissive cutoff, no diversity | Noise/homogeneous sources pass through |
-| `research_agent/cascade.py` | #6 — Snippet treated as full content | Thin sources weighted equally |
-| `research_agent/modes.py` | #9 — Quick mode single-source reports | Hallucination vector |
-| `research_agent/synthesize.py` | #7 — Skeptic not enforced | Critical findings ignored in output |
-| `research_agent/search.py` | #10 — Refinement loop on noise | Feedback loop amplifies bad results |
-| `research_agent/summarize.py` | #4 — Chunking loses context | Knowledge vacuum in synthesizer |
-| `research_agent/token_budget.py` | #5 — Character-level truncation | False precision from mid-fact cuts |
+## Files to Scrutinize
 
-## Key Research References
+| File | What changed | Risk area |
+|------|-------------|-----------|
+| `.github/workflows/mcp-lint.yml` | New CI workflow with SHA-pinned actions | First real CI workflow — verify runner compatibility |
+| `scripts/lint_mcp_parity.py` | Word-boundary regex matching | False positives on tool names with regex special chars |
+| `research_agent/mcp_server.py` | Workflow guidance sentence in instructions | Instructions string is source of truth for agent behavior |
+| `tests/test_mcp_server.py` | Updated matching logic | Test mirrors lint script — must stay in sync |
+| `pyproject.toml` | FastMCP pinned to `>=3.0,<3.1` | Version constraint prevents untested breaking changes |
 
-- `docs/research/2026-03-09-entropy-and-prompting-report.md` — Theory (entropy collapse, hallucination, S/N, web search, knowledge vacuums)
-- `docs/research/2026-03-09-research-agent-entropy-audit.md` — 10 findings mapped to codebase
-- `docs/research/2026-03-09-entropy-fixes-roadmap.md` — 4-cycle implementation plan
+## Deferred Items Tracking
+
+| Item | Deferral Count | Rule |
+|------|---------------|------|
+| MCP `--cost` + `--critique-history` tools (#123) | 1 | If deferred again, promote-or-drop at deferral #2 |
 
 ## Plan Reference
 
-Cycle 26: `docs/plans/2026-03-08-cycle-26-mcp-parity-lint-plan.md`
-Cycles 27-30: `docs/research/2026-03-09-entropy-fixes-roadmap.md`
+`docs/plans/2026-03-08-cycle-26-mcp-parity-lint-plan.md`
+Entropy roadmap (cycles 27-30): `docs/research/2026-03-09-entropy-fixes-roadmap.md`
