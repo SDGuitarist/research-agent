@@ -2,22 +2,35 @@
 
 ## Risk Chain
 
-**Brainstorm risk:** "Whether all `_parse_template` test imports should switch to the public wrapper, or just the ones testing public behavior."
+**Entropy audit risk:** "The code is the prompter — every entropy principle applies at the system level, but with no human review of intermediate prompts."
 
-**Plan mitigation:** Audited all 26 call sites in `test_context.py`. All 22 test the public contract (string in → tuple out), none test internal implementation details. Decision: switch all.
+**Audit findings:** 10 findings across 5 entropy problem categories. Highest severity: no vague query detection (#1), skeptic findings not enforced (#7), quick mode single-source reports (#9).
 
-**Work risk (from Feed-Forward):** "Whether `parse_context_file` needs to be in `__all__` / `__init__.py`. It's used by CLI (internal) and tests, not by external consumers."
+**Roadmap:** 4 cycles (27-30) planned, dependency-ordered. Cycle 27 targets input validation + sanitization. See `docs/research/2026-03-09-entropy-fixes-roadmap.md`.
 
-**Review resolution:** 0 findings. Clean pass — 938 tests, no material issues. Exported for consistency with other context functions; trivially reversible.
+**Current cycle status:** Cycle 26 (MCP parity lint) in progress. Entropy fixes start at Cycle 27.
 
-## Files to Scrutinize
+## Files to Scrutinize (Entropy Audit — Future Cycles)
 
-| File | What changed | Risk area |
-|------|-------------|-----------|
-| `research_agent/context.py` | Added `parse_context_file()` public wrapper | Thin delegation — low risk |
-| `research_agent/cli.py` | Swapped `_parse_template` → `parse_context_file` import | Import path only |
-| `tests/test_context.py` | 22 call sites switched to public wrapper | Same assertions, name change only |
+| File | Finding | Risk area |
+|------|---------|-----------|
+| `research_agent/decompose.py` | #1 — No vague query validation | Noise enters pipeline unchecked |
+| `research_agent/sanitize.py` | #8 — Non-idempotent sanitization | Data corruption across all stages |
+| `research_agent/relevance.py` | #2, #3 — Permissive cutoff, no diversity | Noise/homogeneous sources pass through |
+| `research_agent/cascade.py` | #6 — Snippet treated as full content | Thin sources weighted equally |
+| `research_agent/modes.py` | #9 — Quick mode single-source reports | Hallucination vector |
+| `research_agent/synthesize.py` | #7 — Skeptic not enforced | Critical findings ignored in output |
+| `research_agent/search.py` | #10 — Refinement loop on noise | Feedback loop amplifies bad results |
+| `research_agent/summarize.py` | #4 — Chunking loses context | Knowledge vacuum in synthesizer |
+| `research_agent/token_budget.py` | #5 — Character-level truncation | False precision from mid-fact cuts |
+
+## Key Research References
+
+- `docs/research/2026-03-09-entropy-and-prompting-report.md` — Theory (entropy collapse, hallucination, S/N, web search, knowledge vacuums)
+- `docs/research/2026-03-09-research-agent-entropy-audit.md` — 10 findings mapped to codebase
+- `docs/research/2026-03-09-entropy-fixes-roadmap.md` — 4-cycle implementation plan
 
 ## Plan Reference
 
-`docs/plans/2026-03-08-cycle-25-housekeeping-plan.md`
+Cycle 26: `docs/plans/2026-03-08-cycle-26-mcp-parity-lint-plan.md`
+Cycles 27-30: `docs/research/2026-03-09-entropy-fixes-roadmap.md`

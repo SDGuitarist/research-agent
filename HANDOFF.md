@@ -1,39 +1,42 @@
 # HANDOFF — Research Agent
 
-**Date:** 2026-03-08
+**Date:** 2026-03-09
 **Branch:** `main`
-**Phase:** Cycle 25 COMPLETE (compound phase done)
+**Phase:** Cycle 26 in progress (MCP parity lint — plan review phase). Entropy audit complete with 4-cycle roadmap (27-30).
 
 ## Current State
 
-Cycle 25 is fully closed. Added `parse_context_file()` public wrapper to eliminate private import coupling between `cli.py` and `context.py`. Zero review findings. Solution documented, learnings propagated. The `_parse_template` public wrapper deferred item from cycle 24 is resolved.
+Cycle 26 (MCP parity lint script + CI workflow) is in plan review phase — Codex reviewed the plan and findings are in `docs/reviews/`. Entropy audit session completed: produced 3 research reports covering AI entropy principles, a 10-finding codebase audit, and a 4-cycle implementation roadmap (cycles 27-30, ~460 lines). All learnings propagated.
 
 ## Key Artifacts
 
 | Phase | Location |
 |-------|----------|
-| Brainstorm | `docs/brainstorms/2026-03-08-cycle-25-housekeeping-brainstorm.md` |
-| Plan | `docs/plans/2026-03-08-cycle-25-housekeeping-plan.md` |
-| Work | commits `881bfd4`, `61936bb` on `main` |
-| Review | `docs/reviews/2026-03-08-cycle-25-code-review-findings.md` |
-| Solution | `docs/solutions/architecture/public-wrapper-for-cross-module-access.md` |
+| Cycle 26 Brainstorm | `docs/brainstorms/2026-03-08-cycle-26-mcp-parity-lint-brainstorm.md` |
+| Cycle 26 Plan | `docs/plans/2026-03-08-cycle-26-mcp-parity-lint-plan.md` |
+| Cycle 26 Plan Review | `docs/reviews/2026-03-08-cycle-26-codex-plan-findings.md` |
+| Entropy Report | `docs/research/2026-03-09-entropy-and-prompting-report.md` |
+| Entropy Audit | `docs/research/2026-03-09-research-agent-entropy-audit.md` |
+| Entropy Roadmap | `docs/research/2026-03-09-entropy-fixes-roadmap.md` |
 
 ## Deferred Items
 
-- **MCP parity lint script** — planned for cycle 25 but deferred; existing pytest test is sufficient
 - **Tier 3 model routing** (summarization) — deferred indefinitely; too risky for user-facing content
 - **IDN/punycode domain matching** — known limitation in blocked_domains, acceptable
+- **Entropy fixes (10 findings)** — planned for cycles 27-30, after cycle 26 completes
 
 ## Three Questions
 
-1. **Hardest pattern to extract from the fixes?** Whether "add a public wrapper" is worth documenting as a standalone pattern or is just basic encapsulation. Decided it's worth it because the prevention strategies (grep detection, size-estimate on debt notes) are more valuable than the pattern itself.
-2. **What did you consider documenting but left out, and why?** The MCP parity lint script that was planned but deferred. It wasn't solved in this cycle, so documenting it would mix "what happened" with "what didn't happen."
-3. **What might future sessions miss that this solution doesn't cover?** The grep detection strategy (`from.*import _`) produces false positives for legitimate private imports in test files. A more sophisticated lint would need to distinguish test files from production code.
+1. **Hardest decision?** Whether the entropy audit findings justified a 4-cycle roadmap or should be treated as nice-to-have improvements. Decided: the pipeline-as-prompter insight means these are core quality issues, not polish.
+2. **What was rejected?** Considered adding entropy fixes to cycle 26 scope. Rejected — cycle 26 (MCP lint) is already in plan review and should complete first. Clean separation of concerns.
+3. **Least confident about?** Whether raising relevance cutoff from 3 to 4 (Cycle 28) will cause false rejections on legitimate but niche queries. Will need A/B testing with ~10 diverse queries.
 
 ### Prompt for Next Session
 
 ```
 Read HANDOFF.md for context. This is Research Agent, a Python CLI research agent.
-Cycle 25 is complete. Pick up a new feature brainstorm or address a deferred item
-(MCP parity lint, Tier 3 routing). Relevant files: HANDOFF.md, MEMORY.md.
+Cycle 26 (MCP parity lint) is in plan review phase. Read the plan and Codex findings,
+address any blockers, then proceed to work phase. Relevant files: HANDOFF.md,
+docs/plans/2026-03-08-cycle-26-mcp-parity-lint-plan.md,
+docs/reviews/2026-03-08-cycle-26-codex-plan-findings.md.
 ```
