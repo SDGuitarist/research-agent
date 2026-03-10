@@ -461,9 +461,14 @@ class TestMcpInstructions:
 
     async def test_all_tools_mentioned_in_instructions(self, client):
         """Every @mcp.tool function name must appear in the instructions string."""
+        import re
+
         tools = await mcp.list_tools()
         tool_names = {t.name for t in tools}
-        missing = {name for name in tool_names if name not in mcp.instructions}
+        missing = {
+            name for name in tool_names
+            if not re.search(rf"\b{re.escape(name)}\b", mcp.instructions)
+        }
         assert not missing, (
             f"MCP instructions missing tool names: {sorted(missing)}. "
             "Update the 'instructions' string in mcp_server.py."
