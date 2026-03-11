@@ -2,11 +2,11 @@
 
 **Date:** 2026-03-10
 **Branch:** `main`
-**Phase:** Cycle 26 — COMPLETE (compound phase done)
+**Phase:** Cycle 26 — COMPLETE. Roadmap reprioritized with epistemic calibration study findings.
 
 ## Current State
 
-Cycle 26 is fully complete. MCP parity lint script with CI enforcement shipped across PRs #6 and #7. Review found 8 findings (0 P1, 6 P2, 2 P3) — 7 resolved, 1 deferred (pre-existing MCP tool gaps). Solution documented, learnings propagated. 938 tests passing.
+Cycle 26 is fully complete. Roadmap expanded from 4 cycles (27-30) to 5 cycles (27-31) after integrating findings from an exploratory study on prompt-induced epistemic calibration. Three new features added: per-task temperature controls (C27), evidence-tier labeling (C29), pre-summary abstention gate (C30), novelty-biased decomposition (C31). MCP tools #123 promoted to C31 (deferral #2 triggers promote-or-drop). 938 tests passing.
 
 ## Key Artifacts
 
@@ -17,24 +17,36 @@ Cycle 26 is fully complete. MCP parity lint script with CI enforcement shipped a
 | Plan Review | `docs/reviews/2026-03-08-cycle-26-codex-plan-findings.md` |
 | Code Review | `docs/reviews/2026-03-10-cycle-26-claude-code-review-findings.md` |
 | Solution | `docs/solutions/workflow/mcp-parity-lint-ci-enforcement.md` |
+| Entropy Roadmap | `docs/research/2026-03-09-entropy-fixes-roadmap.md` |
 | PR #6 | https://github.com/SDGuitarist/research-agent/pull/6 (feature, merged) |
 | PR #7 | https://github.com/SDGuitarist/research-agent/pull/7 (review fixes, merged) |
 
 ## Deferred Items
 
-- **Tier 3 model routing** (summarization) — deferred indefinitely; too risky for user-facing content
+- **Tier 3 model routing** (summarization) — deferred indefinitely; epistemic calibration study reinforces prompt design > model routing for summarization
 - **IDN/punycode domain matching** — known limitation in blocked_domains, acceptable
-- **MCP `--cost` + `--critique-history` tools** (#123) — deferral count: 1. Promote-or-drop if deferred again.
-- **Entropy fixes (10 findings)** — planned for cycles 27-30. See `docs/research/2026-03-09-entropy-fixes-roadmap.md`
+- **MCP `--cost` + `--critique-history` tools** (#123) — promoted to Cycle 31 (deferral #2, promote-or-drop applied)
+
+## Roadmap Summary (Cycles 27-31)
+
+| Cycle | Theme | New Items (from study) | Sessions |
+|-------|-------|----------------------|----------|
+| 27 | Input Validation + Generation Controls | Per-task temperature | 3 |
+| 28 | Relevance & Source Quality Gates | — | 3 |
+| 29 | Verification & Synthesis Integrity | Evidence-tier labeling | 4 |
+| 30 | Summarization & Context Preservation | Pre-summary abstention gate | 4 |
+| 31 | Research Distinctiveness | Novelty-biased decomposition + MCP tools #123 | 3 |
+
+Key design principle from the study: **prompt semantics before generation controls**. Temperature is secondary to system prompts — bundled into C27 as a low-effort addition, not a standalone cycle.
 
 ## Three Questions
 
-1. **Hardest pattern to extract?** Whether "promote-or-drop at deferral #2" is a real process rule or just hindsight from the 4-deferral pattern. Chose to document it as a rule and rely on MEMORY.md tracking.
-2. **What was left out?** CI hardening checklist as a standalone doc — left inline in the solution doc since the project has only one workflow.
-3. **Least confident about?** The deferred `--cost` and `--critique-history` MCP tools (#123) are at deferral #1. If they hit #2, the new promote-or-drop rule applies.
+1. **Hardest decision?** Where to place evidence-tier labeling — C29 (with skeptic enforcement) vs C30 (with summarization). Chose C29 because both features shape how synthesis handles confidence, and they're two sides of the same coin.
+2. **What was left out?** A standalone "epistemic controls" cycle — considered grouping all study-derived features together, but they fit better distributed across existing cycles where they share code and dependencies.
+3. **Least confident about?** Pre-summary abstention gate placement (C30). 75% confidence — the mechanism is validated but whether it belongs in `summarize.py` (per-source) or `synthesize.py` (all sources visible) needs planning.
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md for context. This is Research Agent, a Python CLI that searches the web and generates structured markdown reports with citations using Claude. Cycle 26 is complete. Next: start Cycle 27 (entropy fixes — input validation + sanitization). Roadmap: docs/research/2026-03-09-entropy-fixes-roadmap.md.
+Read HANDOFF.md for context. This is Research Agent, a Python CLI that searches the web and generates structured markdown reports with citations using Claude. Cycle 26 is complete. Roadmap reprioritized with epistemic calibration study findings. Next: start Cycle 27 (input validation + generation controls: vague query detection, idempotent sanitization, per-task temperature). Roadmap: docs/research/2026-03-09-entropy-fixes-roadmap.md.
 ```

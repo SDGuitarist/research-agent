@@ -122,3 +122,9 @@ Searchable table of all patterns discovered across development cycles. Each row 
 | **Cost** | Relevance scoring is classification-like (score 1-5 + one sentence)—Haiku handles it with zero decision flips vs Sonnet | 21 | operations.md |
 | **Process** | A/B test cheap models with a temporary env var override before promoting to permanent dataclass fields—validate before committing to schema changes | 21 | process.md |
 | **Architecture** | Tiered model routing: use the cheapest model that doesn't degrade output quality—planning and scoring tolerate Haiku, synthesis does not | 21 | architecture.md |
+| **Architecture** | Temperature is a style knob, not an epistemic knob—prompt wording determines the conceptual basin; temperature affects exploration within it | Study | architecture.md |
+| **Architecture** | Evidence-tier labeling (documented/inference/illustrative/speculative) makes model more disciplined—prompt-level change, not architectural | Study | architecture.md |
+| **Architecture** | Epistemic friction over blanket refusal—skeptical prompts raise threshold for confident continuation without collapsing into refusal | Study | architecture.md |
+| **Process** | Upstream fixes before downstream fixes—cleaner input makes every downstream improvement more effective and reduces false positives | Study | process.md |
+| **Process** | User research integrates into existing roadmap—map findings to dependency-ordered cycles rather than standalone feature cycles | Study | process.md |
+| **Architecture** | Per-task temperature routing follows same frozen dataclass pattern as model routing—modules receive temperature as kwarg, stay agnostic | Study, planned C27 | architecture.md |

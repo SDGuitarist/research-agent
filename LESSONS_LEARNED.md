@@ -27,6 +27,8 @@ This document is the hub for all lessons from 18 development cycles of the resea
 | 20 | Query iteration (auto-refine + follow-ups) | Parallel async synthesis needs semaphore + gather + phase-level timeout; sanitize derived fields (headings from LLM output) at every insertion point |
 | 21 | Tiered model routing (planning + relevance) | A/B test cheap models with env var override before promoting to permanent fields; relevance scoring is classification-like and tolerates Haiku with zero decision flips |
 
+| Epistemic study | Roadmap reprioritization | Temperature is a style knob — prompt semantics determine epistemic behavior; bundle generation controls with prompt fixes, not standalone |
+
 ## Top 10 Patterns
 
 Patterns that recurred across 3+ cycles or prevented entire categories of bugs. Search for these first when facing a similar problem.
@@ -55,6 +57,16 @@ Patterns that recurred across 3+ cycles or prevented entire categories of bugs. 
 | [operations.md](docs/lessons/operations.md) | 2, 9, 11, 14 (performance), 15, 16 (parallelization), 19 | Rate limiting, fetch cascade, instrumentation, sleep budgets, live-test integrations |
 | [process.md](docs/lessons/process.md) | 1, 4, 14 (review methodology), 17, 20 (validation Qs) | Planning, review cadence, testing discipline, prompting strategy, feed-forward |
 | [patterns-index.md](docs/lessons/patterns-index.md) | All | Flat searchable table with cycle mappings |
+
+## Epistemic Calibration Lessons (March 2026)
+
+| # | Pattern | Source | Category |
+|---|---------|--------|----------|
+| 15 | **Temperature is a style knob, not an epistemic knob** — prompt wording determines the conceptual basin; temperature affects stylistic exploration within it. Don't expect temperature tuning to fix hallucination. | Epistemic calibration study §3.2 | [architecture.md](docs/lessons/architecture.md) |
+| 16 | **Evidence-tier labeling reduces overclaiming** — requiring the model to label claims as documented/inference/illustrative/speculative makes it more disciplined. Prompt-level change, not architectural. | Epistemic calibration study §3.1 | [architecture.md](docs/lessons/architecture.md) |
+| 17 | **Epistemic friction over blanket refusal** — skeptical system prompts raise the threshold for confident continuation without collapsing into refusal. Model refused fake citations but accurately summarized real papers. | Epistemic calibration study §3.5 | [architecture.md](docs/lessons/architecture.md) |
+| 18 | **Upstream fixes before downstream fixes** — cleaner input makes every downstream improvement more effective. Input validation + relevance gates before synthesis improvements. | Roadmap reprioritization | [process.md](docs/lessons/process.md) |
+| 19 | **User research integrates into existing roadmap** — external study findings map to existing dependency-ordered cycles rather than standalone feature cycles. Lower overhead and natural code co-location. | Roadmap session | [process.md](docs/lessons/process.md) |
 
 ## Cross-Tool Workflow (March 2026)
 
