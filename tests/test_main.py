@@ -9,6 +9,7 @@ import pytest
 
 from research_agent.cli import (
     list_reports,
+    main,
     show_costs,
 )
 from research_agent.report_store import (
@@ -72,6 +73,16 @@ class TestGetAutoSavePath:
     def test_filename_ends_with_md(self):
         path = get_auto_save_path("anything")
         assert path.suffix == ".md"
+
+    def test_rejects_symlinked_reports_root(self, tmp_path):
+        external = tmp_path / "external"
+        external.mkdir()
+        reports_link = tmp_path / "reports"
+        reports_link.symlink_to(external, target_is_directory=True)
+
+        with patch("research_agent.report_store.REPORTS_DIR", reports_link):
+            with pytest.raises(OSError, match="literal repo-local reports/ directory"):
+                get_auto_save_path("anything")
 
 
 class TestFilenameRegexPatterns:
@@ -203,3 +214,23 @@ class TestResearchModeCostEstimate:
 
     def test_deep_has_cost_estimate(self):
         assert ResearchMode.deep().cost_estimate == "~$0.95"
+
+
+class TestCliMain:
+    """Tests for CLI command handling."""
+
+    def test_list_contexts_rejects_symlinked_contexts_root(self, tmp_path, capsys):
+        external = tmp_path / "external"
+        external.mkdir()
+        (external / "outside.md").write_text("# Outside")
+        contexts_link = tmp_path / "contexts"
+        contexts_link.symlink_to(external, target_is_directory=True)
+
+        with patch("research_agent.cli.CONTEXTS_DIR", contexts_link), \
+             patch("research_agent.context.CONTEXTS_DIR", contexts_link), \
+             patch("sys.argv", ["main.py", "--list-contexts"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+
+        assert exc.value.code == 0
+        assert "No context files found in contexts/." in capsys.readouterr().out

@@ -81,6 +81,7 @@ async def summarize_chunk(
     # Sanitize untrusted web content to prevent prompt injection
     safe_chunk = sanitize_content(chunk)
     safe_title = sanitize_content(title)
+    safe_url = sanitize_content(url)
 
     # Choose prompt and token limit based on structured flag
     if structured:
@@ -88,7 +89,7 @@ async def summarize_chunk(
 
 <webpage_metadata>
 Title: {safe_title}
-URL: {url}
+URL: {safe_url}
 </webpage_metadata>
 
 <webpage_content>
@@ -105,7 +106,7 @@ PERSPECTIVE: [one sentence on the source's analytical stance or framing, or "N/A
 
 <webpage_metadata>
 Title: {safe_title}
-URL: {url}
+URL: {safe_url}
 </webpage_metadata>
 
 <webpage_content>

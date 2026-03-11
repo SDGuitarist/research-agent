@@ -9,6 +9,23 @@ from .results import ReportInfo
 REPORTS_DIR = Path("reports")
 
 
+def _literal_reports_root() -> Path:
+    """Return an absolute reports/ path without resolving symlinks."""
+    return REPORTS_DIR if REPORTS_DIR.is_absolute() else Path.cwd() / REPORTS_DIR
+
+
+def _resolves_within_reports_root(path: Path | str) -> bool:
+    """Check that a path resolves inside the literal reports/ root."""
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    try:
+        resolved = candidate.resolve(strict=False)
+    except OSError:
+        return False
+    return resolved.is_relative_to(_literal_reports_root())
+
+
 def sanitize_filename(query: str, max_length: int = 50) -> str:
     """
     Sanitize a query string for use in a filename.
@@ -37,7 +54,12 @@ def get_auto_save_path(query: str) -> Path:
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S%f")  # Microseconds prevent collisions
     safe_query = sanitize_filename(query)
     filename = f"{safe_query}_{timestamp}.md"
-    return REPORTS_DIR / filename
+    path = REPORTS_DIR / filename
+    if not _resolves_within_reports_root(path):
+        raise OSError(
+            "Refusing to use a reports/ path outside the literal repo-local reports/ directory"
+        )
+    return path
 
 
 # Regex patterns for extracting date from report filenames
@@ -56,6 +78,8 @@ def get_reports() -> list[ReportInfo]:
     """
     if not REPORTS_DIR.is_dir():
         return []
+    if not _resolves_within_reports_root(REPORTS_DIR):
+        return []
 
     md_files = sorted(REPORTS_DIR.glob("*.md"))
     if not md_files:
@@ -63,6 +87,8 @@ def get_reports() -> list[ReportInfo]:
 
     results: list[ReportInfo] = []
     for f in md_files:
+        if not _resolves_within_reports_root(f):
+            continue
         name = f.name
         old_match = _OLD_FORMAT.match(name)
         new_match = _NEW_FORMAT.match(name)

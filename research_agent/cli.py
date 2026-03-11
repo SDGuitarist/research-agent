@@ -15,6 +15,7 @@ from research_agent import ResearchAgent
 from research_agent.agent import META_DIR
 from research_agent.context import (
     CONTEXTS_DIR,
+    list_available_contexts,
     parse_context_file,
     load_critique_history,
     resolve_context_path,
@@ -213,13 +214,13 @@ Examples:
         if not CONTEXTS_DIR.is_dir():
             print("No contexts/ directory found.")
             sys.exit(0)
-        context_files = sorted(CONTEXTS_DIR.glob("*.md"))
-        if not context_files:
+        available_contexts = list_available_contexts()
+        if not available_contexts:
             print("No context files found in contexts/.")
             sys.exit(0)
-        for path in context_files:
-            name = path.stem
+        for name, _preview in available_contexts:
             try:
+                path = resolve_context_path(name)
                 raw = path.read_text()
                 _, template, profile = parse_context_file(raw)
                 fields = []

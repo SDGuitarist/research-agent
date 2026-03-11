@@ -17,7 +17,7 @@ from tavily.errors import (
 )
 
 from .extract import ExtractedContent
-from .fetch import ALLOWED_SCHEMES, BLOCKED_HOSTS
+from .fetch import ALLOWED_SCHEMES, BLOCKED_HOSTS, _is_safe_url
 from .search import SearchResult, _get_tavily_client
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,22 @@ def _is_internal_url(url: str) -> bool:
         return True
 
 
+async def _filter_forwardable_urls(urls: list[str]) -> list[str]:
+    """Keep only URLs that are safe to forward to third-party services."""
+    if not urls:
+        return []
+
+    dns_cache: dict[str, bool] = {}
+    candidates = [u for u in urls if not _is_internal_url(u)]
+    if not candidates:
+        return []
+
+    checks = await asyncio.gather(
+        *[_is_safe_url(url, dns_cache=dns_cache) for url in candidates]
+    )
+    return [url for url, is_safe in zip(candidates, checks) if is_safe]
+
+
 async def cascade_recover(
     failed_urls: list[str],
     all_results: list[SearchResult],
@@ -85,25 +101,26 @@ async def cascade_recover(
     if not failed_urls:
         return []
 
-    # Exclude SSRF-blocked URLs — don't leak internal URL patterns to third parties
-    safe_urls = [u for u in failed_urls if not _is_internal_url(u)]
-    if not safe_urls:
-        return []
-
     recovered = []
-    remaining = set(safe_urls)
+    remaining = set(failed_urls)
+    forwardable_urls = await _filter_forwardable_urls(failed_urls)
+    forwardable_set = set(forwardable_urls)
 
     # Layer 1: Jina Reader
-    jina_results = await _fetch_via_jina(list(remaining))
-    for content in jina_results:
-        recovered.append(content)
-        remaining.discard(content.url)
-    if jina_results:
-        logger.info(f"Jina Reader recovered {len(jina_results)} pages")
+    if forwardable_urls:
+        jina_results = await _fetch_via_jina(forwardable_urls)
+        for content in jina_results:
+            recovered.append(content)
+            remaining.discard(content.url)
+        if jina_results:
+            logger.info(f"Jina Reader recovered {len(jina_results)} pages")
 
     # Layer 2: Tavily Extract (high-value domains only, costs credits)
     if remaining:
-        extract_urls = [u for u in remaining if _is_extract_domain(u)]
+        extract_urls = [
+            u for u in remaining
+            if u in forwardable_set and _is_extract_domain(u)
+        ]
         if extract_urls:
             tavily_key = os.environ.get("TAVILY_API_KEY")
             extract_results = await _fetch_via_tavily_extract(

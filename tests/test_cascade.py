@@ -406,12 +406,13 @@ class TestCascadeRecover:
                 ExtractedContent(url="https://example.com", title="Title", text=long_content)
             ]
 
-        with patch("research_agent.cascade._fetch_via_jina", side_effect=mock_fetch_jina):
-            with patch("research_agent.cascade._fetch_via_tavily_extract", new_callable=AsyncMock, return_value=[]):
-                results = await cascade_recover(
-                    ["https://example.com", "https://blocked.com"],
-                    [_make_search_result("https://blocked.com")],
-                )
+        with patch("research_agent.cascade._filter_forwardable_urls", new_callable=AsyncMock, return_value=["https://example.com", "https://blocked.com"]):
+            with patch("research_agent.cascade._fetch_via_jina", side_effect=mock_fetch_jina):
+                with patch("research_agent.cascade._fetch_via_tavily_extract", new_callable=AsyncMock, return_value=[]):
+                    results = await cascade_recover(
+                        ["https://example.com", "https://blocked.com"],
+                        [_make_search_result("https://blocked.com")],
+                    )
 
         # Jina recovered 1, snippet fallback for the other
         jina_results = [r for r in results if not r.text.startswith("[Source:")]
@@ -433,19 +434,20 @@ class TestCascadeRecover:
                 ExtractedContent(url="https://www.weddingwire.com/page", title="", text="x" * 200)
             ]
 
-        with patch("research_agent.cascade._fetch_via_jina", side_effect=mock_fetch_jina):
-            with patch("research_agent.cascade._fetch_via_tavily_extract", side_effect=mock_tavily_extract):
-                with patch.dict("os.environ", {"TAVILY_API_KEY": "fake"}):
-                    results = await cascade_recover(
-                        [
-                            "https://www.weddingwire.com/page",
-                            "https://regular-site.com/page",
-                        ],
-                        [
-                            _make_search_result("https://www.weddingwire.com/page"),
-                            _make_search_result("https://regular-site.com/page"),
-                        ],
-                    )
+        with patch("research_agent.cascade._filter_forwardable_urls", new_callable=AsyncMock, return_value=["https://www.weddingwire.com/page", "https://regular-site.com/page"]):
+            with patch("research_agent.cascade._fetch_via_jina", side_effect=mock_fetch_jina):
+                with patch("research_agent.cascade._fetch_via_tavily_extract", side_effect=mock_tavily_extract):
+                    with patch.dict("os.environ", {"TAVILY_API_KEY": "fake"}):
+                        results = await cascade_recover(
+                            [
+                                "https://www.weddingwire.com/page",
+                                "https://regular-site.com/page",
+                            ],
+                            [
+                                _make_search_result("https://www.weddingwire.com/page"),
+                                _make_search_result("https://regular-site.com/page"),
+                            ],
+                        )
 
         # Tavily Extract got WeddingWire, snippet fallback for regular site
         assert len(results) == 2
@@ -465,12 +467,13 @@ class TestCascadeRecover:
             _make_search_result("https://blocked.com", snippet="Important info about the band. " * 3),
         ]
 
-        with patch("research_agent.cascade._fetch_via_jina", side_effect=mock_fetch_jina):
-            with patch("research_agent.cascade._fetch_via_tavily_extract", side_effect=mock_tavily_extract):
-                results = await cascade_recover(
-                    ["https://blocked.com"],
-                    all_results,
-                )
+        with patch("research_agent.cascade._filter_forwardable_urls", new_callable=AsyncMock, return_value=["https://blocked.com"]):
+            with patch("research_agent.cascade._fetch_via_jina", side_effect=mock_fetch_jina):
+                with patch("research_agent.cascade._fetch_via_tavily_extract", side_effect=mock_tavily_extract):
+                    results = await cascade_recover(
+                        ["https://blocked.com"],
+                        all_results,
+                    )
 
         assert len(results) == 1
         assert results[0].text.startswith("[Source: search snippet]")
@@ -499,12 +502,13 @@ class TestCascadeRecover:
             _make_search_result("https://site3.com"),
         ]
 
-        with patch("research_agent.cascade._fetch_via_jina", side_effect=mock_fetch_jina):
-            with patch("research_agent.cascade._fetch_via_tavily_extract", side_effect=mock_tavily_extract):
-                results = await cascade_recover(
-                    ["https://site1.com", "https://www.yelp.com/biz/band", "https://site3.com"],
-                    all_results,
-                )
+        with patch("research_agent.cascade._filter_forwardable_urls", new_callable=AsyncMock, return_value=["https://site1.com", "https://www.yelp.com/biz/band", "https://site3.com"]):
+            with patch("research_agent.cascade._fetch_via_jina", side_effect=mock_fetch_jina):
+                with patch("research_agent.cascade._fetch_via_tavily_extract", side_effect=mock_tavily_extract):
+                    results = await cascade_recover(
+                        ["https://site1.com", "https://www.yelp.com/biz/band", "https://site3.com"],
+                        all_results,
+                    )
 
         assert call_order == ["jina", "tavily_extract"]
         # site1 via Jina, yelp.com via snippet (tavily extract failed), site3 via snippet
@@ -522,12 +526,39 @@ class TestCascadeRecover:
             _make_search_result("https://regular-site.com"),
         ]
 
-        with patch("research_agent.cascade._fetch_via_jina", side_effect=mock_fetch_jina):
-            with patch("research_agent.cascade._fetch_via_tavily_extract", mock_tavily):
-                await cascade_recover(
-                    ["https://regular-site.com"],
-                    all_results,
-                )
+        with patch("research_agent.cascade._filter_forwardable_urls", new_callable=AsyncMock, return_value=["https://regular-site.com"]):
+            with patch("research_agent.cascade._fetch_via_jina", side_effect=mock_fetch_jina):
+                with patch("research_agent.cascade._fetch_via_tavily_extract", mock_tavily):
+                    await cascade_recover(
+                        ["https://regular-site.com"],
+                        all_results,
+                    )
 
         # Tavily Extract should NOT have been called
         mock_tavily.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_private_resolving_hostnames_not_forwarded_to_third_parties(self):
+        """URLs that resolve private should skip Jina/Tavily but still allow snippet fallback."""
+        mock_jina = AsyncMock(return_value=[])
+        mock_tavily = AsyncMock(return_value=[])
+        all_results = [
+            _make_search_result("https://safe.example.com", snippet="Safe snippet " * 5),
+            _make_search_result("https://private.example.com", snippet="Private snippet " * 5),
+        ]
+
+        async def mock_is_safe_url(url, dns_cache=None):
+            return url != "https://private.example.com"
+
+        with patch("research_agent.cascade._fetch_via_jina", mock_jina), \
+             patch("research_agent.cascade._fetch_via_tavily_extract", mock_tavily), \
+             patch("research_agent.cascade._is_safe_url", side_effect=mock_is_safe_url):
+            results = await cascade_recover(
+                ["https://safe.example.com", "https://private.example.com"],
+                all_results,
+            )
+
+        mock_jina.assert_awaited_once_with(["https://safe.example.com"])
+        mock_tavily.assert_not_called()
+        snippet_urls = {r.url for r in results if r.text.startswith("[Source: search snippet]")}
+        assert snippet_urls == {"https://safe.example.com", "https://private.example.com"}

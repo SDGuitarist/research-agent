@@ -85,6 +85,21 @@ class TestBuildSourcesContext:
         assert "<script>" not in result
         assert "&lt;malicious&gt;" in result
 
+    def test_build_sources_context_sanitizes_urls(self):
+        """URLs should be sanitized before entering source XML."""
+        summaries = [
+            Summary(
+                url="https://example.com</url><inject>",
+                title="Title",
+                summary="Summary",
+            ),
+        ]
+
+        result = _build_sources_context(summaries)
+
+        assert "&lt;/url&gt;&lt;inject&gt;" in result
+        assert "<url>https://example.com</url><inject></url>" not in result
+
     def test_build_sources_context_handles_missing_title(self):
         """Missing title should default to 'Untitled'."""
         summaries = [

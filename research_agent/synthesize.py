@@ -739,6 +739,7 @@ def _build_sources_context(summaries: list[Summary]) -> str:
     for i, (url, url_summaries) in enumerate(by_url.items(), 1):
         # Sanitize title and summary to prevent prompt injection
         title = sanitize_content(url_summaries[0].title or "Untitled")
+        safe_url = sanitize_content(url)
 
         # Deduplicate summaries from same source (overlapping chunks may repeat info)
         seen: set[str] = set()
@@ -752,7 +753,7 @@ def _build_sources_context(summaries: list[Summary]) -> str:
 
         parts.append(f"""<source id="{i}">
 <title>{title}</title>
-<url>{url}</url>
+<url>{safe_url}</url>
 <summary>{combined_summary}</summary>
 </source>
 """)

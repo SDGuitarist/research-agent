@@ -310,6 +310,20 @@ class TestGetReport:
                 "get_report", {"filename": "a" * 253 + ".md"}
             )
 
+    async def test_symlinked_reports_root_rejected(self, client, tmp_path):
+        """Report retrieval should not follow a symlinked reports/ root outside repo-local reports/."""
+        external = tmp_path / "external"
+        external.mkdir()
+        (external / "test_report.md").write_text("# Outside")
+        reports_link = tmp_path / "reports"
+        reports_link.symlink_to(external, target_is_directory=True)
+
+        with patch("research_agent.report_store.REPORTS_DIR", reports_link):
+            with pytest.raises(ToolError, match="outside the literal reports/ directory"):
+                await client.call_tool(
+                    "get_report", {"filename": "test_report.md"}
+                )
+
 
 # ---------------------------------------------------------------------------
 # list_research_modes

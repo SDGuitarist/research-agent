@@ -309,7 +309,7 @@ def list_contexts() -> str:
 
 def _validate_report_filename(filename: str) -> Path:
     """Validate and resolve a report filename, preventing path traversal."""
-    from research_agent.report_store import REPORTS_DIR
+    from research_agent.report_store import REPORTS_DIR, _resolves_within_reports_root
 
     if "/" in filename or "\\" in filename or filename.startswith("."):
         raise ValueError(f"Invalid filename: {filename!r}")
@@ -321,9 +321,10 @@ def _validate_report_filename(filename: str) -> Path:
         raise ValueError("Only .md report files can be retrieved")
     if not re.match(r'^[a-zA-Z0-9_\-\.]+$', filename):
         raise ValueError(f"Invalid filename characters: {filename!r}")
-    path = (REPORTS_DIR / filename).resolve()
-    if not path.is_relative_to(REPORTS_DIR.resolve()):
-        raise ValueError("Filename resolves outside reports/ directory")
+    path = REPORTS_DIR / filename
+    if not _resolves_within_reports_root(path):
+        raise ValueError("Filename resolves outside the literal reports/ directory")
+    path = path.resolve()
     if not path.exists():
         raise FileNotFoundError(f"Report not found: {filename}")
     return path
