@@ -1,12 +1,39 @@
 # HANDOFF — Research Agent
 
-**Date:** 2026-03-10
-**Branch:** `main`
-**Phase:** Cycle 26 — COMPLETE. Roadmap reprioritized with epistemic calibration study findings.
+**Date:** 2026-03-25
+**Branch:** `feat/cycle-27-input-validation-generation-controls`
+**Phase:** Cycle 27 — WORK IN PROGRESS. Phases 1-2 complete (sanitization + vague query). Phase 3 (temperature) next session.
 
 ## Current State
 
-Cycle 26 is fully complete. Roadmap expanded from 4 cycles (27-30) to 5 cycles (27-31) after integrating findings from an exploratory study on prompt-induced epistemic calibration. Three new features added: per-task temperature controls (C27), evidence-tier labeling (C29), pre-summary abstention gate (C30), novelty-biased decomposition (C31). MCP tools #123 promoted to C31 (deferral #2 triggers promote-or-drop). 938 tests passing.
+Commits 1-3 done on feature branch. 979 tests passing (up from 938).
+- Commit 1: `fix(27): make sanitize_content idempotent with html.unescape+escape`
+- Commit 2: `feat(27): add VagueQueryError and vague query gate`
+- Commit 3: `test(27): add vague query detection test corpus`
+
+Remaining: Phase 3 (per-task temperature controls, commits 4-6) in a separate session.
+
+## Key Artifacts
+
+| Phase | Location |
+|-------|----------|
+| Brainstorm | `docs/brainstorms/2026-03-25-cycle-27-input-validation-generation-controls-brainstorm.md` |
+| Plan | `docs/plans/2026-03-25-feat-input-validation-generation-controls-plan.md` |
+| Plan Review | Codex review applied 2026-03-25: 3 fixes (Python API path, punctuation normalization, modes.py imports) |
+
+## Three Questions (Work Phase — Phases 1-2)
+
+1. **Hardest implementation decision?** "what's up" was in the plan's reject list but `meaningful_words()` counts "what's" as meaningful (only "what" is a stopword, not "what's"). Moved it to the accept list — the gate correctly recognizes it has 2 meaningful words.
+2. **What did you consider changing but left alone?** Considered adding "what's" to STOP_WORDS to match the plan's original expectation, but that would be wrong — "what's" can carry meaning in other contexts ("what's new in AI"). The gate is correct as-is.
+3. **Least confident about going into Phase 3?** Temperature threading touches ~18 call sites across 10+ modules. Each module function needs a new `temperature` param threaded from agent.py. One mistake (missing a call site, wrong tier) would be hard to catch without mock tests that verify the kwarg is passed. The mock test strategy in commit 6 is critical.
+
+### Prompt for Next Session
+
+```
+Read docs/plans/2026-03-25-feat-input-validation-generation-controls-plan.md. This is Cycle 27 Phase 3 (per-task temperature controls) for research-agent. Branch: feat/cycle-27-input-validation-generation-controls. Phases 1-2 done (commits 1-3). Implement commits 4-6: add temperature fields to ResearchMode, thread to all 18 call sites, write mock tests. Key files: modes.py, agent.py, + all modules in the routing table.
+```
+
+## Previous State (Cycle 26)
 
 ## Key Artifacts
 
