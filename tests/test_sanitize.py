@@ -1,5 +1,7 @@
 """Tests for sanitize_content() — single canonical location."""
 
+import pytest
+
 from research_agent.sanitize import sanitize_content
 
 
@@ -31,5 +33,28 @@ class TestSanitizeContent:
         assert result == "Tom &amp; Jerry"
 
     def test_ampersand_before_angle_brackets(self):
+        """Pre-escaped entities are normalized, not double-encoded."""
         result = sanitize_content("&lt;script&gt;")
-        assert result == "&amp;lt;script&amp;gt;"
+        assert result == "&lt;script&gt;"
+
+    def test_quote_false(self):
+        """Double quotes pass through unescaped (quote=False)."""
+        assert sanitize_content('"hello"') == '"hello"'
+
+    @pytest.mark.parametrize("text", [
+        "&amp;",
+        "&lt;script&gt;",
+        "AT&T",
+        "&amp;amp;",
+        "&copy;",
+        "&nbsp;",
+        "&#999999;",
+        "&nonexistent;",
+        "plain text",
+        "&amp",
+    ])
+    def test_idempotent(self, text):
+        """sanitize_content(sanitize_content(x)) == sanitize_content(x) for all inputs."""
+        once = sanitize_content(text)
+        twice = sanitize_content(once)
+        assert twice == once, f"Not idempotent for {text!r}: first={once!r}, second={twice!r}"

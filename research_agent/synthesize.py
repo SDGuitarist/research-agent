@@ -542,8 +542,8 @@ def synthesize_final(
         SynthesisError: If synthesis fails
     """
     safe_query = sanitize_content(query)
-    # draft is LLM output from synthesize_draft — do not re-sanitize
-    # (sanitize_content is not idempotent: & → &amp; → &amp;amp;)
+    # draft is LLM output from synthesize_draft — pre-sanitized by synthesize_draft
+    # (sanitize_content is idempotent, but re-sanitizing here is unnecessary)
     sources_text = _build_sources_context(summaries)
 
     # Token budget enforcement
