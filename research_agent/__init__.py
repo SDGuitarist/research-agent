@@ -62,8 +62,10 @@ def run_research(
     Raises:
         ResearchError: If query is empty, mode is invalid,
             API keys are missing, or research fails.
-            Subclasses (SearchError, SynthesisError) propagate
-            from the pipeline for specific failures.
+            Subclasses (SearchError, SynthesisError, VagueQueryError)
+            propagate from the pipeline for specific failures.
+            VagueQueryError is raised when the query has fewer than 2
+            meaningful words (after stopword removal).
 
     Note:
         The research agent prints progress to stdout during execution.
