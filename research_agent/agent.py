@@ -23,10 +23,11 @@ from .context_result import ContextResult, ContextStatus
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .coverage import identify_coverage_gaps
-from .errors import ResearchError, SearchError, SkepticError, StateError, IterationError, SynthesisError
+from .errors import ResearchError, SearchError, SkepticError, StateError, IterationError, SynthesisError, VagueQueryError
 from .critique import evaluate_report, save_critique, CritiqueResult
 from .iterate import generate_refined_queries, generate_followup_questions
 from .modes import ResearchMode
+from .query_validation import check_query_not_vague
 from .sanitize import sanitize_content
 from .cycle_config import CycleConfig
 
@@ -389,6 +390,7 @@ class ResearchAgent:
 
     async def _research_async(self, query: str) -> str:
         """Async implementation of research."""
+        check_query_not_vague(query)
         self._start_time = time.monotonic()
         self._step_num = 0
         self._current_schema_result = None

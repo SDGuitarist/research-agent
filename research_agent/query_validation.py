@@ -3,6 +3,8 @@
 import logging
 import re
 
+from .errors import VagueQueryError
+
 logger = logging.getLogger(__name__)
 
 # Stop words excluded from overlap checks
@@ -17,6 +19,51 @@ _SEARCH_OPERATOR_RE = re.compile(
     r"\b(site|inurl|filetype|intitle|cache|related):", re.IGNORECASE
 )
 MAX_QUERY_LENGTH = 120
+
+
+_PUNCTUATION_CHARS = ",.?!;:\"'()[]"
+
+
+def check_query_not_vague(query: str) -> None:
+    """Reject queries too vague to produce useful research results.
+
+    This is a UX quality gate, not a security control. Raises
+    VagueQueryError if the query has fewer than 2 meaningful words
+    (after stopword removal), unless the single word is a proper noun
+    or acronym (starts uppercase or is all-caps with length >= 2).
+
+    The proper-noun check uses the original token before lowercasing,
+    with surrounding punctuation/quotes stripped first.
+    """
+    stripped = query.strip()
+    if not stripped:
+        raise VagueQueryError(
+            "Query too vague for research. Please add specific terms "
+            "— e.g., 'climate change policy' instead of 'stuff'."
+        )
+
+    words = meaningful_words(stripped)
+
+    if len(words) >= 2:
+        return  # enough content words
+
+    if len(words) == 1:
+        # Check original tokens for proper-noun/acronym heuristic
+        for token in stripped.split():
+            clean = token.strip(_PUNCTUATION_CHARS)
+            if not clean:
+                continue
+            clean_lower = clean.lower()
+            if clean_lower in STOP_WORDS:
+                continue
+            # This is the meaningful word — check original casing
+            if clean[0].isupper() or (len(clean) >= 2 and clean.isupper()):
+                return  # proper noun or acronym
+
+    raise VagueQueryError(
+        "Query too vague for research. Please add specific terms "
+        "— e.g., 'climate change policy' instead of 'stuff'."
+    )
 
 
 def strip_query(text: str, extra_chars: str = "") -> str:

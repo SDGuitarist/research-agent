@@ -49,3 +49,13 @@ class StateError(ResearchError):
     pass
 
 
+class VagueQueryError(ResearchError):
+    """Rejects queries too vague to produce useful research results.
+
+    This is a UX quality gate, not a security control. Prompt injection
+    defense is handled by the three-layer architecture (sanitize_content +
+    XML boundaries + system prompt design).
+    """
+    pass
+
+

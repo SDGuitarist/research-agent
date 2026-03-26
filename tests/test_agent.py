@@ -1082,7 +1082,7 @@ class TestResearchAgentAutoDetect:
                 api_key="test", mode=ResearchMode.quick(),
                 context_path=Path("contexts/pfe.md"),
             )
-            await agent.research_async("test")
+            await agent.research_async("test query")
 
             mock_detect.assert_not_called()
 
@@ -1112,7 +1112,7 @@ class TestResearchAgentAutoDetect:
             agent = ResearchAgent(
                 api_key="test", mode=ResearchMode.quick(), no_context=True,
             )
-            await agent.research_async("test")
+            await agent.research_async("test query")
 
             mock_detect.assert_not_called()
 
