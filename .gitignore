@@ -18,6 +18,9 @@ build/
 # macOS
 .DS_Store
 
+# Temp
+.tmp/
+
 # Output
 reports/
 research_log.md
