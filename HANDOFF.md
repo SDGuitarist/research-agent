@@ -2,36 +2,34 @@
 
 **Date:** 2026-04-05
 **Branch:** `main`
-**Phase:** Cycle 28 — Plan deepened. Awaiting Codex plan review.
+**Phase:** Cycle 28 — Plan reviewed and revised. Ready for Work Session 1.
 
 ## Current State
 
-Cycle 27 compound phase complete (959 tests, all learnings propagated). Cycle 28 brainstorm + deepened plan written and committed. Codex plan review handoff prompt produced. Awaiting Codex findings before work phase.
+Cycle 27 complete (959 tests). Cycle 28 brainstorm, deepened plan, and Codex plan review all done. Plan revised with 5 Codex findings (fixed constructor counts, added interaction tests, tightened known limitations, clarified Literal/cap wording, expanded Session 3 test planning). Ready to implement Session 1.
 
 ## Key Artifacts
 
 | Phase | Location |
 |-------|----------|
 | Brainstorm | `docs/brainstorms/2026-04-05-cycle-28-relevance-cutoff-brainstorm.md` |
-| Plan (deepened) | `docs/plans/2026-04-05-cycle-28-relevance-source-quality-plan.md` |
-| Review summary (C27) | `docs/reviews/2026-04-05-cycle-27-review-summary.md` |
-| Solution (C27) | `docs/solutions/feature-implementation/input-validation-and-generation-controls.md` |
+| Plan (deepened + revised) | `docs/plans/2026-04-05-cycle-28-relevance-source-quality-plan.md` |
 
 ## Deferred Items
 
 - **MCP `--cost` + `--critique-history` tools** (#123) — Cycle 31
 - **MCP `test_mcp_server.py` verification** — missing fastmcp dep
-- **Quick-mode snippet-only reports** — deferred to Cycle 29 evidence-tier labeling
-- **`no_new_findings` semantic shift at cutoff=4** — documented, accepted
+- **Quick-mode snippet-only reports** — deferred to Cycle 29 (required test in Session 2)
+- **`no_new_findings` semantic shift at cutoff=4** — documented, accepted (required test in Session 2)
 
 ## Three Questions
 
-1. **Hardest decision?** Overriding the brainstorm's YAGNI choice — adding `source_tier` to both `ExtractedContent` and `Summary` instead of just `Summary`. Justified because the cascade is the point of knowledge; `Summary`-only would require text-prefix detection (the exact fragility the brainstorm rejected).
-2. **What was rejected?** Bare `str` for source_tier (chose `Literal` for type safety), magic number for score cap (chose named constant), formal A/B env var (chose manual check).
-3. **Least confident about?** The A/B test outcome — if cutoff=4 causes significant decision flips on mainstream queries, may need to keep 3 for standard and only raise for deep. Secondary: Haiku borderline aggressiveness compounding with the higher cutoff.
+1. **Hardest decision?** Overriding brainstorm YAGNI to put `source_tier` on both `ExtractedContent` and `Summary`. Justified: cascade is the point of knowledge; Summary-only requires fragile text-prefix detection.
+2. **What was rejected?** Bare `str` for source_tier, magic number for score cap, formal A/B env var, passing entire ResearchMode to score functions.
+3. **Least confident about?** A/B test outcome — cutoff=4 may compound with Haiku borderline aggressiveness. Mitigation: 1-line revert per mode.
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. Cycle 28 plan is deepened and awaiting Codex plan review. If Codex findings are ready, update the plan and start /workflows:work Session 1. Plan: docs/plans/2026-04-05-cycle-28-relevance-source-quality-plan.md.
+Read docs/plans/2026-04-05-cycle-28-relevance-source-quality-plan.md. Implement Session 1: Raise Relevance Cutoff + A/B Test. Relevant files: research_agent/modes.py, tests/test_modes.py. Do only this session — commit and stop.
 ```
