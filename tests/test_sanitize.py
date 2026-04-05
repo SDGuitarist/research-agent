@@ -30,6 +30,55 @@ class TestSanitizeContent:
         result = sanitize_content("Tom & Jerry")
         assert result == "Tom &amp; Jerry"
 
-    def test_ampersand_before_angle_brackets(self):
+    def test_already_escaped_input_is_idempotent(self):
+        """Pre-escaped entities normalize back, then re-escape once."""
         result = sanitize_content("&lt;script&gt;")
-        assert result == "&amp;lt;script&amp;gt;"
+        assert result == "&lt;script&gt;"
+
+
+class TestSanitizeIdempotency:
+    """Idempotency invariant: sanitize(sanitize(x)) == sanitize(x)."""
+
+    def _assert_idempotent(self, text: str) -> None:
+        once = sanitize_content(text)
+        twice = sanitize_content(once)
+        assert twice == once, f"Not idempotent for {text!r}: {once!r} → {twice!r}"
+
+    def test_plain_text(self):
+        self._assert_idempotent("hello world")
+
+    def test_ampersand(self):
+        self._assert_idempotent("a & b")
+
+    def test_angle_brackets(self):
+        self._assert_idempotent("<script>alert('xss')</script>")
+
+    def test_pre_escaped_amp(self):
+        self._assert_idempotent("&amp;")
+
+    def test_pre_escaped_lt(self):
+        self._assert_idempotent("&lt;")
+
+    def test_pre_escaped_gt(self):
+        self._assert_idempotent("&gt;")
+
+    def test_mixed_raw_and_escaped(self):
+        self._assert_idempotent("a & <b> &lt;c&gt;")
+
+    def test_unicode(self):
+        self._assert_idempotent("émoji 🎉 & stuff")
+
+    def test_empty_string(self):
+        self._assert_idempotent("")
+
+    def test_html_entity_nbsp(self):
+        self._assert_idempotent("&nbsp;")
+
+    def test_html_entity_euro(self):
+        self._assert_idempotent("&euro;")
+
+    def test_numeric_entity(self):
+        self._assert_idempotent("&#x27;")
+
+    def test_nested_tags_with_ampersand(self):
+        self._assert_idempotent("</source>&<injected>")

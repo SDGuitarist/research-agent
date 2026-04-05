@@ -1,5 +1,7 @@
 """Shared content sanitization for prompt injection defense."""
 
+import html
+
 # Tag name used for research context blocks across all prompts.
 CONTEXT_TAG = "research_context"
 
@@ -10,8 +12,13 @@ def sanitize_content(text: str) -> str:
 
     Escapes XML-like delimiters to prevent prompt injection attacks
     where malicious web content tries to break out of data sections.
+
+    Idempotent: sanitize_content(sanitize_content(x)) == sanitize_content(x).
+    Normalizes any pre-escaped HTML entities before re-escaping, so
+    double-sanitization no longer causes corruption (& → &amp; → &amp;amp;).
     """
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    normalized = html.unescape(text)
+    return normalized.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def build_context_block(content: str | None) -> str:
