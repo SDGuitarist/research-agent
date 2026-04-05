@@ -843,7 +843,7 @@ class ResearchAgent:
                 dropped_sources=evaluation.dropped_sources,
                 client=self.async_client,
                 model=self.mode.model,
-                temperature=self.mode.planning_temperature,
+                temperature=self.mode.summarize_temperature,
             )
 
         # Synthesize report (full or short)

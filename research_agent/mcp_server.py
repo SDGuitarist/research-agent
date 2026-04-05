@@ -24,6 +24,7 @@ mcp = FastMCP(
         "Use get_report to retrieve a saved report by filename. "
         "Use critique_report to evaluate report quality after research completes. "
         "Use generate_followups to suggest what to research next based on a report. "
+        "Queries must contain at least 2 specific, non-generic words — vague queries like 'stuff' or 'best things' will be rejected with a suggestion. "
         "Typical workflow: list_research_modes → run_research → critique_report → generate_followups. "
         "Set 'cwd' in your MCP client config to the research-agent project root."
     ),
@@ -194,7 +195,7 @@ def critique_report(filename: str) -> str:
 
     try:
         client = Anthropic()
-        result = critique_report_file(client, path, model=DEFAULT_MODEL)
+        result = critique_report_file(client, path, model=DEFAULT_MODEL, temperature=0.8)
     except Exception:
         logger.exception("Unexpected error in critique_report")
         raise ToolError(
@@ -253,6 +254,7 @@ def generate_followups(
         result = generate_followup_questions(
             client, query.strip(), report_text, num_questions,
             model=AUTO_DETECT_MODEL,
+            temperature=0.2,
         )
     except Exception:
         logger.exception("Unexpected error in generate_followups")
@@ -283,9 +285,14 @@ def list_research_modes() -> str:
         model_info = f"model={m.model}"
         if m.planning_model and m.planning_model != m.model:
             model_info += f", planning={m.planning_model}"
+        temp_info = (
+            f"temps: planning={m.planning_temperature}, "
+            f"summarize={m.summarize_temperature}, "
+            f"synthesis={m.synthesis_temperature}"
+        )
         lines.append(
             f"- {m.name}: {m.max_sources} sources, ~{m.word_target} words, "
-            f"{m.cost_estimate}, {save_str}, {model_info}"
+            f"{m.cost_estimate}, {save_str}, {model_info}, {temp_info}"
         )
     return "\n".join(lines)
 
