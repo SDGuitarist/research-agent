@@ -2,35 +2,36 @@
 
 **Date:** 2026-04-05
 **Branch:** `main`
-**Phase:** Cycle 27 COMPLETE. Ready for Cycle 28.
+**Phase:** Cycle 28 — Plan deepened. Awaiting Codex plan review.
 
 ## Current State
 
-Cycle 27 (Input Validation & Generation Controls) is fully complete — brainstorm, plan, plan review, work (3 sessions), Codex code review, Claude Code review (7 agents), fix application, compound phase, and learnings propagation all done. 959 tests passing. All review findings resolved.
+Cycle 27 compound phase complete (959 tests, all learnings propagated). Cycle 28 brainstorm + deepened plan written and committed. Codex plan review handoff prompt produced. Awaiting Codex findings before work phase.
 
 ## Key Artifacts
 
 | Phase | Location |
 |-------|----------|
-| Brainstorm | `docs/brainstorms/2026-04-05-cycle-27-input-validation-brainstorm.md` |
-| Plan | `docs/plans/2026-04-05-cycle-27-input-validation-plan.md` |
-| Review | `docs/reviews/2026-04-05-cycle-27-review-summary.md` |
-| Solution | `docs/solutions/feature-implementation/input-validation-and-generation-controls.md` |
+| Brainstorm | `docs/brainstorms/2026-04-05-cycle-28-relevance-cutoff-brainstorm.md` |
+| Plan (deepened) | `docs/plans/2026-04-05-cycle-28-relevance-source-quality-plan.md` |
+| Review summary (C27) | `docs/reviews/2026-04-05-cycle-27-review-summary.md` |
+| Solution (C27) | `docs/solutions/feature-implementation/input-validation-and-generation-controls.md` |
 
 ## Deferred Items
 
-- **MCP `--cost` + `--critique-history` tools** (#123) — Cycle 31 (deferral count: 2)
-- **MCP `test_mcp_server.py` verification** — missing fastmcp dep (deferral count: 1)
-- **IDN/punycode domain matching** — known limitation, acceptable
+- **MCP `--cost` + `--critique-history` tools** (#123) — Cycle 31
+- **MCP `test_mcp_server.py` verification** — missing fastmcp dep
+- **Quick-mode snippet-only reports** — deferred to Cycle 29 evidence-tier labeling
+- **`no_new_findings` semantic shift at cutoff=4** — documented, accepted
 
 ## Three Questions
 
-1. **Hardest pattern to extract?** Temperature task-type classification — 15/16 call sites were obvious, but `generate_insufficient_data_response` was genuinely ambiguous. Classify by output format, not logical decision.
-2. **What was left out?** `html.unescape()` performance analysis — sub-microsecond overhead, not worth documenting as a pattern.
-3. **What might future sessions miss?** When adding new Anthropic API call sites, thread temperature — no linter catches a missing `temperature=` kwarg. Also: MCP tests couldn't run (missing fastmcp).
+1. **Hardest decision?** Overriding the brainstorm's YAGNI choice — adding `source_tier` to both `ExtractedContent` and `Summary` instead of just `Summary`. Justified because the cascade is the point of knowledge; `Summary`-only would require text-prefix detection (the exact fragility the brainstorm rejected).
+2. **What was rejected?** Bare `str` for source_tier (chose `Literal` for type safety), magic number for score cap (chose named constant), formal A/B env var (chose manual check).
+3. **Least confident about?** The A/B test outcome — if cutoff=4 causes significant decision flips on mainstream queries, may need to keep 3 for standard and only raise for deep. Secondary: Haiku borderline aggressiveness compounding with the higher cutoff.
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. Cycle 27 is complete. 959 tests pass. Next: Cycle 28 (relevance cutoff + snippet tiers + quick mode). See entropy roadmap: docs/research/2026-03-09-entropy-fixes-roadmap.md.
+Read HANDOFF.md. Cycle 28 plan is deepened and awaiting Codex plan review. If Codex findings are ready, update the plan and start /workflows:work Session 1. Plan: docs/plans/2026-04-05-cycle-28-relevance-source-quality-plan.md.
 ```
