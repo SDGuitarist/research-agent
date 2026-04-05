@@ -19,16 +19,16 @@ feed_forward:
 **Agents used:** architecture-strategist, spec-flow-analyzer, kieran-python-reviewer, learnings-checker (3 solution docs)
 
 ### Key Improvements from Deepening
-1. **Type safety:** Use `Literal["full", "snippet"]` for `source_tier` instead of bare `str` — catches typos at type-check time
+1. **Type annotation:** Use `Literal["full", "snippet"]` for `source_tier` instead of bare `str` — self-documenting and catches typos if a static checker is ever added (no enforced checker in repo today, but the annotation is valid Python and costs nothing)
 2. **Named constant:** `SNIPPET_SCORE_CAP = 3` in `relevance.py` instead of magic number
 3. **Score cap robustness:** Cap must cover ALL exit paths in `score_source()`, not just happy-path parse
 4. **Haiku borderline warning:** Cutoff raise from 3→4 amplifies Haiku's known aggressive scoring at the boundary (Cycle 21 solution doc)
 5. **Surviving source URLs:** `generate_insufficient_data_response()` must pass surviving sources — confirmed as a required change, not optional
 6. **A/B test additions:** Add 3 high-risk query types (aggregator-heavy, person-specific, very recent events)
 
-### Known Limitations (Accepted)
-- Quick-mode `short_report` can be built from snippet-only sources — deferred to Cycle 29 evidence-tier labeling
-- `no_new_findings` at cutoff=4 when all sources score exactly 3 is a semantic shift — document but don't change gate logic
+### Known Limitations (Accepted — each has a required test)
+- Quick-mode `short_report` can be built from snippet-only sources — deferred to Cycle 29 evidence-tier labeling. **Required test:** Session 2 interaction test #6 (quick mode with snippet-only survivors produces `short_report`).
+- `no_new_findings` at cutoff=4 when all sources score exactly 3 is a semantic shift — document but don't change gate logic. **Required test:** Session 2 interaction test #6 (all sources score exactly 3 at cutoff=4 produces `no_new_findings`).
 
 ## Prior Phase Risk
 
@@ -189,7 +189,7 @@ if summary.source_tier == "snippet" and score > SNIPPET_SCORE_CAP:
     score = SNIPPET_SCORE_CAP
 ```
 
-**Important:** The cap MUST be placed after all branches that assign a score (happy path at ~line 179, error defaults at ~lines 176/182/184), not just after the happy-path parse. This ensures the cap is robust to future changes in default score values.
+**Important:** The cap is placed immediately before `return SourceScore(...)` at line 186, which is after all handled score-assignment branches: happy-path parse (~line 179), empty response default (~line 176), `RateLimitError` default (~line 182), and `APIError`/`APIConnectionError`/`APITimeoutError` default (~line 184). This covers every branch that assigns a score within the function. Unhandled exceptions propagate without returning a `SourceScore`, so the cap does not need to cover those.
 
 **No changes to `agent.py`** — it calls `summarize_all()` which receives `ExtractedContent` objects (already have tier). It calls `evaluate_sources()` which receives `Summary` objects (now have tier). The tier flows through the existing pipeline.
 
@@ -206,15 +206,15 @@ if summary.source_tier == "snippet" and score > SNIPPET_SCORE_CAP:
 | `cascade.py:245` | Yes → "snippet" | Snippet fallback — the only snippet source |
 | `agent.py:539` | No (default "full") | Prefetched content — full content |
 
-All 104 test `ExtractedContent(` constructors use positional/keyword args without `source_tier` → get default "full". No test changes needed.
+Existing test constructors (39 sites in tests/) all use keyword or positional `url, title, text` without `source_tier` — they get the default `"full"`. No test changes needed because the new field has a default value.
 
 **`Summary(` constructors — 1 production site:**
 
 | File:Line | Threads `source_tier`? | Why |
 |-----------|----------------------|-----|
-| `summarize.py:145` | Yes → from parameter | Only production constructor |
+| `summarize.py:145` | Yes ��� from parameter | Only production constructor |
 
-All 104 test `Summary(` constructors use `url, title, summary` without `source_tier` → get default "full". No test changes needed for existing tests.
+Existing test constructors (104 sites in tests/) all use `url, title, summary` without `source_tier` — they get the default `"full"`. No test changes needed for existing tests because the new field has a default value.
 
 ### What must NOT change?
 
@@ -248,6 +248,11 @@ All 104 test `Summary(` constructors use `url, title, summary` without `source_t
    - Quick mode (cutoff=3): snippet survives with all 4
 
 5. **Existing test suite passes unchanged** (defaults protect all constructors).
+
+6. **Cutoff/cap interaction tests (cross-session validation):**
+   - **Standard/deep with all-snippet sources:** 4 snippets, all capped to 3. Cutoff=4 → all dropped → `no_new_findings`. Verify this is the gate decision.
+   - **Quick mode with snippet-only survivors:** 2 full sources score 2 (dropped), 2 snippets capped to 3 (survive). Cutoff=3, min_sources_short_report=2 → `short_report` from snippets only. Verify this produces a report (accepted limitation — see Known Limitations).
+   - **All sources score exactly 3 at cutoff=4:** 4 full sources all score 3. Cutoff=4 → all dropped → `no_new_findings`. Verify the gate decision and rationale message. This is the semantic shift documented in Known Limitations.
 
 ### Most likely way this plan is wrong?
 
@@ -310,6 +315,9 @@ Currently (line 383+), the function receives `dropped_sources` but NOT surviving
 3. **Gate decision test:** Mock scenario with 2 surviving sources in quick mode → decision is `short_report` (still works)
 4. **Gate decision test:** Mock scenario with 0 surviving sources → decision is `insufficient_data` or `no_new_findings` (unchanged)
 5. **Verify insufficient_data response mentions the surviving source URL** (if applicable)
+6. **Update existing test mocks/patches for `generate_insufficient_data_response`:**
+   - `tests/test_agent.py`: 7 patches mock this function (lines 688, 781, 2171, 2202, 2357 + 2 in test_critique.py). These use `AsyncMock` with `return_value="# No Data"` — the new optional `surviving_sources` param has a default, so these patches still work. But any test that asserts on call args (`assert_called_with`) will need `surviving_sources=` added if the agent.py call site now passes it.
+   - `tests/test_relevance.py`: 6 direct test calls (lines 477, 491, 514, 537, 550). These call the function directly without `surviving_sources` — the default `()` keeps them working. New tests should cover the `surviving_sources` non-empty case.
 
 ### Most likely way this plan is wrong?
 
@@ -345,6 +353,6 @@ Repo research confirmed: the current response surfaces dropped source titles/sco
 
 - **Hardest decision:** Resolving the brainstorm's "least confident" item — whether to add `source_tier` to `ExtractedContent` or detect text prefixes. Chose `ExtractedContent` because the cascade is the point of knowledge. The YAGNI trade-off (brainstorm preferred Summary-only) was overridden because text-prefix detection would reintroduce the exact fragility the brainstorm rejected.
 
-- **Rejected alternatives:** (1) Adding `source_tier` only to `Summary` without `ExtractedContent` — would require detecting the `[Source: search snippet]` text prefix in `summarize_content()`, which is the fragile approach the brainstorm rejected. (2) Using bare `str` for `source_tier` — `Literal["full", "snippet"]` catches typos at type-check time with zero runtime cost. (3) Making snippet score cap a `ResearchMode` field — the cap is a property of snippet quality, not research mode; different modes capping snippets at different values would be confusing.
+- **Rejected alternatives:** (1) Adding `source_tier` only to `Summary` without `ExtractedContent` — would require detecting the `[Source: search snippet]` text prefix in `summarize_content()`, which is the fragile approach the brainstorm rejected. (2) Using bare `str` for `source_tier` — `Literal["full", "snippet"]` is self-documenting and enables future static analysis if a checker is added. No enforced checker today, but the annotation costs nothing. (3) Making snippet score cap a `ResearchMode` field — the cap is a property of snippet quality, not research mode; different modes capping snippets at different values would be confusing.
 
 - **Least confident:** The A/B test outcome. If raising cutoff to 4 causes significant decision flips on mainstream queries (not niche edge cases), we may need to keep cutoff=3 for standard and only raise for deep. The test table covers 10 diverse query types to surface this early. The mitigation is a 1-line revert — low cost if the test fails.
