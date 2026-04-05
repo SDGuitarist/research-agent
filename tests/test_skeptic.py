@@ -318,3 +318,37 @@ class TestRunDeepSkepticPass:
         ))
         with pytest.raises(SkepticError):
             await run_deep_skeptic_pass(client, "Draft text")
+
+
+class TestTemperaturePlumbing:
+    """Tests that temperature flows through the skeptic wrapper chain."""
+
+    @pytest.mark.asyncio
+    async def test_call_skeptic_passes_temperature_to_api(self):
+        """_call_skeptic should forward temperature to messages.create."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="## Review\n- [Observation] Finding")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        await _call_skeptic(
+            mock_client, "system", "user", "test_lens", temperature=0.8,
+        )
+
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["temperature"] == 0.8
+
+    @pytest.mark.asyncio
+    async def test_run_skeptic_combined_threads_temperature(self):
+        """run_skeptic_combined → _call_skeptic should forward temperature."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="## Review\n- [Observation] Finding")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        await run_skeptic_combined(
+            mock_client, "Draft text", temperature=0.7,
+        )
+
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["temperature"] == 0.7

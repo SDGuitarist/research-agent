@@ -142,3 +142,37 @@ class TestModeInfo:
             auto_save=True,
         )
         assert ModeInfo(**kwargs) == ModeInfo(**kwargs)
+
+    def test_temperature_fields_default_to_zero(self):
+        info = ModeInfo(
+            name="quick", max_sources=4, word_target=800,
+            cost_estimate="$0.05", auto_save=False,
+        )
+        assert info.planning_temperature == 0.0
+        assert info.summarize_temperature == 0.0
+        assert info.synthesis_temperature == 0.0
+
+    def test_temperature_fields_populated(self):
+        info = ModeInfo(
+            name="quick", max_sources=4, word_target=800,
+            cost_estimate="$0.05", auto_save=False,
+            planning_temperature=0.2,
+            summarize_temperature=0.5,
+            synthesis_temperature=0.8,
+        )
+        assert info.planning_temperature == 0.2
+        assert info.summarize_temperature == 0.5
+        assert info.synthesis_temperature == 0.8
+
+
+class TestListModes:
+    """Tests for list_modes() exposing temperature fields."""
+
+    def test_list_modes_returns_temperature_fields(self):
+        from research_agent import list_modes
+        modes = list_modes()
+        assert len(modes) == 3
+        for m in modes:
+            assert m.planning_temperature == 0.2
+            assert m.summarize_temperature == 0.5
+            assert m.synthesis_temperature == 0.8

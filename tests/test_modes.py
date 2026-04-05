@@ -418,3 +418,66 @@ class TestResearchModeSynthesisTemplates:
 
         assert mode.word_target == 300
         assert mode.max_tokens == 600
+
+
+class TestResearchModeTemperature:
+    """Tests for per-task temperature fields on ResearchMode."""
+
+    def test_quick_mode_has_temperature_defaults(self):
+        mode = ResearchMode.quick()
+        assert mode.planning_temperature == 0.2
+        assert mode.summarize_temperature == 0.5
+        assert mode.synthesis_temperature == 0.8
+
+    def test_standard_mode_has_temperature_defaults(self):
+        mode = ResearchMode.standard()
+        assert mode.planning_temperature == 0.2
+        assert mode.summarize_temperature == 0.5
+        assert mode.synthesis_temperature == 0.8
+
+    def test_deep_mode_has_temperature_defaults(self):
+        mode = ResearchMode.deep()
+        assert mode.planning_temperature == 0.2
+        assert mode.summarize_temperature == 0.5
+        assert mode.synthesis_temperature == 0.8
+
+    def test_validation_rejects_negative_temperature(self):
+        with pytest.raises(ValueError, match="planning_temperature must be between 0.0 and 1.0"):
+            ResearchMode(
+                name="test", max_sources=5, search_passes=1,
+                word_target=500, max_tokens=1000, auto_save=False,
+                synthesis_instructions="Test",
+                pass1_sources=3, pass2_sources=2,
+                min_sources_full_report=3, min_sources_short_report=1,
+                planning_temperature=-0.1,
+            )
+
+    def test_validation_rejects_temperature_above_one(self):
+        with pytest.raises(ValueError, match="synthesis_temperature must be between 0.0 and 1.0"):
+            ResearchMode(
+                name="test", max_sources=5, search_passes=1,
+                word_target=500, max_tokens=1000, auto_save=False,
+                synthesis_instructions="Test",
+                pass1_sources=3, pass2_sources=2,
+                min_sources_full_report=3, min_sources_short_report=1,
+                synthesis_temperature=1.5,
+            )
+
+    def test_validation_accepts_boundary_values(self):
+        """0.0 and 1.0 are both valid."""
+        mode = ResearchMode(
+            name="test", max_sources=5, search_passes=1,
+            word_target=500, max_tokens=1000, auto_save=False,
+            synthesis_instructions="Test",
+            pass1_sources=3, pass2_sources=2,
+            min_sources_full_report=3, min_sources_short_report=1,
+            planning_temperature=0.0, summarize_temperature=1.0,
+            synthesis_temperature=0.5,
+        )
+        assert mode.planning_temperature == 0.0
+        assert mode.summarize_temperature == 1.0
+
+    def test_temperature_fields_are_frozen(self):
+        mode = ResearchMode.quick()
+        with pytest.raises(AttributeError):
+            mode.planning_temperature = 0.9

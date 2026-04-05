@@ -593,3 +593,37 @@ class TestStructuredSummaries:
         chunks = _chunk_text(long_text)
 
         assert len(chunks) <= MAX_CHUNKS_PER_SOURCE
+
+
+class TestTemperaturePlumbing:
+    """Tests that temperature flows through the summarize wrapper chain."""
+
+    @pytest.mark.asyncio
+    async def test_summarize_chunk_passes_temperature_to_api(self):
+        """summarize_chunk should forward temperature to messages.create."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary text")]
+        mock_client.messages.create.return_value = mock_response
+
+        await summarize_chunk(
+            client=mock_client, chunk="Content", url="https://ex.com",
+            title="T", temperature=0.5,
+        )
+
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["temperature"] == 0.5
+
+    @pytest.mark.asyncio
+    async def test_summarize_all_threads_temperature_to_chunk(self):
+        """summarize_all → summarize_content → summarize_chunk should forward temperature."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary text")]
+        mock_client.messages.create.return_value = mock_response
+
+        content = ExtractedContent(url="https://ex.com", title="T", text="Short content")
+        await summarize_all(mock_client, [content], temperature=0.3)
+
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["temperature"] == 0.3
