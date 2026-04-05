@@ -2,11 +2,11 @@
 
 **Date:** 2026-04-05
 **Branch:** `main`
-**Phase:** Cycle 27 — Work COMPLETE, review fixes applied. Ready for Review.
+**Phase:** Cycle 27 COMPLETE. Ready for Cycle 28.
 
 ## Current State
 
-All 3 sessions implemented + Codex review fixes applied. 955 tests passing. Review fixes added 14 tests covering temperature defaults, validation, ModeInfo exposure, and wrapper-chain plumbing (summarize + skeptic). HANDOFF.md should be excluded from the implementation PR.
+Cycle 27 (Input Validation & Generation Controls) is fully complete — brainstorm, plan, plan review, work (3 sessions), Codex code review, Claude Code review (7 agents), fix application, compound phase, and learnings propagation all done. 959 tests passing. All review findings resolved.
 
 ## Key Artifacts
 
@@ -14,25 +14,23 @@ All 3 sessions implemented + Codex review fixes applied. 955 tests passing. Revi
 |-------|----------|
 | Brainstorm | `docs/brainstorms/2026-04-05-cycle-27-input-validation-brainstorm.md` |
 | Plan | `docs/plans/2026-04-05-cycle-27-input-validation-plan.md` |
-| Session 1 | `fix(27-1): make sanitize_content idempotent via unescape-then-escape` |
-| Session 2 | `feat(27-2): add vague query detection gate` |
-| Session 3 | `feat(27-3): add per-task temperature controls to ResearchMode` |
-| Review fix | `test(27): add temperature defaults, validation, and plumbing coverage` |
+| Review | `docs/reviews/2026-04-05-cycle-27-review-summary.md` |
+| Solution | `docs/solutions/feature-implementation/input-validation-and-generation-controls.md` |
 
 ## Deferred Items
 
-- **Tier 3 model routing** (summarization) — deferred indefinitely
+- **MCP `--cost` + `--critique-history` tools** (#123) — Cycle 31 (deferral count: 2)
+- **MCP `test_mcp_server.py` verification** — missing fastmcp dep (deferral count: 1)
 - **IDN/punycode domain matching** — known limitation, acceptable
-- **MCP `--cost` + `--critique-history` tools** (#123) — Cycle 31
 
 ## Three Questions
 
-1. **Hardest implementation decision?** How to handle `evaluate_sources` → `score_source` temperature plumbing. Used `mode.planning_temperature` internally instead of adding a redundant param, since `evaluate_sources` already takes a `mode: ResearchMode`.
-2. **What did you consider changing but left alone?** MCP tools use `temperature=1.0` default. Could add temp params to MCP tools, but they don't have a mode object — deferred unless needed.
-3. **Least confident about going into review?** `test_mcp_server.py` couldn't run (missing `fastmcp`). MCP server code unchanged in this cycle, so risk is minimal.
+1. **Hardest pattern to extract?** Temperature task-type classification — 15/16 call sites were obvious, but `generate_insufficient_data_response` was genuinely ambiguous. Classify by output format, not logical decision.
+2. **What was left out?** `html.unescape()` performance analysis — sub-microsecond overhead, not worth documenting as a pattern.
+3. **What might future sessions miss?** When adding new Anthropic API call sites, thread temperature — no linter catches a missing `temperature=` kwarg. Also: MCP tests couldn't run (missing fastmcp).
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md. Cycle 27 work + review fixes are complete. 955 tests pass. Next: run /workflows:review on the branch, then compound phase. Branch: main. Plan: docs/plans/2026-04-05-cycle-27-input-validation-plan.md.
+Read HANDOFF.md. Cycle 27 is complete. 959 tests pass. Next: Cycle 28 (relevance cutoff + snippet tiers + quick mode). See entropy roadmap: docs/research/2026-03-09-entropy-fixes-roadmap.md.
 ```

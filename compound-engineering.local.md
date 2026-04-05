@@ -2,44 +2,35 @@
 
 ## Risk Chain
 
-**Brainstorm risk:** "Whether the GitHub Actions workflow will work correctly on first try — Python version, dependency installation, and whether fastmcp tools register at import time."
+**Brainstorm risk:** "The vague word set heuristic misses subtler vague queries like 'tell me about technology' (2 meaningful words, neither in vague set, but still too broad)."
 
-**Plan mitigation:** Verified locally that `@mcp.tool` decorators register at import time — no server startup needed. Documented `pip install -e .` as install method matching local dev. Identified `apt-get install libxml2-dev` as fallback if CI runner lacks system packages.
+**Plan mitigation:** Accepted limitation. Documented exact boundary. Ship heuristic, monitor false negatives, tighten later. No LLM-based fallback in this cycle.
 
-**Work risk (from Feed-Forward):** "Whether `pip install -e .` on ubuntu-latest will succeed without additional system packages."
+**Work risk (from Feed-Forward):** "The 3-deep wrapper chains for summarization and skeptic — existing tests mocking at intermediate boundaries may need mock call expectations updated for new `temperature` param."
 
-**Review resolution:** 8 findings (0 P1, 6 P2, 2 P3) from 6 agents. Top finding: substring matching false-positive risk (#122, 3 agents converged). FastMCP version blocker caught by Codex review and fixed. CI passed on first run — the flagged risk was a non-issue.
+**Review resolution:** 5 findings (0 P1, 3 P2, 2 P3) from 7 agents. All fixed in one commit. Top finding: `generate_insufficient_data_response` used planning_temperature (0.2) for user-facing prose — reclassified to summarize_temperature (0.5). The wrapper chain risk was a non-issue: `temperature: float = 1.0` defaults meant all existing mocks survived unchanged.
 
-**Compound lesson:** Import-time registration is a FastMCP design guarantee. Document framework behavior assumptions in plans so they don't block future cycles.
-
-**Roadmap reprioritization (2026-03-10):** Integrated findings from epistemic calibration study. Three design principles added: (1) prompt semantics before generation controls, (2) upstream fixes before downstream, (3) epistemic friction over blanket refusal. Roadmap expanded from 4 to 5 cycles, 3 new features added.
+**Compound lesson:** Temperature task-type classification requires judgment — 15 of 16 call sites were obvious, but the ambiguous one was caught only by review. When classifying, consider output format, not logical decision. Also: MCP parity gaps are the most common review finding — always check standalone MCP tools when adding pipeline config.
 
 ## Files to Scrutinize
 
 | File | What changed | Risk area |
 |------|-------------|-----------|
-| `.github/workflows/mcp-lint.yml` | New CI workflow with SHA-pinned actions | First real CI workflow — verify runner compatibility |
-| `scripts/lint_mcp_parity.py` | Word-boundary regex matching | False positives on tool names with regex special chars |
-| `research_agent/mcp_server.py` | Workflow guidance sentence in instructions | Instructions string is source of truth for agent behavior |
-| `tests/test_mcp_server.py` | Updated matching logic | Test mirrors lint script — must stay in sync |
-| `pyproject.toml` | FastMCP pinned to `>=3.0,<3.1` | Version constraint prevents untested breaking changes |
+| `research_agent/sanitize.py` | `html.unescape()` before escaping — idempotent now | Prompt injection defense layer — any regression breaks XML boundaries |
+| `research_agent/query_validation.py` | `check_query_vagueness()` + `VAGUE_WORDS` frozenset | False positives could block legitimate queries |
+| `research_agent/modes.py` | 3 temperature fields + validation on frozen `ResearchMode` | New fields need `ModeInfo` + `list_modes()` + MCP parity |
+| `research_agent/agent.py` | 16 call sites pass `self.mode.*_temperature` | Missing temperature at a new call site defaults to 1.0 silently |
+| `research_agent/mcp_server.py` | Temperature defaults on standalone tools, vague query hint, mode listing | MCP boundary is the most common place for parity gaps |
+| `tests/test_sanitize.py` | 4 prompt injection regression tests | Named/numeric/hex/mixed entity boundary breakout |
 
 ## Deferred Items Tracking
 
 | Item | Deferral Count | Rule |
 |------|---------------|------|
 | MCP `--cost` + `--critique-history` tools (#123) | 2 | Promoted to Cycle 31 (promote-or-drop applied) |
-
-## Epistemic Calibration Study — Key Findings for Review
-
-These findings from an exploratory study inform how new features should be reviewed:
-
-1. **Temperature is a style knob, not an epistemic knob** — review should not expect temperature changes to fix hallucination. System prompts do the epistemic work.
-2. **Evidence-tier labeling reduces overclaiming** — when the model must label claims as documented/inference/illustrative/speculative, it becomes more disciplined. Review synthesis prompts for this pattern.
-3. **Skeptical system prompts create epistemic friction without over-refusal** — the model can refuse fabricated citations while still accurately summarizing real papers. Review skeptic enforcement for this balance.
-4. **Abstention gates need upstream filters** — pre-summary abstention works best when sources have already passed quality checks. Without upstream filters, expect false refusals.
+| MCP `test_mcp_server.py` verification | 1 | Missing fastmcp dependency — verify when installed |
 
 ## Plan Reference
 
-`docs/plans/2026-03-08-cycle-26-mcp-parity-lint-plan.md`
+`docs/plans/2026-04-05-cycle-27-input-validation-plan.md`
 Entropy roadmap (cycles 27-31): `docs/research/2026-03-09-entropy-fixes-roadmap.md`
