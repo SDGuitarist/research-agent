@@ -23,7 +23,8 @@ from .context_result import ContextResult, ContextStatus
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .coverage import identify_coverage_gaps
-from .errors import ResearchError, SearchError, SkepticError, StateError, IterationError, SynthesisError
+from .errors import ResearchError, SearchError, SkepticError, StateError, IterationError, SynthesisError, VagueQueryError
+from .query_validation import check_query_vagueness
 from .critique import evaluate_report, save_critique, CritiqueResult
 from .iterate import generate_refined_queries, generate_followup_questions
 from .modes import ResearchMode
@@ -400,6 +401,11 @@ class ResearchAgent:
         self._iteration_sections = ()
         self._source_counts = {}
         context_cache = new_context_cache()
+
+        # Pre-flight: reject vague queries before any LLM work
+        vague_check = check_query_vagueness(query)
+        if not vague_check.is_valid:
+            raise VagueQueryError(vague_check.message)
 
         # Auto-detect context when no --context flag was given.
         # Use local variables to avoid mutating self (preserves agent reuse).

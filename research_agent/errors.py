@@ -9,6 +9,11 @@ class ResearchError(Exception):
     pass
 
 
+class VagueQueryError(ResearchError):
+    """Raised when query is too vague to produce useful research."""
+    pass
+
+
 class SearchError(ResearchError):
     """Raised when search fails."""
     pass

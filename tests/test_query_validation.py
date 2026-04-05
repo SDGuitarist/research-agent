@@ -7,6 +7,9 @@ from research_agent.query_validation import (
     strip_query,
     has_near_duplicate,
     validate_query_list,
+    check_query_vagueness,
+    VagueQueryResult,
+    VAGUE_WORDS,
 )
 
 
@@ -119,3 +122,88 @@ class TestValidateQueryListOverlap:
             require_reference_overlap=True,
         )
         assert len(result) == 0
+
+
+class TestCheckQueryVagueness:
+    """Tests for check_query_vagueness() — pre-flight vague query gate."""
+
+    # --- Rejections ---
+
+    def test_empty_string(self):
+        result = check_query_vagueness("")
+        assert not result.is_valid
+        assert "empty" in result.message.lower()
+
+    def test_whitespace_only(self):
+        result = check_query_vagueness("   ")
+        assert not result.is_valid
+
+    def test_punctuation_only(self):
+        result = check_query_vagueness("?!...")
+        assert not result.is_valid
+
+    def test_single_word_stuff(self):
+        result = check_query_vagueness("stuff")
+        assert not result.is_valid
+
+    def test_single_word_things(self):
+        result = check_query_vagueness("things")
+        assert not result.is_valid
+
+    def test_stop_word_only(self):
+        result = check_query_vagueness("the")
+        assert not result.is_valid
+
+    def test_all_stop_words(self):
+        """Pure stop words (the, and, or) → 0 meaningful words → rejected."""
+        result = check_query_vagueness("the and or")
+        assert not result.is_valid
+
+    def test_single_short_word(self):
+        result = check_query_vagueness("AI")
+        assert not result.is_valid
+
+    def test_two_vague_words(self):
+        result = check_query_vagueness("best way")
+        assert not result.is_valid
+        assert "generic" in result.message.lower()
+
+    def test_two_vague_words_good_stuff(self):
+        result = check_query_vagueness("good stuff")
+        assert not result.is_valid
+
+    def test_all_vague_with_stop_words(self):
+        result = check_query_vagueness("what is the best way to")
+        assert not result.is_valid
+
+    def test_single_word_with_punctuation(self):
+        result = check_query_vagueness("standards,")
+        assert not result.is_valid
+
+    # --- Acceptances ---
+
+    def test_two_specific_words(self):
+        result = check_query_vagueness("quantum computing")
+        assert result.is_valid
+        assert result.message == ""
+
+    def test_hyphenated_splits_to_two(self):
+        result = check_query_vagueness("post-quantum")
+        assert result.is_valid
+
+    def test_three_words_with_one_vague(self):
+        result = check_query_vagueness("Python best practices")
+        assert result.is_valid
+
+    def test_specific_overrides_vague(self):
+        result = check_query_vagueness("best Python frameworks")
+        assert result.is_valid
+
+    def test_known_false_negative(self):
+        """'tell me about technology' passes — known limitation."""
+        result = check_query_vagueness("tell me about technology")
+        assert result.is_valid
+
+    def test_normal_research_query(self):
+        result = check_query_vagueness("effects of climate change on coral reefs")
+        assert result.is_valid

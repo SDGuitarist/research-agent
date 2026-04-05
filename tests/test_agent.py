@@ -567,6 +567,46 @@ class TestResearchAgentErrorHandling:
                 await agent.research_async("test query")
 
 
+class TestVagueQueryRejection:
+    """Integration tests for vague query pre-flight gate."""
+
+    @pytest.mark.asyncio
+    async def test_vague_query_raises_before_any_api_call(self):
+        """Vague queries should raise VagueQueryError with no API calls made."""
+        from research_agent.errors import VagueQueryError
+
+        agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
+
+        with patch("research_agent.agent.search") as mock_search:
+            with pytest.raises(VagueQueryError, match="too vague"):
+                await agent.research_async("stuff")
+            mock_search.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_vague_query_all_generic_words(self):
+        """Queries with only generic words should be rejected."""
+        from research_agent.errors import VagueQueryError
+
+        agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
+
+        with pytest.raises(VagueQueryError, match="generic"):
+            await agent.research_async("best way")
+
+    @pytest.mark.asyncio
+    async def test_specific_query_passes_vague_check(self):
+        """Queries with specific words should pass the vague check and proceed."""
+        from research_agent.errors import SearchError
+
+        agent = ResearchAgent(api_key="test-key", mode=ResearchMode.quick())
+
+        # The query passes vague check but fails at search — proves it got past the gate
+        with patch("research_agent.agent.search") as mock_search:
+            mock_search.side_effect = SearchError("Search failed")
+            with pytest.raises(ResearchError, match="Search failed"):
+                await agent.research_async("quantum computing trends")
+            mock_search.assert_called_once()
+
+
 class TestResearchAgentRelevanceGate:
     """Integration tests for relevance gate behavior."""
 
@@ -1082,7 +1122,7 @@ class TestResearchAgentAutoDetect:
                 api_key="test", mode=ResearchMode.quick(),
                 context_path=Path("contexts/pfe.md"),
             )
-            await agent.research_async("test")
+            await agent.research_async("test query research")
 
             mock_detect.assert_not_called()
 
@@ -1112,7 +1152,7 @@ class TestResearchAgentAutoDetect:
             agent = ResearchAgent(
                 api_key="test", mode=ResearchMode.quick(), no_context=True,
             )
-            await agent.research_async("test")
+            await agent.research_async("test query research")
 
             mock_detect.assert_not_called()
 

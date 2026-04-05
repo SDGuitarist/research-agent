@@ -2,6 +2,7 @@
 
 import logging
 import re
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -138,3 +139,49 @@ def validate_query_list(
         valid.append(q)
 
     return valid[:max_results]
+
+
+# --- Vague query detection ---
+
+VAGUE_WORDS = frozenset({
+    "stuff", "things", "something", "anything", "everything", "whatever",
+    "good", "bad", "best", "worst", "new", "old", "way", "ways",
+    "nice", "cool", "great", "fine", "interesting",
+})
+
+MIN_MEANINGFUL_WORDS = 2
+
+
+@dataclass(frozen=True)
+class VagueQueryResult:
+    """Result of a vague query pre-flight check."""
+    is_valid: bool
+    message: str  # User-facing rejection reason, empty if valid
+
+
+def check_query_vagueness(query: str) -> VagueQueryResult:
+    """Pre-flight vague query check. Pure Python, no LLM call.
+
+    Rejects queries that have fewer than MIN_MEANINGFUL_WORDS meaningful words,
+    or where all meaningful words are in VAGUE_WORDS.
+    """
+    stripped = query.strip()
+    if not stripped:
+        return VagueQueryResult(False, "Query is empty. Please provide a research question.")
+
+    words = meaningful_words(stripped)
+    if len(words) < MIN_MEANINGFUL_WORDS:
+        return VagueQueryResult(
+            False,
+            f"Query too vague — only {len(words)} meaningful word(s). "
+            "Please add specific terms (e.g., 'quantum computing trends' instead of 'stuff').",
+        )
+
+    if words <= VAGUE_WORDS:
+        return VagueQueryResult(
+            False,
+            "Query contains only generic words. "
+            "Please add a specific topic (e.g., 'best Python web frameworks' instead of 'best things').",
+        )
+
+    return VagueQueryResult(True, "")
