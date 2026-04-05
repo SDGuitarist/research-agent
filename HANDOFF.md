@@ -2,11 +2,11 @@
 
 **Date:** 2026-04-05
 **Branch:** `main`
-**Phase:** Cycle 27 — Plan REVISED after Codex review. Ready for Work.
+**Phase:** Cycle 27 — Work, Session 1 COMPLETE. Ready for Session 2.
 
 ## Current State
 
-Cycle 27 plan revised based on Codex review findings. Key fixes: (1) Session 1 now documents the `test_ampersand_before_angle_brackets` test that must change, (2) Session 3 call-site inventory rebuilt from actual codebase — 16 API calls across 10 modules, correct function names, includes missed `generate_insufficient_data_response`, (3) wrapper chain plumbing documented for summarize (3-deep), skeptic (4-deep from agent.py), and relevance (mode object reads internally), (4) Feed-Forward updated — real risk is wrapper chain mock breakage, not auto_detect_context. 948 tests passing.
+Session 1 (idempotent sanitization) implemented and committed. `sanitize_content()` now uses `html.unescape()` normalization before escaping. 920 tests pass (test_mcp_server skipped — pre-existing fastmcp install issue). One test updated: `test_ampersand_before_angle_brackets` → `test_already_escaped_input_is_idempotent`. 13 new idempotency invariant tests added.
 
 ## Key Artifacts
 
@@ -14,7 +14,7 @@ Cycle 27 plan revised based on Codex review findings. Key fixes: (1) Session 1 n
 |-------|----------|
 | Brainstorm | `docs/brainstorms/2026-04-05-cycle-27-input-validation-brainstorm.md` |
 | Plan | `docs/plans/2026-04-05-cycle-27-input-validation-plan.md` |
-| Entropy Roadmap | `docs/research/2026-03-09-entropy-fixes-roadmap.md` |
+| Session 1 commit | `fix(27-1): make sanitize_content idempotent via unescape-then-escape` |
 
 ## Deferred Items
 
@@ -24,12 +24,12 @@ Cycle 27 plan revised based on Codex review findings. Key fixes: (1) Session 1 n
 
 ## Three Questions
 
-1. **Hardest decision?** Whether to add a `temperature` param to every module function vs. passing the entire mode object. Chose per-param to match Cycle 21 convention and avoid coupling.
-2. **What was rejected?** Passing entire ResearchMode to every function (too much coupling), `html.escape()` for idempotency (also not idempotent), global temperature constants (violates dataclass convention), exporting VagueQueryError from `__init__.py` (no concrete caller needs it).
-3. **Least confident about?** The 3-deep wrapper chains for summarization and 4-deep skeptic chain. Mechanical to implement, but existing tests mocking at intermediate boundaries may need mock call expectations updated to include `temperature=`.
+1. **Hardest implementation decision?** Whether the updated test should assert the new idempotent behavior (`"&lt;script&gt;"`) or be replaced entirely. Chose to rename and update — the test now verifies the correct idempotent behavior instead of the old corruption behavior.
+2. **What did you consider changing but left alone?** Considered adding a `NUL` byte stripping step to `sanitize_content()` for extra defense. Left it out — not in the plan, no evidence of NUL bytes in web content causing issues.
+3. **Least confident about going into review?** The `html.unescape()` call converts ALL HTML entities, not just the three we care about (`&amp;`, `&lt;`, `&gt;`). If any downstream code relies on HTML entities like `&nbsp;` surviving sanitization, this could change behavior. The full test suite passes, so no known breakage.
 
 ### Prompt for Next Session
 
 ```
-Read docs/plans/2026-04-05-cycle-27-input-validation-plan.md. Implement Session 1: Idempotent Sanitization. Relevant files: research_agent/sanitize.py, tests/test_sanitize.py. Do only Session 1 — commit and stop.
+Read docs/plans/2026-04-05-cycle-27-input-validation-plan.md. Implement Session 2: Vague Query Detection. Relevant files: research_agent/query_validation.py, research_agent/errors.py, research_agent/agent.py, tests/test_query_validation.py, tests/test_agent.py. Do only Session 2 — commit and stop.
 ```
