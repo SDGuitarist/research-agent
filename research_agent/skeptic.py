@@ -66,6 +66,7 @@ async def _call_skeptic(
     lens: str,
     model: str = DEFAULT_MODEL,
     max_tokens: int = 1500,
+    temperature: float = 1.0,
 ) -> SkepticFinding:
     """Make a skeptic API call and parse the response.
 
@@ -77,6 +78,7 @@ async def _call_skeptic(
                 model=model,
                 max_tokens=max_tokens,
                 timeout=SKEPTIC_TIMEOUT,
+                temperature=temperature,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
             ),
@@ -129,6 +131,7 @@ async def run_skeptic_evidence(
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
     model: str = DEFAULT_MODEL,
+    temperature: float = 1.0,
 ) -> SkepticFinding:
     """Skeptic 1: Evidence Alignment.
 
@@ -174,7 +177,7 @@ Output format:
 List findings from most to least severe. Include at least 3 findings.
 </task>"""
 
-    return await _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "evidence_alignment", model)
+    return await _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "evidence_alignment", model, temperature=temperature)
 
 
 async def run_skeptic_timing(
@@ -183,6 +186,7 @@ async def run_skeptic_timing(
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
     model: str = DEFAULT_MODEL,
+    temperature: float = 1.0,
 ) -> SkepticFinding:
     """Skeptic 2: Timing & Stakes.
 
@@ -226,7 +230,7 @@ Output format:
 List findings from most to least severe. Include at least 3 findings.
 </task>"""
 
-    return await _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "timing_stakes", model)
+    return await _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "timing_stakes", model, temperature=temperature)
 
 
 async def run_skeptic_frame(
@@ -235,6 +239,7 @@ async def run_skeptic_frame(
     synthesis_context: str | None = None,
     prior_findings: list[SkepticFinding] | None = None,
     model: str = DEFAULT_MODEL,
+    temperature: float = 1.0,
 ) -> SkepticFinding:
     """Skeptic 3: Break the Trolley.
 
@@ -278,7 +283,7 @@ Output format:
 List findings from most to least severe. Include at least 3 findings.
 </task>"""
 
-    return await _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "strategic_frame", model)
+    return await _call_skeptic(client, _ADVERSARIAL_SYSTEM, prompt, "strategic_frame", model, temperature=temperature)
 
 
 async def run_skeptic_combined(
@@ -286,6 +291,7 @@ async def run_skeptic_combined(
     draft: str,
     synthesis_context: str | None = None,
     model: str = DEFAULT_MODEL,
+    temperature: float = 1.0,
 ) -> SkepticFinding:
     """Single-pass skeptic for standard mode.
 
@@ -331,7 +337,7 @@ List all findings from most to least severe. Include at least 3 findings total.
 </task>"""
 
     return await _call_skeptic(
-        client, _ADVERSARIAL_SYSTEM, prompt, "combined", model, max_tokens=2000
+        client, _ADVERSARIAL_SYSTEM, prompt, "combined", model, max_tokens=2000, temperature=temperature,
     )
 
 
@@ -340,6 +346,7 @@ async def run_deep_skeptic_pass(
     draft: str,
     synthesis_context: str | None = None,
     model: str = DEFAULT_MODEL,
+    temperature: float = 1.0,
 ) -> list[SkepticFinding]:
     """Run three skeptic agents with evidence+timing in parallel (deep mode).
 
@@ -349,15 +356,15 @@ async def run_deep_skeptic_pass(
     """
     # Evidence and timing are independent — run concurrently
     evidence, timing = await asyncio.gather(
-        run_skeptic_evidence(client, draft, synthesis_context, model=model),
-        run_skeptic_timing(client, draft, synthesis_context, model=model),
+        run_skeptic_evidence(client, draft, synthesis_context, model=model, temperature=temperature),
+        run_skeptic_timing(client, draft, synthesis_context, model=model, temperature=temperature),
     )
 
     findings = [evidence, timing]
 
     # Frame depends on both prior findings
     findings.append(await run_skeptic_frame(
-        client, draft, synthesis_context, prior_findings=findings, model=model,
+        client, draft, synthesis_context, prior_findings=findings, model=model, temperature=temperature,
     ))
 
     return findings

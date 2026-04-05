@@ -212,6 +212,7 @@ def refine_query(
     original_query: str,
     summaries: list[str],
     model: str = DEFAULT_MODEL,
+    temperature: float = 1.0,
 ) -> str:
     """
     Generate a refined follow-up search query based on initial findings.
@@ -242,6 +243,7 @@ def refine_query(
             model=model,
             max_tokens=50,
             timeout=ANTHROPIC_TIMEOUT,
+            temperature=temperature,
             system=(
                 "You are a search query generator. Your only task is to generate "
                 "a short search query (3-8 words) based on the research question "

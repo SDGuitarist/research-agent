@@ -107,6 +107,7 @@ async def score_source(
     rate_limit_event: asyncio.Event | None = None,
     model: str = DEFAULT_MODEL,
     critique_guidance: str | None = None,
+    temperature: float = 1.0,
 ) -> SourceScore:
     """
     Score a single source's relevance to the research query.
@@ -162,6 +163,7 @@ EXPLANATION: [one sentence explaining why]"""
                 model=model,
                 max_tokens=100,
                 timeout=SCORING_TIMEOUT,
+                temperature=temperature,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
             ),
@@ -292,6 +294,7 @@ async def evaluate_sources(
             rate_limit_event=rate_limit_hit,
             model=mode.relevance_model,
             critique_guidance=critique_guidance,
+            temperature=mode.planning_temperature,
         )
 
     scored_results = await process_in_batches(
@@ -380,6 +383,7 @@ async def generate_insufficient_data_response(
     dropped_sources: tuple[SourceScore, ...],
     client: AsyncAnthropic,
     model: str = DEFAULT_MODEL,
+    temperature: float = 1.0,
 ) -> str:
     """
     Generate a response explaining why insufficient relevant data was found.
@@ -436,6 +440,7 @@ Do NOT pad the response. Keep it concise and honest."""
             model=model,
             max_tokens=500,
             timeout=INSUFFICIENT_RESPONSE_TIMEOUT,
+            temperature=temperature,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )

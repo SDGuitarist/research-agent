@@ -33,6 +33,9 @@ class ResearchMode:
     relevance_model: str = AUTO_DETECT_MODEL  # Cheaper model for relevance scoring (classification-like)
     iteration_enabled: bool = False  # Whether to run query iteration after synthesis
     followup_questions: int = 0  # Number of follow-up questions to generate (0 = skip)
+    planning_temperature: float = 0.2  # Low temp for classification: decompose, relevance, refine, coverage, iterate
+    summarize_temperature: float = 0.5  # Mid temp for chunk summarization
+    synthesis_temperature: float = 0.8  # Higher temp for report synthesis, skeptic, critique
 
     @property
     def is_quick(self) -> bool:
@@ -79,6 +82,10 @@ class ResearchMode:
             )
         if self.followup_questions < 0:
             errors.append(f"followup_questions must be >= 0, got {self.followup_questions}")
+        for temp_field in ("planning_temperature", "summarize_temperature", "synthesis_temperature"):
+            val = getattr(self, temp_field)
+            if not (0.0 <= val <= 1.0):
+                errors.append(f"{temp_field} must be between 0.0 and 1.0, got {val}")
 
         if errors:
             raise ValueError(f"Invalid ResearchMode: {'; '.join(errors)}")

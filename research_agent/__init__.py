@@ -171,6 +171,9 @@ def list_modes() -> list[ModeInfo]:
             model=m.model,
             planning_model=m.planning_model,
             relevance_model=m.relevance_model,
+            planning_temperature=m.planning_temperature,
+            summarize_temperature=m.summarize_temperature,
+            synthesis_temperature=m.synthesis_temperature,
         )
         for m in modes
     ]

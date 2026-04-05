@@ -210,6 +210,7 @@ def synthesize_report(
     context: str | None = None,
     template: ReportTemplate | None = None,
     synthesis_tone: str = "",
+    temperature: float = 1.0,
 ) -> str:
     """
     Synthesize a research report from summaries.
@@ -343,6 +344,7 @@ Write the report now:"""
             model=model,
             max_tokens=max_tokens,
             timeout=SYNTHESIS_TIMEOUT,
+            temperature=temperature,
             system=system_prompt,
             messages=[{"role": "user", "content": prompt}]
         ) as stream:
@@ -384,6 +386,7 @@ def synthesize_draft(
     model: str = DEFAULT_MODEL,
     max_tokens: int = 4000,
     template: ReportTemplate | None = None,
+    temperature: float = 1.0,
 ) -> str:
     """Produce the factual analysis sections of a research report.
 
@@ -459,6 +462,7 @@ Write the factual analysis sections now:"""
             model=model,
             max_tokens=max_tokens,
             timeout=SYNTHESIS_TIMEOUT,
+            temperature=temperature,
             system=system_prompt,
             messages=[{"role": "user", "content": prompt}],
         ) as stream:
@@ -514,6 +518,7 @@ def synthesize_final(
     critique_guidance: str | None = None,
     template: ReportTemplate | None = None,
     synthesis_tone: str = "",
+    temperature: float = 1.0,
 ) -> str:
     """Produce final analytical sections informed by skeptic analysis.
 
@@ -690,6 +695,7 @@ Continue the report now:"""
             model=model,
             max_tokens=max_tokens,
             timeout=SYNTHESIS_TIMEOUT,
+            temperature=temperature,
             system=system_prompt,
             messages=[{"role": "user", "content": prompt}],
         ) as stream:
@@ -769,6 +775,7 @@ def synthesize_mini_report(
     model: str = DEFAULT_MODEL,
     max_tokens: int = 600,
     report_headings: list[str] | None = None,
+    temperature: float = 1.0,
 ) -> str:
     """Synthesize a short supplementary section from iteration sources.
 
@@ -832,6 +839,7 @@ Write the section now:"""
             model=model,
             max_tokens=max_tokens,
             timeout=SYNTHESIS_TIMEOUT,
+            temperature=temperature,
             system=system_prompt,
             messages=[{"role": "user", "content": prompt}],
         )

@@ -139,6 +139,7 @@ def evaluate_report(
     skeptic_findings: list | None,
     gate_decision: str,
     model: str = DEFAULT_MODEL,
+    temperature: float = 1.0,
 ) -> CritiqueResult:
     """Call Claude to evaluate the just-completed report on 5 dimensions.
 
@@ -206,6 +207,7 @@ SUGGESTIONS: [one sentence, max 200 chars]"""
             model=model,
             max_tokens=300,
             timeout=ANTHROPIC_TIMEOUT,
+            temperature=temperature,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
@@ -232,6 +234,7 @@ def critique_report_file(
     client: Anthropic,
     report_path: Path,
     model: str = DEFAULT_MODEL,
+    temperature: float = 1.0,
 ) -> CritiqueResult:
     """Critique a saved report file by evaluating its text directly.
 
@@ -281,6 +284,7 @@ SUGGESTIONS: [one sentence, max 200 chars]"""
         model=model,
         max_tokens=300,
         timeout=ANTHROPIC_TIMEOUT,
+        temperature=temperature,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )

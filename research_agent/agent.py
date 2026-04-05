@@ -219,6 +219,7 @@ class ResearchAgent:
                 skeptic_findings=skeptic_findings,
                 gate_decision=gate_decision,
                 model=self.mode.planning_model,
+                temperature=self.mode.planning_temperature,
             )
             save_critique(result, META_DIR)
             self._last_critique = result
@@ -272,12 +273,14 @@ class ResearchAgent:
                 generate_refined_queries,
                 self.client, query, report,
                 model=self.mode.planning_model,
+                temperature=self.mode.planning_temperature,
             ),
             asyncio.to_thread(
                 generate_followup_questions,
                 self.client, query, report,
                 num_questions=self.mode.followup_questions,
                 model=self.mode.planning_model,
+                temperature=self.mode.planning_temperature,
             ),
         )
 
@@ -347,6 +350,7 @@ class ResearchAgent:
                         model=self.mode.model,
                         max_tokens=iteration_max_tokens,
                         report_headings=report_headings,
+                        temperature=self.mode.synthesis_temperature,
                     )
                 except SynthesisError as e:
                     logger.warning("Mini-report failed for '%s': %s", q, e)
@@ -415,6 +419,7 @@ class ResearchAgent:
         if effective_context_path is None and not effective_no_context and CONTEXTS_DIR.is_dir():
             detected = await asyncio.to_thread(
                 auto_detect_context, self.client, query,
+                temperature=self.mode.planning_temperature,
             )
             if detected is not None:
                 effective_context_path = detected
@@ -468,6 +473,7 @@ class ResearchAgent:
                 context_content=self._run_context.content,
                 model=self.mode.planning_model,
                 critique_guidance=critique_context,
+                temperature=self.mode.planning_temperature,
             )
             if decomposition.is_complex:
                 sub_queries = decomposition.sub_queries
@@ -665,6 +671,7 @@ class ResearchAgent:
             model=self.mode.model,
             structured=structured,
             max_chunks=max_chunks,
+            temperature=self.mode.summarize_temperature,
         )
         logger.info("Generated %d summaries", len(summaries))
 
@@ -709,6 +716,7 @@ class ResearchAgent:
             tried_queries=tried_queries,
             client=self.async_client,
             model=self.mode.planning_model,
+            temperature=self.mode.planning_temperature,
         )
 
         logger.info(
@@ -835,6 +843,7 @@ class ResearchAgent:
                 dropped_sources=evaluation.dropped_sources,
                 client=self.async_client,
                 model=self.mode.model,
+                temperature=self.mode.planning_temperature,
             )
 
         # Synthesize report (full or short)
@@ -863,6 +872,7 @@ class ResearchAgent:
                 context=self._run_context.content,
                 template=self._run_context.template,
                 synthesis_tone=profile.synthesis_tone if profile else "",
+                temperature=self.mode.synthesis_temperature,
             )
             if self.schema_path and self._current_research_batch:
                 self._update_gap_states(evaluation.decision)
@@ -877,6 +887,7 @@ class ResearchAgent:
             synthesize_draft, self.client, query, surviving,
             model=self.mode.model,
             template=template,
+            temperature=self.mode.synthesis_temperature,
         )
 
         self._next_step("Running skeptic review...")
@@ -886,6 +897,7 @@ class ResearchAgent:
                 findings = await run_deep_skeptic_pass(
                     self.async_client, draft, research_context,
                     model=self.mode.model,
+                    temperature=self.mode.synthesis_temperature,
                 )
                 total_critical = sum(f.critical_count for f in findings)
                 total_concern = sum(f.concern_count for f in findings)
@@ -894,6 +906,7 @@ class ResearchAgent:
                 finding = await run_skeptic_combined(
                     self.async_client, draft, research_context,
                     model=self.mode.model,
+                    temperature=self.mode.synthesis_temperature,
                 )
                 findings = [finding]
                 logger.info("Combined skeptic pass complete (%d critical, %d concerns)", finding.critical_count, finding.concern_count)
@@ -918,6 +931,7 @@ class ResearchAgent:
             critique_guidance=critique_context,
             template=template,
             synthesis_tone=profile.synthesis_tone if profile else "",
+            temperature=self.mode.synthesis_temperature,
         )
 
         # Query iteration: refine + follow-up after main synthesis
@@ -994,7 +1008,7 @@ class ResearchAgent:
         # Refine query using snippets
         snippets = [r.snippet for r in pass1_results if r.snippet]
         refined_query = await asyncio.to_thread(
-            refine_query, self.client, query, snippets, model=self.mode.planning_model
+            refine_query, self.client, query, snippets, model=self.mode.planning_model, temperature=self.mode.planning_temperature
         )
         if refined_query == query:
             logger.info("Query refinement skipped (using original query)")
@@ -1077,7 +1091,7 @@ class ResearchAgent:
 
         summary_texts = [s.summary for s in summaries]
         refined_query = await asyncio.to_thread(
-            refine_query, self.client, query, summary_texts, model=self.mode.planning_model
+            refine_query, self.client, query, summary_texts, model=self.mode.planning_model, temperature=self.mode.planning_temperature
         )
         if refined_query == query:
             logger.info("Query refinement skipped (using original query)")

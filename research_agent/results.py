@@ -46,6 +46,9 @@ class ModeInfo:
     model: str = ""
     planning_model: str = ""
     relevance_model: str = ""
+    planning_temperature: float = 0.0
+    summarize_temperature: float = 0.0
+    synthesis_temperature: float = 0.0
 
 
 @dataclass(frozen=True)

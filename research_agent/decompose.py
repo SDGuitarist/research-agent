@@ -64,6 +64,7 @@ def decompose_query(
     context_content: str | None = None,
     model: str = DEFAULT_MODEL,
     critique_guidance: str | None = None,
+    temperature: float = 1.0,
 ) -> DecompositionResult:
     """
     Analyze a query and decompose it into focused sub-queries if complex.
@@ -103,6 +104,7 @@ def decompose_query(
             model=model,
             max_tokens=300,
             timeout=ANTHROPIC_TIMEOUT,
+            temperature=temperature,
             system=(
                 "You are a search query analyst. Your job is to determine if a "
                 "research query is SIMPLE (one clear topic) or COMPLEX (multiple "

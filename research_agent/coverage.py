@@ -226,6 +226,7 @@ async def identify_coverage_gaps(
     tried_queries: list[str],
     client: AsyncAnthropic,
     model: str = DEFAULT_MODEL,
+    temperature: float = 1.0,
 ) -> CoverageGap:
     """Identify coverage gaps in research results using Claude.
 
@@ -251,6 +252,7 @@ async def identify_coverage_gaps(
             model=model,
             max_tokens=300,
             timeout=ANTHROPIC_TIMEOUT,
+            temperature=temperature,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
