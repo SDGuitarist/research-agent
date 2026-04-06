@@ -2,26 +2,26 @@
 
 ## Risk Chain
 
-**Brainstorm risk:** "The vague word set heuristic misses subtler vague queries like 'tell me about technology' (2 meaningful words, neither in vague set, but still too broad)."
+**Brainstorm risk:** "The snippet tier detection mechanism — how to set source_tier on Summary without text-prefix fragility."
 
-**Plan mitigation:** Accepted limitation. Documented exact boundary. Ship heuristic, monitor false negatives, tighten later. No LLM-based fallback in this cycle.
+**Plan mitigation:** Option (b) chosen: `source_tier` field on `ExtractedContent` with default `"full"`. Cascade sets `"snippet"` at creation time (point of knowledge). Threading through summarize follows established parameter-passing pattern.
 
-**Work risk (from Feed-Forward):** "The 3-deep wrapper chains for summarization and skeptic — existing tests mocking at intermediate boundaries may need mock call expectations updated for new `temperature` param."
+**Work risk (from Feed-Forward):** "A/B test outcome — cutoff=4 may compound with Haiku borderline aggressiveness. Mitigation: 1-line revert per mode."
 
-**Review resolution:** 5 findings (0 P1, 3 P2, 2 P3) from 7 agents. All fixed in one commit. Top finding: `generate_insufficient_data_response` used planning_temperature (0.2) for user-facing prose — reclassified to summarize_temperature (0.5). The wrapper chain risk was a non-issue: `temperature: float = 1.0` defaults meant all existing mocks survived unchanged.
+**Review resolution:** 0 P1, 3 P2, 5 P3 from 7 agents. All P2s fixed in commit `dd790ce`. Top findings: `chr(10)` readability (replaced with helper), ModeInfo missing relevance gate fields (added 3 fields), surviving sources outside XML boundary (wrapped in tags).
 
-**Compound lesson:** Temperature task-type classification requires judgment — 15 of 16 call sites were obvious, but the ambiguous one was caught only by review. When classifying, consider output format, not logical decision. Also: MCP parity gaps are the most common review finding — always check standalone MCP tools when adding pipeline config.
+**Compound lesson:** MCP parity is the #1 recurring review finding (Cycles 19, 26, 27, 28). When adding `ResearchMode` fields, update `ModeInfo` + `list_modes()` + `list_research_modes` in the same commit. Also: wrap all LLM prompt content in XML boundary tags — defense-in-depth requires sanitize + XML + system prompt on every path.
 
 ## Files to Scrutinize
 
 | File | What changed | Risk area |
 |------|-------------|-----------|
-| `research_agent/sanitize.py` | `html.unescape()` before escaping — idempotent now | Prompt injection defense layer — any regression breaks XML boundaries |
-| `research_agent/query_validation.py` | `check_query_vagueness()` + `VAGUE_WORDS` frozenset | False positives could block legitimate queries |
-| `research_agent/modes.py` | 3 temperature fields + validation on frozen `ResearchMode` | New fields need `ModeInfo` + `list_modes()` + MCP parity |
-| `research_agent/agent.py` | 16 call sites pass `self.mode.*_temperature` | Missing temperature at a new call site defaults to 1.0 silently |
-| `research_agent/mcp_server.py` | Temperature defaults on standalone tools, vague query hint, mode listing | MCP boundary is the most common place for parity gaps |
-| `tests/test_sanitize.py` | 4 prompt injection regression tests | Named/numeric/hex/mixed entity boundary breakout |
+| `research_agent/relevance.py` | SNIPPET_SCORE_CAP, score cap, surviving_sources, XML boundary, instruction list helper | Score cap must cover all exit paths; new prompt content needs XML boundaries |
+| `research_agent/extract.py` | `SourceTier` type alias + `source_tier` field on `ExtractedContent` | New field with default — backward compatibility for 39 test constructors |
+| `research_agent/summarize.py` | `source_tier` on `Summary`, threaded through `summarize_chunk`/`summarize_content` | 104 test constructors rely on default |
+| `research_agent/modes.py` | `relevance_cutoff=4` (standard/deep), `min_sources_short_report=2` (quick) | Config-only changes — no logic changes needed |
+| `research_agent/results.py` | 3 new fields on `ModeInfo` | MCP parity — must match `list_research_modes` output |
+| `research_agent/mcp_server.py` | Gate info in `list_research_modes` output | Agent-facing output format |
 
 ## Deferred Items Tracking
 
@@ -29,8 +29,10 @@
 |------|---------------|------|
 | MCP `--cost` + `--critique-history` tools (#123) | 2 | Promoted to Cycle 31 (promote-or-drop applied) |
 | MCP `test_mcp_server.py` verification | 1 | Missing fastmcp dependency — verify when installed |
+| A/B live validation (cutoff 3 vs 4) | 1 | Blocked by expired API key — run `scripts/validate_cutoff_ab.py` when renewed |
+| `_aggregate_by_source` exception-path cap bypass | 1 | No-op while SNIPPET_SCORE_CAP=3 — fix if cap lowered |
 
 ## Plan Reference
 
-`docs/plans/2026-04-05-cycle-27-input-validation-plan.md`
+`docs/plans/2026-04-05-cycle-28-relevance-source-quality-plan.md`
 Entropy roadmap (cycles 27-31): `docs/research/2026-03-09-entropy-fixes-roadmap.md`
