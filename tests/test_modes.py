@@ -338,7 +338,7 @@ class TestResearchModeRelevanceThresholds:
         """Quick mode should have correct relevance gate thresholds."""
         mode = ResearchMode.quick()
         assert mode.min_sources_full_report == 3
-        assert mode.min_sources_short_report == 1
+        assert mode.min_sources_short_report == 2  # Raised from 1 in Cycle 28
         assert mode.relevance_cutoff == 3
 
     def test_standard_mode_has_correct_relevance_thresholds(self):

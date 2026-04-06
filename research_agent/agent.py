@@ -844,6 +844,7 @@ class ResearchAgent:
                 client=self.async_client,
                 model=self.mode.model,
                 temperature=self.mode.summarize_temperature,
+                surviving_sources=evaluation.surviving_sources,
             )
 
         # Synthesize report (full or short)

@@ -1217,5 +1217,129 @@ class TestSnippetCutoffInteraction:
 
         # Quick cutoff=3: 2 full sources (score 2) dropped, 2 snippets (score 3) survive
         assert result.total_survived == 2
-        # min_sources_full_report=3, min_sources_short_report=1 → short_report
+        # min_sources_full_report=3, min_sources_short_report=2 → short_report
         assert result.decision == "short_report"
+
+
+class TestQuickModeMinSources:
+    """Tests for quick mode min_sources_short_report=2."""
+
+    async def test_quick_mode_1_survivor_is_insufficient(self):
+        """Quick mode with 1 surviving source should be insufficient_data."""
+        summaries = [
+            Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Content {i}")
+            for i in range(3)
+        ]
+
+        async def mock_score(query, summary, client, **kwargs):
+            # Only first source passes
+            score = 4 if summary.url == "https://example0.com" else 2
+            return SourceScore(url=summary.url, title=summary.title, score=score, explanation="test")
+
+        mode = ResearchMode.quick()
+        mock_client = AsyncMock()
+
+        with patch("research_agent.relevance.score_source", side_effect=mock_score):
+            result = await evaluate_sources("test query", summaries, mode, mock_client)
+
+        assert result.total_survived == 1
+        assert result.decision == "insufficient_data"
+
+    async def test_quick_mode_2_survivors_is_short_report(self):
+        """Quick mode with 2 surviving sources should be short_report."""
+        summaries = [
+            Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Content {i}")
+            for i in range(3)
+        ]
+
+        async def mock_score(query, summary, client, **kwargs):
+            # First two sources pass
+            score = 4 if summary.url in ("https://example0.com", "https://example1.com") else 2
+            return SourceScore(url=summary.url, title=summary.title, score=score, explanation="test")
+
+        mode = ResearchMode.quick()
+        mock_client = AsyncMock()
+
+        with patch("research_agent.relevance.score_source", side_effect=mock_score):
+            result = await evaluate_sources("test query", summaries, mode, mock_client)
+
+        assert result.total_survived == 2
+        assert result.decision == "short_report"
+
+    async def test_quick_mode_0_survivors_is_no_new_findings(self):
+        """Quick mode with 0 surviving sources should be no_new_findings."""
+        summaries = [
+            Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Content {i}")
+            for i in range(3)
+        ]
+
+        async def mock_score(query, summary, client, **kwargs):
+            return SourceScore(url=summary.url, title=summary.title, score=1, explanation="off-topic")
+
+        mode = ResearchMode.quick()
+        mock_client = AsyncMock()
+
+        with patch("research_agent.relevance.score_source", side_effect=mock_score):
+            result = await evaluate_sources("test query", summaries, mode, mock_client)
+
+        assert result.total_survived == 0
+        assert result.decision == "no_new_findings"
+
+
+class TestSurvivingSourcesInResponse:
+    """Tests for surviving_sources in insufficient data response."""
+
+    async def test_generate_insufficient_mentions_surviving_source(self):
+        """LLM response prompt should include surviving source info."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Insufficient data response text")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        dropped = (SourceScore(url="https://dropped.com", title="Dropped", score=2, explanation="weak"),)
+        surviving = (Summary(url="https://relevant.com", title="Relevant Source", summary="Good content"),)
+
+        result = await generate_insufficient_data_response(
+            "test query", None, dropped, mock_client,
+            surviving_sources=surviving,
+        )
+
+        # Verify the prompt included surviving source info
+        prompt = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+        assert "relevant.com" in prompt
+        assert "Relevant Source" in prompt
+
+    async def test_generate_insufficient_no_surviving_sources(self):
+        """Without surviving sources, prompt should not mention them."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Insufficient data response text")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        dropped = (SourceScore(url="https://dropped.com", title="Dropped", score=2, explanation="weak"),)
+
+        result = await generate_insufficient_data_response(
+            "test query", None, dropped, mock_client,
+        )
+
+        prompt = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+        assert "too few to generate" not in prompt
+
+    def test_fallback_includes_surviving_sources(self):
+        """Fallback response should list surviving source URLs."""
+        dropped = (SourceScore(url="https://dropped.com", title="Dropped", score=2, explanation="weak"),)
+        surviving = (Summary(url="https://relevant.com", title="Relevant Source", summary="Content"),)
+
+        result = _fallback_insufficient_response("test query", None, dropped, surviving)
+
+        assert "relevant.com" in result
+        assert "Relevant Source" in result
+        assert "too few for a full report" in result
+
+    def test_fallback_without_surviving_sources(self):
+        """Fallback response without surviving sources should not mention them."""
+        dropped = (SourceScore(url="https://dropped.com", title="Dropped", score=2, explanation="weak"),)
+
+        result = _fallback_insufficient_response("test query", None, dropped)
+
+        assert "too few for a full report" not in result

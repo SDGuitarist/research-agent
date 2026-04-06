@@ -108,7 +108,7 @@ class ResearchMode:
             pass1_sources=4,  # was 2
             pass2_sources=2,  # was 1
             min_sources_full_report=3,
-            min_sources_short_report=1,
+            min_sources_short_report=2,  # Raised from 1 — single-source reports too thin
             relevance_cutoff=3,
             decompose=False,  # Skip decomposition for speed
             retry_sources_per_query=2,
