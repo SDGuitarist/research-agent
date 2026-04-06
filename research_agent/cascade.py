@@ -246,6 +246,7 @@ def _snippet_fallback(
                 url=r.url,
                 title=r.title,
                 text=f"[Source: search snippet] {r.snippet}",
+                source_tier="snippet",
             )
         )
     return contents

@@ -27,6 +27,9 @@ RATE_LIMIT_BACKOFF = 2.0  # seconds to wait between batches after a 429
 # Timeout for insufficient data response (longer due to more detailed output)
 INSUFFICIENT_RESPONSE_TIMEOUT = 30.0
 
+# Snippets are thin content — cap their relevance score regardless of LLM score
+SNIPPET_SCORE_CAP: int = 3
+
 
 @dataclass(frozen=True)
 class SourceScore:
@@ -182,6 +185,11 @@ EXPLANATION: [one sentence explaining why]"""
         score, explanation = 3, "Rate limited during scoring, defaulting to include"
     except (APIError, APIConnectionError, APITimeoutError):
         score, explanation = 3, "API error during scoring, defaulting to include"
+
+    # Cap snippet scores — thin content shouldn't score above SNIPPET_SCORE_CAP
+    if summary.source_tier == "snippet" and score > SNIPPET_SCORE_CAP:
+        logger.info("Capping snippet score from %d to %d for %s", score, SNIPPET_SCORE_CAP, summary.url)
+        score = SNIPPET_SCORE_CAP
 
     return SourceScore(
         url=summary.url,

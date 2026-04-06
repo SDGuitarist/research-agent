@@ -8,7 +8,7 @@ from anthropic import AsyncAnthropic, RateLimitError, APIError, APIConnectionErr
 
 from .api_helpers import retry_api_call, process_in_batches
 from .modes import DEFAULT_MODEL
-from .extract import ExtractedContent
+from .extract import ExtractedContent, SourceTier
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ class Summary:
     url: str
     title: str
     summary: str
+    source_tier: SourceTier = "full"
 
 
 # Chunk size in characters (roughly 1000 tokens)
@@ -77,6 +78,7 @@ async def summarize_chunk(
     structured: bool = False,
     rate_limit_event: asyncio.Event | None = None,
     temperature: float = 1.0,
+    source_tier: SourceTier = "full",
 ) -> Summary | None:
     """Summarize a single chunk of content."""
     # Sanitize untrusted web content to prevent prompt injection
@@ -146,6 +148,7 @@ Provide only a factual summary of the content above:"""
             url=url,
             title=title,
             summary=summary_text,
+            source_tier=source_tier,
         )
 
     except (RateLimitError, APIError, APIConnectionError, APITimeoutError):
@@ -189,11 +192,13 @@ async def summarize_content(
                     client=client, chunk=chunk, url=content.url,
                     title=content.title, model=model, structured=structured,
                     rate_limit_event=rate_limit_event, temperature=temperature,
+                    source_tier=content.source_tier,
                 )
         return await summarize_chunk(
             client=client, chunk=chunk, url=content.url,
             title=content.title, model=model, structured=structured,
             rate_limit_event=rate_limit_event, temperature=temperature,
+            source_tier=content.source_tier,
         )
 
     tasks = [_guarded_summarize(chunk) for chunk in chunks]

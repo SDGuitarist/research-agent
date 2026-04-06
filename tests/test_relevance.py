@@ -15,6 +15,7 @@ from research_agent.relevance import (
     RelevanceEvaluation,
     BATCH_SIZE,
     RATE_LIMIT_BACKOFF,
+    SNIPPET_SCORE_CAP,
 )
 from research_agent.summarize import Summary
 from research_agent.modes import ResearchMode
@@ -1030,3 +1031,191 @@ class TestCritiqueGuidanceParam:
         prompt = mock_client.messages.create.call_args[1]["messages"][0]["content"]
         assert "<scoring_guidance>" in prompt
         assert "Prioritize diverse sources" in prompt
+
+
+class TestSnippetScoreCap:
+    """Tests for snippet score capping in score_source()."""
+
+    async def test_snippet_score_capped_when_above_cap(self):
+        """Snippet summary scoring 5 should be capped to SNIPPET_SCORE_CAP."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="SCORE: 5\nEXPLANATION: very relevant")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        summary = Summary(url="http://test.com", title="Test", summary="Content", source_tier="snippet")
+        result = await score_source("query", summary, mock_client)
+        assert result.score == SNIPPET_SCORE_CAP
+
+    async def test_snippet_score_unchanged_at_cap(self):
+        """Snippet summary scoring exactly SNIPPET_SCORE_CAP should stay unchanged."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="SCORE: 3\nEXPLANATION: partial")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        summary = Summary(url="http://test.com", title="Test", summary="Content", source_tier="snippet")
+        result = await score_source("query", summary, mock_client)
+        assert result.score == 3
+
+    async def test_snippet_score_unchanged_below_cap(self):
+        """Snippet summary scoring below cap should stay unchanged."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="SCORE: 2\nEXPLANATION: weak")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        summary = Summary(url="http://test.com", title="Test", summary="Content", source_tier="snippet")
+        result = await score_source("query", summary, mock_client)
+        assert result.score == 2
+
+    async def test_full_source_not_capped(self):
+        """Full source scoring 5 should NOT be capped."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="SCORE: 5\nEXPLANATION: very relevant")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        summary = Summary(url="http://test.com", title="Test", summary="Content", source_tier="full")
+        result = await score_source("query", summary, mock_client)
+        assert result.score == 5
+
+    async def test_default_tier_not_capped(self):
+        """Summary with default source_tier ('full') should NOT be capped."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="SCORE: 5\nEXPLANATION: relevant")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        summary = Summary(url="http://test.com", title="Test", summary="Content")
+        result = await score_source("query", summary, mock_client)
+        assert result.score == 5
+
+
+class TestSnippetCutoffInteraction:
+    """Tests for snippet tier + relevance cutoff interaction."""
+
+    async def test_snippet_excluded_from_standard_mode(self):
+        """Snippets capped at 3 should be excluded at standard cutoff=4."""
+        # 3 full sources score 4, 1 snippet scores 5 (capped to 3)
+        full_summaries = [
+            Summary(url=f"https://full{i}.com", title=f"Full {i}", summary=f"Full content {i}")
+            for i in range(3)
+        ]
+        snippet_summary = Summary(
+            url="https://snippet.com", title="Snippet", summary="Thin content",
+            source_tier="snippet",
+        )
+        all_summaries = full_summaries + [snippet_summary]
+
+        # Mock score_source: full sources get 4, snippet gets 5 (will be capped to 3)
+        async def mock_score(query, summary, client, **kwargs):
+            if summary.source_tier == "snippet":
+                return SourceScore(url=summary.url, title=summary.title, score=SNIPPET_SCORE_CAP, explanation="capped")
+            return SourceScore(url=summary.url, title=summary.title, score=4, explanation="good")
+
+        mode = ResearchMode.standard()
+        mock_client = AsyncMock()
+
+        with patch("research_agent.relevance.score_source", side_effect=mock_score):
+            result = await evaluate_sources("test query", all_summaries, mode, mock_client)
+
+        # Standard cutoff=4: 3 full sources survive, snippet (capped to 3) dropped
+        assert result.total_survived == 3
+        surviving_urls = {s.url for s in result.surviving_sources}
+        assert "https://snippet.com" not in surviving_urls
+
+    async def test_snippet_survives_in_quick_mode(self):
+        """Snippets capped at 3 should survive at quick cutoff=3."""
+        snippet_summaries = [
+            Summary(
+                url=f"https://snippet{i}.com", title=f"Snippet {i}", summary=f"Thin {i}",
+                source_tier="snippet",
+            )
+            for i in range(3)
+        ]
+
+        async def mock_score(query, summary, client, **kwargs):
+            return SourceScore(url=summary.url, title=summary.title, score=SNIPPET_SCORE_CAP, explanation="capped")
+
+        mode = ResearchMode.quick()
+        mock_client = AsyncMock()
+
+        with patch("research_agent.relevance.score_source", side_effect=mock_score):
+            result = await evaluate_sources("test query", snippet_summaries, mode, mock_client)
+
+        # Quick cutoff=3: snippets capped at 3 survive
+        assert result.total_survived == 3
+        assert result.decision == "full_report"
+
+    async def test_all_snippets_at_standard_cutoff_produces_no_new_findings(self):
+        """All snippet sources at standard cutoff=4 should all be dropped."""
+        snippet_summaries = [
+            Summary(
+                url=f"https://snippet{i}.com", title=f"Snippet {i}", summary=f"Thin {i}",
+                source_tier="snippet",
+            )
+            for i in range(4)
+        ]
+
+        async def mock_score(query, summary, client, **kwargs):
+            return SourceScore(url=summary.url, title=summary.title, score=SNIPPET_SCORE_CAP, explanation="capped")
+
+        mode = ResearchMode.standard()
+        mock_client = AsyncMock()
+
+        with patch("research_agent.relevance.score_source", side_effect=mock_score):
+            result = await evaluate_sources("test query", snippet_summaries, mode, mock_client)
+
+        assert result.total_survived == 0
+        assert result.decision == "no_new_findings"
+
+    async def test_all_full_sources_score_3_at_cutoff_4_produces_no_new_findings(self):
+        """All full sources scoring exactly 3 at cutoff=4 should all be dropped."""
+        summaries = [
+            Summary(url=f"https://example{i}.com", title=f"Title {i}", summary=f"Content {i}")
+            for i in range(4)
+        ]
+
+        async def mock_score(query, summary, client, **kwargs):
+            return SourceScore(url=summary.url, title=summary.title, score=3, explanation="partial")
+
+        mode = ResearchMode.standard()
+        mock_client = AsyncMock()
+
+        with patch("research_agent.relevance.score_source", side_effect=mock_score):
+            result = await evaluate_sources("test query", summaries, mode, mock_client)
+
+        assert result.total_survived == 0
+        assert result.decision == "no_new_findings"
+
+    async def test_quick_mode_snippet_only_survivors_produce_short_report(self):
+        """Quick mode: 2 full sources dropped + 2 snippets survive = short_report."""
+        full_summaries = [
+            Summary(url=f"https://full{i}.com", title=f"Full {i}", summary=f"Content {i}")
+            for i in range(2)
+        ]
+        snippet_summaries = [
+            Summary(
+                url=f"https://snippet{i}.com", title=f"Snippet {i}", summary=f"Thin {i}",
+                source_tier="snippet",
+            )
+            for i in range(2)
+        ]
+        all_summaries = full_summaries + snippet_summaries
+
+        async def mock_score(query, summary, client, **kwargs):
+            if summary.source_tier == "snippet":
+                return SourceScore(url=summary.url, title=summary.title, score=3, explanation="capped")
+            return SourceScore(url=summary.url, title=summary.title, score=2, explanation="weak")
+
+        mode = ResearchMode.quick()
+        mock_client = AsyncMock()
+
+        with patch("research_agent.relevance.score_source", side_effect=mock_score):
+            result = await evaluate_sources("test query", all_summaries, mode, mock_client)
+
+        # Quick cutoff=3: 2 full sources (score 2) dropped, 2 snippets (score 3) survive
+        assert result.total_survived == 2
+        # min_sources_full_report=3, min_sources_short_report=1 → short_report
+        assert result.decision == "short_report"

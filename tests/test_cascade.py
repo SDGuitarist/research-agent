@@ -562,3 +562,24 @@ class TestCascadeRecover:
         mock_tavily.assert_not_called()
         snippet_urls = {r.url for r in results if r.text.startswith("[Source: search snippet]")}
         assert snippet_urls == {"https://safe.example.com", "https://private.example.com"}
+
+
+class TestSnippetFallbackSourceTier:
+    """Tests for source_tier on snippet fallback content."""
+
+    def test_snippet_fallback_sets_snippet_tier(self):
+        """_snippet_fallback should set source_tier='snippet' on results."""
+        results = [
+            SearchResult(
+                url="https://example.com", title="Example",
+                snippet="A" * 60,
+            ),
+        ]
+        contents = _snippet_fallback({"https://example.com"}, results)
+        assert len(contents) == 1
+        assert contents[0].source_tier == "snippet"
+
+    def test_jina_recovery_keeps_full_tier(self):
+        """Content recovered via Jina should have default source_tier='full'."""
+        content = ExtractedContent(url="https://example.com", title="Test", text="Full content")
+        assert content.source_tier == "full"

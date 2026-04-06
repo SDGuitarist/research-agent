@@ -627,3 +627,59 @@ class TestTemperaturePlumbing:
 
         call_kwargs = mock_client.messages.create.call_args.kwargs
         assert call_kwargs["temperature"] == 0.3
+
+
+class TestSummarySourceTier:
+    """Tests for source_tier field on Summary."""
+
+    def test_default_source_tier_is_full(self):
+        """Summary without source_tier should default to 'full'."""
+        s = Summary(url="https://example.com", title="Test", summary="Content")
+        assert s.source_tier == "full"
+
+    def test_explicit_snippet_source_tier(self):
+        """Summary with source_tier='snippet' should store it."""
+        s = Summary(url="https://example.com", title="Test", summary="Content", source_tier="snippet")
+        assert s.source_tier == "snippet"
+
+    async def test_summarize_chunk_threads_source_tier(self):
+        """summarize_chunk should pass source_tier through to Summary."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary text")]
+        mock_client.messages.create.return_value = mock_response
+
+        result = await summarize_chunk(
+            mock_client, "chunk text", "https://ex.com", "Title",
+            source_tier="snippet",
+        )
+        assert result is not None
+        assert result.source_tier == "snippet"
+
+    async def test_summarize_chunk_defaults_to_full_tier(self):
+        """summarize_chunk without source_tier should produce full tier Summary."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary text")]
+        mock_client.messages.create.return_value = mock_response
+
+        result = await summarize_chunk(
+            mock_client, "chunk text", "https://ex.com", "Title",
+        )
+        assert result is not None
+        assert result.source_tier == "full"
+
+    async def test_summarize_content_threads_snippet_tier(self):
+        """summarize_content should pass content.source_tier to summarize_chunk."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary text")]
+        mock_client.messages.create.return_value = mock_response
+
+        content = ExtractedContent(
+            url="https://ex.com", title="T", text="Short content",
+            source_tier="snippet",
+        )
+        summaries = await summarize_content(mock_client, content)
+        assert len(summaries) == 1
+        assert summaries[0].source_tier == "snippet"

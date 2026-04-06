@@ -224,3 +224,28 @@ class TestExtractAll:
         result = extract_all(pages)
 
         assert result == []
+
+
+class TestExtractedContentSourceTier:
+    """Tests for source_tier field on ExtractedContent."""
+
+    def test_default_source_tier_is_full(self):
+        """ExtractedContent without source_tier should default to 'full'."""
+        content = ExtractedContent(url="https://example.com", title="Test", text="Content")
+        assert content.source_tier == "full"
+
+    def test_explicit_snippet_source_tier(self):
+        """ExtractedContent with source_tier='snippet' should store it."""
+        content = ExtractedContent(
+            url="https://example.com", title="Test", text="Content",
+            source_tier="snippet",
+        )
+        assert content.source_tier == "snippet"
+
+    def test_explicit_full_source_tier(self):
+        """ExtractedContent with source_tier='full' should store it."""
+        content = ExtractedContent(
+            url="https://example.com", title="Test", text="Content",
+            source_tier="full",
+        )
+        assert content.source_tier == "full"

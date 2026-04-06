@@ -5,6 +5,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from html import unescape
+from typing import Literal
 
 import trafilatura
 from readability import Document
@@ -20,12 +21,16 @@ MAX_HTML_SIZE = 5 * 1024 * 1024
 MIN_EXTRACTED_TEXT_LENGTH = 100
 
 
+SourceTier = Literal["full", "snippet"]
+
+
 @dataclass(frozen=True)
 class ExtractedContent:
     """Extracted content from a web page."""
     url: str
     title: str
     text: str
+    source_tier: SourceTier = "full"
 
 
 def extract_content(page: FetchedPage) -> ExtractedContent | None:
