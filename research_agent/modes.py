@@ -137,7 +137,7 @@ class ResearchMode:
             pass2_sources=4,  # was 3
             min_sources_full_report=4,
             min_sources_short_report=2,
-            relevance_cutoff=3,
+            relevance_cutoff=4,  # Raised from 3 — filters low-quality sources more aggressively
             cost_estimate="~$0.45",
             iteration_enabled=True,
             followup_questions=2,
@@ -163,7 +163,7 @@ class ResearchMode:
             pass2_sources=12,  # was 10
             min_sources_full_report=8,  # Increased for deep mode
             min_sources_short_report=5,  # Increased for deep mode
-            relevance_cutoff=3,
+            relevance_cutoff=4,  # Raised from 3 — filters low-quality sources more aggressively
             retry_sources_per_query=5,
             cost_estimate="~$0.95",
             iteration_enabled=True,

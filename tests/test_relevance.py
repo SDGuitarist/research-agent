@@ -255,8 +255,8 @@ class TestEvaluateSources:
         with patch("research_agent.relevance.score_source", mock_score_mixed):
             result = await evaluate_sources("test query", summaries, mode, mock_client)
 
-        # With scores [4,2,5,1,3,2,4], we get 4 passing (scores >= 3)
-        assert result.decision == "full_report"  # 4 >= min_sources_full_report for standard
+        # With scores [4,2,5,1,3,2,4], at cutoff=4 we get 3 passing (scores >= 4)
+        assert result.decision == "short_report"  # 3 < min_sources_full_report (4) for standard
 
     async def test_evaluate_sources_returns_no_new_findings_when_none_survive(
         self, mock_score_all_low

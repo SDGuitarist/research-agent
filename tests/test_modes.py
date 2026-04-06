@@ -346,14 +346,14 @@ class TestResearchModeRelevanceThresholds:
         mode = ResearchMode.standard()
         assert mode.min_sources_full_report == 4
         assert mode.min_sources_short_report == 2
-        assert mode.relevance_cutoff == 3
+        assert mode.relevance_cutoff == 4  # Raised from 3 in Cycle 28
 
     def test_deep_mode_has_correct_relevance_thresholds(self):
         """Deep mode should have correct relevance gate thresholds."""
         mode = ResearchMode.deep()
         assert mode.min_sources_full_report == 8  # Increased from 5 for more comprehensive deep reports
         assert mode.min_sources_short_report == 5  # Increased from 2
-        assert mode.relevance_cutoff == 3
+        assert mode.relevance_cutoff == 4  # Raised from 3 in Cycle 28
 
 
 class TestResearchModeSynthesisTemplates:
