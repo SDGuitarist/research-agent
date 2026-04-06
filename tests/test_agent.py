@@ -2208,6 +2208,35 @@ class TestCoverageGapRetry:
 
         mock_retry.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_insufficient_data_passes_surviving_sources(self):
+        """Agent should pass evaluation.surviving_sources to generate_insufficient_data_response."""
+        agent = self._make_agent()
+        summaries = self._make_summaries(3)
+
+        surviving = (Summary(url="https://relevant.com", title="Relevant", summary="Good"),)
+        dropped = (SourceScore(url="https://dropped.com", title="Dropped", score=2, explanation="Weak"),)
+
+        insufficient_eval = self._make_evaluation(
+            "insufficient_data",
+            surviving=surviving,
+            dropped=dropped,
+            total_scored=2,
+        )
+
+        with patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=insufficient_eval), \
+             patch.object(agent, "_try_coverage_retry", new_callable=AsyncMock, return_value=None), \
+             patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No Data") as mock_insufficient:
+
+            await agent._evaluate_and_synthesize(
+                "test query", summaries, "refined",
+                tried_queries=["test query"],
+            )
+
+        mock_insufficient.assert_called_once()
+        call_kwargs = mock_insufficient.call_args.kwargs
+        assert call_kwargs["surviving_sources"] == surviving
+
 
 class TestQueryIteration:
     """Tests for query iteration integration in _evaluate_and_synthesize."""
