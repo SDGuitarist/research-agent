@@ -52,6 +52,22 @@ class RelevanceEvaluation:
     refined_query: str | None
 
 
+def _build_instruction_list(include_surviving: bool) -> str:
+    """Build numbered instruction list for insufficient data LLM prompt."""
+    instructions = [
+        "1. Acknowledges what was searched",
+        "2. Briefly explains what was found and why it doesn't answer the question",
+        "3. Suggests why this information may be hard to find online (if you can infer a reason)",
+        "4. Suggests 1-2 more specific queries the user could try",
+        "5. Suggests specific platforms or sources where better information might exist",
+    ]
+    if include_surviving:
+        instructions.append(
+            "6. Mentions the relevant source(s) listed above that the user may want to investigate directly"
+        )
+    return "\n".join(instructions)
+
+
 def _extract_domain(url: str) -> str:
     """Extract domain from URL for display purposes."""
     try:
@@ -437,8 +453,10 @@ async def generate_insufficient_data_response(
             safe_url = sanitize_content(src.url)
             surviving_lines.append(f"- {safe_title} ({safe_url})")
         surviving_text = (
-            "\n\nHowever, the following source(s) were relevant but too few to generate a full report:\n"
+            "\n\n<surviving_sources>\n"
+            "However, the following source(s) were relevant but too few to generate a full report:\n"
             + "\n".join(surviving_lines)
+            + "\n</surviving_sources>"
         )
 
     user_prompt = f"""ORIGINAL QUERY: {safe_query}
@@ -450,14 +468,7 @@ Sources found and why they weren't relevant:
 </dropped_sources>{surviving_text}
 
 Write a short response (150-250 words) that:
-1. Acknowledges what was searched
-2. Briefly explains what was found and why it doesn't answer the question
-3. Suggests why this information may be hard to find online (if you can infer a reason)
-4. Suggests 1-2 more specific queries the user could try
-5. Suggests specific platforms or sources where better information might exist{
-    chr(10) + "6. Mentions the relevant source(s) listed above that the user may want to investigate directly"
-    if surviving_sources else ""
-}
+{_build_instruction_list(bool(surviving_sources))}
 
 Do NOT pad the response. Keep it concise and honest."""
 

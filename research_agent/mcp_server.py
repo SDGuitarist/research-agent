@@ -290,9 +290,14 @@ def list_research_modes() -> str:
             f"summarize={m.summarize_temperature}, "
             f"synthesis={m.synthesis_temperature}"
         )
+        gate_info = (
+            f"relevance: cutoff={m.relevance_cutoff}, "
+            f"full>={m.min_sources_full_report}, "
+            f"short>={m.min_sources_short_report}"
+        )
         lines.append(
             f"- {m.name}: {m.max_sources} sources, ~{m.word_target} words, "
-            f"{m.cost_estimate}, {save_str}, {model_info}, {temp_info}"
+            f"{m.cost_estimate}, {save_str}, {model_info}, {temp_info}, {gate_info}"
         )
     return "\n".join(lines)
 

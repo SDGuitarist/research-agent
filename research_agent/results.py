@@ -49,6 +49,9 @@ class ModeInfo:
     planning_temperature: float = 0.0
     summarize_temperature: float = 0.0
     synthesis_temperature: float = 0.0
+    relevance_cutoff: int = 3
+    min_sources_full_report: int = 3
+    min_sources_short_report: int = 1
 
 
 @dataclass(frozen=True)
