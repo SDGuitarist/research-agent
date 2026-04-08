@@ -57,7 +57,8 @@ def compute_gate_decision(
     survived: int,
     total: int,
     mode: ResearchMode,
-    context: str = "",
+    *,
+    verbose: bool = True,
 ) -> tuple[GateDecision, str]:
     """Compute the gate decision and rationale from source counts and mode thresholds.
 
@@ -65,39 +66,70 @@ def compute_gate_decision(
         survived: Number of sources that passed the relevance cutoff.
         total: Total number of sources scored.
         mode: ResearchMode with threshold configuration.
-        context: Optional suffix appended to rationale (e.g. "after retry merge").
+        verbose: If True (default), produce threshold-rich rationale with cutoff
+            values, mode name, and threshold numbers for debugging.  If False,
+            produce a terse "{survived}/{total} sources passed" style rationale
+            suited for retry-merge contexts.
 
     Returns:
         (decision, rationale) tuple.
     """
-    suffix = f" {context}" if context else ""
+    if verbose:
+        return _gate_decision_verbose(survived, total, mode)
+    return _gate_decision_terse(survived, total, mode)
 
+
+def _gate_decision_verbose(
+    survived: int, total: int, mode: ResearchMode,
+) -> tuple[GateDecision, str]:
+    """Verbose rationale with cutoff values and mode thresholds."""
     if survived >= mode.min_sources_full_report:
         decision = GateDecision.FULL_REPORT
         rationale = (
             f"{survived} of {total} sources scored >= {mode.relevance_cutoff}, "
-            f"meeting threshold for full report in {mode.name} mode{suffix}"
+            f"meeting threshold for full report in {mode.name} mode"
         )
     elif survived >= mode.min_sources_short_report:
         decision = GateDecision.SHORT_REPORT
         rationale = (
             f"{survived} of {total} sources scored >= {mode.relevance_cutoff}, "
             f"below full report threshold ({mode.min_sources_full_report}) but above minimum ({mode.min_sources_short_report}) "
-            f"for {mode.name} mode — generating short report with disclaimer{suffix}"
+            f"for {mode.name} mode — generating short report with disclaimer"
         )
     elif total > 0 and survived == 0:
         decision = GateDecision.NO_NEW_FINDINGS
         rationale = (
             f"All {total} sources scored below {mode.relevance_cutoff}, "
-            f"suggesting no new relevant information is publicly available{suffix}"
+            f"suggesting no new relevant information is publicly available"
         )
     else:
         decision = GateDecision.INSUFFICIENT_DATA
         rationale = (
             f"Only {survived} of {total} sources scored >= {mode.relevance_cutoff}, "
-            f"below minimum threshold ({mode.min_sources_short_report}) for {mode.name} mode{suffix}"
+            f"below minimum threshold ({mode.min_sources_short_report}) for {mode.name} mode"
         )
+    return decision, rationale
 
+
+def _gate_decision_terse(
+    survived: int, total: int, mode: ResearchMode,
+) -> tuple[GateDecision, str]:
+    """Terse rationale for retry-merge contexts."""
+    if survived >= mode.min_sources_full_report:
+        decision = GateDecision.FULL_REPORT
+        rationale = f"{survived}/{total} sources passed after retry merge"
+    elif survived >= mode.min_sources_short_report:
+        decision = GateDecision.SHORT_REPORT
+        rationale = (
+            f"{survived}/{total} sources passed after retry merge "
+            f"(below full threshold)"
+        )
+    elif total > 0 and survived == 0:
+        decision = GateDecision.NO_NEW_FINDINGS
+        rationale = f"All {total} sources below cutoff after retry"
+    else:
+        decision = GateDecision.INSUFFICIENT_DATA
+        rationale = f"Only {survived}/{total} sources passed after retry"
     return decision, rationale
 
 

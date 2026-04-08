@@ -1379,9 +1379,40 @@ class TestComputeGateDecision:
         assert decision == GateDecision.INSUFFICIENT_DATA
         assert "below minimum" in rationale
 
-    def test_context_suffix_appended(self):
-        """Context string should be appended to the rationale."""
+    def test_verbose_rationale_includes_thresholds(self):
+        """Verbose mode (default) should include cutoff, mode name, and threshold values."""
         mode = ResearchMode.standard()
-        decision, rationale = compute_gate_decision(5, 8, mode, context="after retry merge")
+        decision, rationale = compute_gate_decision(5, 8, mode)
         assert decision == GateDecision.FULL_REPORT
-        assert rationale.endswith("after retry merge")
+        assert str(mode.relevance_cutoff) in rationale
+        assert mode.name in rationale
+        assert "scored >=" in rationale
+
+    def test_terse_rationale_uses_slash_format(self):
+        """Terse mode should produce compact 'N/M sources passed' rationale."""
+        mode = ResearchMode.standard()
+        decision, rationale = compute_gate_decision(5, 8, mode, verbose=False)
+        assert decision == GateDecision.FULL_REPORT
+        assert rationale == "5/8 sources passed after retry merge"
+
+    def test_terse_short_report_includes_threshold_note(self):
+        """Terse short_report should note it's below full threshold."""
+        mode = ResearchMode.standard()
+        decision, rationale = compute_gate_decision(2, 8, mode, verbose=False)
+        assert decision == GateDecision.SHORT_REPORT
+        assert "2/8 sources passed after retry merge" in rationale
+        assert "below full threshold" in rationale
+
+    def test_terse_no_new_findings(self):
+        """Terse no_new_findings should say 'below cutoff after retry'."""
+        mode = ResearchMode.standard()
+        decision, rationale = compute_gate_decision(0, 5, mode, verbose=False)
+        assert decision == GateDecision.NO_NEW_FINDINGS
+        assert rationale == "All 5 sources below cutoff after retry"
+
+    def test_terse_insufficient_data(self):
+        """Terse insufficient_data should use 'Only N/M' format."""
+        mode = ResearchMode.deep()
+        decision, rationale = compute_gate_decision(1, 10, mode, verbose=False)
+        assert decision == GateDecision.INSUFFICIENT_DATA
+        assert rationale == "Only 1/10 sources passed after retry"

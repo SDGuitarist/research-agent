@@ -24,6 +24,10 @@ Cycle 29H (Codebase Hygiene — Audit-Driven Fixes) complete — 5 commits on ma
 |-------|----------|
 | Plan (revised 2x) | `docs/plans/2026-04-07-cycle-29h-codebase-hygiene-plan.md` |
 
+## Public API Changes
+
+- **`GateDecision` exported from `research_agent`** — intentional. Consumers need it to compare `result.status` against typed enum values (e.g., `GateDecision.FULL_REPORT`) instead of bare strings. `GateDecision` is a `StrEnum`, so `result.status == "full_report"` still works for backward compatibility, but the enum is the preferred comparison.
+
 ## Deferred Items
 
 - **ANTHROPIC_ERRORS not yet consumed at all call sites** — Session 1c defined the tuple but Sessions 2-3 only consumed it in the synthesis context manager. The 10+ remaining `except (APIError, RateLimitError, ...)` blocks still use inline tuples. This is a mechanical replacement deferred to avoid bloating the hygiene cycle.

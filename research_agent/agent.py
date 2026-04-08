@@ -774,9 +774,9 @@ class ResearchAgent:
         total_scored = evaluation.total_scored + retry_eval.total_scored
         total_survived = evaluation.total_survived + retry_eval.total_survived
 
-        # Determine combined decision using mode thresholds
+        # Determine combined decision using mode thresholds (terse for retry)
         decision, rationale = compute_gate_decision(
-            total_survived, total_scored, self.mode, context="after retry merge",
+            total_survived, total_scored, self.mode, verbose=False,
         )
 
         logger.info("Merged decision: %s (%d/%d sources passed)", decision, total_survived, total_scored)

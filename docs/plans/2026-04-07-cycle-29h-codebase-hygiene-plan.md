@@ -69,6 +69,8 @@ class GateDecision(StrEnum):
 
 Replace all 12+ bare string comparisons across `relevance.py`, `agent.py`, and `results.py`.
 
+**Public API:** Export `GateDecision` from `research_agent/__init__.py` and add to `__all__`. Consumers need it to compare `result.status` against typed values. Backward-compatible: `StrEnum` is a `str` subclass, so `result.status == "full_report"` still works.
+
 ### 1b. Fix `dropped_sources` type annotation
 
 Change `RelevanceEvaluation.dropped_sources` from bare `tuple` to `tuple[SourceScore, ...]`.

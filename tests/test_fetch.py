@@ -120,6 +120,42 @@ class TestIsSafeUrl:
         assert await is_safe_url("http://0.0.0.0/") is False
 
 
+class TestSSRFPreCheck:
+    """Test that fetch_urls fails closed when httpx internals change."""
+
+    @pytest.mark.asyncio
+    async def test_raises_runtime_error_when_transport_pool_missing(self):
+        """If httpx transport lacks _pool, fetch_urls must raise RuntimeError."""
+        import httpx as real_httpx
+
+        class BrokenTransport(real_httpx.AsyncHTTPTransport):
+            """Transport without _pool attribute, simulating an httpx upgrade."""
+            def __init__(self, **kwargs):
+                # Skip super().__init__ so _pool is never created
+                pass
+
+        with patch("research_agent.fetch.httpx.AsyncHTTPTransport", BrokenTransport):
+            with pytest.raises(RuntimeError, match="SSRF protection cannot be applied"):
+                await fetch_urls(["https://example.com"])
+
+    @pytest.mark.asyncio
+    async def test_raises_runtime_error_when_network_backend_missing(self):
+        """If transport._pool exists but lacks _network_backend, must raise."""
+        import httpx as real_httpx
+
+        original_init = real_httpx.AsyncHTTPTransport.__init__
+
+        def patched_init(self, **kwargs):
+            original_init(self, **kwargs)
+            # Remove _network_backend to simulate changed internals
+            if hasattr(self._pool, '_network_backend'):
+                delattr(self._pool, '_network_backend')
+
+        with patch.object(real_httpx.AsyncHTTPTransport, '__init__', patched_init):
+            with pytest.raises(RuntimeError, match="SSRF protection cannot be applied"):
+                await fetch_urls(["https://example.com"])
+
+
 class TestFetchUrls:
     """Tests for fetch_urls() async function."""
 
