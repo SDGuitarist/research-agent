@@ -119,6 +119,20 @@ def _parse_template(
         logger.warning("Invalid blocked_domains in YAML frontmatter: %s", e)
 
     try:
+        raw_extract = data.get("extract_domains", [])
+        if isinstance(raw_extract, bool):
+            raise ValueError("extract_domains must be a list")
+        if not isinstance(raw_extract, list):
+            raise ValueError("extract_domains must be a list")
+        cleaned_extract = tuple(
+            sanitize_content(d) for d in raw_extract if isinstance(d, str)
+        )
+        if cleaned_extract:
+            profile_fields["extract_domains"] = cleaned_extract
+    except (ValueError, TypeError) as e:
+        logger.warning("Invalid extract_domains in YAML frontmatter: %s", e)
+
+    try:
         raw_schema = data.get("gap_schema", "")
         if not isinstance(raw_schema, str):
             raise ValueError("gap_schema must be a string")

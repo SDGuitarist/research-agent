@@ -1,6 +1,7 @@
 """Chunk summarization using Claude."""
 
 import asyncio
+import contextlib
 import logging
 from dataclasses import dataclass
 
@@ -32,7 +33,7 @@ BATCH_SIZE = 8
 RATE_LIMIT_BACKOFF = 2.0  # seconds to wait between batches after a 429
 
 # Maximum concurrent API calls for chunk summarization
-MAX_CONCURRENT_CHUNKS = 3
+MAX_CONCURRENT_CHUNKS = 5
 
 
 def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE, max_chunks: int = MAX_CHUNKS_PER_SOURCE) -> list[str]:
@@ -186,20 +187,13 @@ async def summarize_content(
     chunks = _chunk_text(content.text, max_chunks=max_chunks)
 
     async def _guarded_summarize(chunk: str) -> Summary | None:
-        if semaphore is not None:
-            async with semaphore:
-                return await summarize_chunk(
-                    client=client, chunk=chunk, url=content.url,
-                    title=content.title, model=model, structured=structured,
-                    rate_limit_event=rate_limit_event, temperature=temperature,
-                    source_tier=content.source_tier,
-                )
-        return await summarize_chunk(
-            client=client, chunk=chunk, url=content.url,
-            title=content.title, model=model, structured=structured,
-            rate_limit_event=rate_limit_event, temperature=temperature,
-            source_tier=content.source_tier,
-        )
+        async with semaphore if semaphore is not None else contextlib.nullcontext():
+            return await summarize_chunk(
+                client=client, chunk=chunk, url=content.url,
+                title=content.title, model=model, structured=structured,
+                rate_limit_event=rate_limit_event, temperature=temperature,
+                source_tier=content.source_tier,
+            )
 
     tasks = [_guarded_summarize(chunk) for chunk in chunks]
     results = await asyncio.gather(*tasks, return_exceptions=True)

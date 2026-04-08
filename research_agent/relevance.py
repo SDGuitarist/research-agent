@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 SCORING_TIMEOUT = 15.0
 
 # Batching constants for rate limit management
-BATCH_SIZE = 5
+BATCH_SIZE = 10
 RATE_LIMIT_BACKOFF = 2.0  # seconds to wait between batches after a 429
 
 # Timeout for insufficient data response (longer due to more detailed output)
@@ -51,22 +51,6 @@ class RelevanceEvaluation:
     total_scored: int
     total_survived: int
     refined_query: str | None
-
-
-def _build_instruction_list(include_surviving: bool) -> str:
-    """Build numbered instruction list for insufficient data LLM prompt."""
-    instructions = [
-        "1. Acknowledges what was searched",
-        "2. Briefly explains what was found and why it doesn't answer the question",
-        "3. Suggests why this information may be hard to find online (if you can infer a reason)",
-        "4. Suggests 1-2 more specific queries the user could try",
-        "5. Suggests specific platforms or sources where better information might exist",
-    ]
-    if include_surviving:
-        instructions.append(
-            "6. Mentions the relevant source(s) listed above that the user may want to investigate directly"
-        )
-    return "\n".join(instructions)
 
 
 def compute_gate_decision(
@@ -493,7 +477,12 @@ Sources found and why they weren't relevant:
 </dropped_sources>{surviving_text}
 
 Write a short response (150-250 words) that:
-{_build_instruction_list(bool(surviving_sources))}
+1. Acknowledges what was searched
+2. Briefly explains what was found and why it doesn't answer the question
+3. Suggests why this information may be hard to find online (if you can infer a reason)
+4. Suggests 1-2 more specific queries the user could try
+5. Suggests specific platforms or sources where better information might exist
+{"6. Mentions the relevant source(s) listed above that the user may want to investigate directly" if surviving_sources else ""}
 
 Do NOT pad the response. Keep it concise and honest."""
 

@@ -3,6 +3,15 @@ name: Pacific Flow Entertainment
 blocked_domains:
   - thumbtack.com
   - bark.com
+extract_domains:
+  - weddingwire.com
+  - theknot.com
+  - thebash.com
+  - gigsalad.com
+  - yelp.com
+  - instagram.com
+  - facebook.com
+  - youtube.com
 synthesis_tone: executive
 gap_schema: gaps/pfe.yaml
 template:

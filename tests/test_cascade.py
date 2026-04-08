@@ -303,27 +303,32 @@ class TestTavilyExtract:
 class TestIsExtractDomain:
     """Tests for _is_extract_domain() function."""
 
+    DOMAINS = ("weddingwire.com", "theknot.com", "yelp.com")
+
     def test_matches_exact_domain(self):
-        assert _is_extract_domain("https://weddingwire.com/vendor/123") is True
+        assert _is_extract_domain("https://weddingwire.com/vendor/123", self.DOMAINS) is True
 
     def test_matches_subdomain(self):
-        assert _is_extract_domain("https://www.theknot.com/marketplace/band") is True
+        assert _is_extract_domain("https://www.theknot.com/marketplace/band", self.DOMAINS) is True
 
     def test_rejects_non_matching_domain(self):
-        assert _is_extract_domain("https://example.com/page") is False
+        assert _is_extract_domain("https://example.com/page", self.DOMAINS) is False
 
     def test_matches_all_configured_domains(self):
-        from research_agent.cascade import EXTRACT_DOMAINS
-        for domain in EXTRACT_DOMAINS:
-            assert _is_extract_domain(f"https://www.{domain}/page") is True
+        for domain in self.DOMAINS:
+            assert _is_extract_domain(f"https://www.{domain}/page", self.DOMAINS) is True
 
     def test_rejects_empty_url(self):
-        assert _is_extract_domain("") is False
+        assert _is_extract_domain("", self.DOMAINS) is False
 
     def test_rejects_partial_domain_match(self):
         """'notweddingwire.com' should not match 'weddingwire.com'."""
-        assert _is_extract_domain("https://notweddingwire.com/page") is False
-        assert _is_extract_domain("https://evilyelp.com/biz/123") is False
+        assert _is_extract_domain("https://notweddingwire.com/page", self.DOMAINS) is False
+        assert _is_extract_domain("https://evilyelp.com/biz/123", self.DOMAINS) is False
+
+    def test_empty_domains_returns_false(self):
+        """Empty extract_domains tuple should always return False."""
+        assert _is_extract_domain("https://weddingwire.com/page", ()) is False
 
 
 # --- TestSnippetFallback ---
@@ -460,6 +465,7 @@ class TestCascadeRecover:
                                 _make_search_result("https://www.weddingwire.com/page"),
                                 _make_search_result("https://regular-site.com/page"),
                             ],
+                            extract_domains=("weddingwire.com",),
                         )
 
         # Tavily Extract got WeddingWire, snippet fallback for regular site
@@ -521,6 +527,7 @@ class TestCascadeRecover:
                     results = await cascade_recover(
                         ["https://site1.com", "https://www.yelp.com/biz/band", "https://site3.com"],
                         all_results,
+                        extract_domains=("yelp.com",),
                     )
 
         assert call_order == ["jina", "tavily_extract"]

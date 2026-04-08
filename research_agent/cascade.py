@@ -26,17 +26,6 @@ JINA_CONCURRENT = 5
 JINA_TIMEOUT = 20.0
 MIN_CONTENT_LENGTH = 100
 
-# Domains worth spending Tavily Extract credits on
-EXTRACT_DOMAINS = frozenset({
-    "weddingwire.com",
-    "theknot.com",
-    "thebash.com",
-    "gigsalad.com",
-    "yelp.com",
-    "instagram.com",
-    "facebook.com",
-    "youtube.com",
-})
 
 
 def _is_internal_url(url: str) -> bool:
@@ -87,6 +76,7 @@ async def _filter_forwardable_urls(urls: list[str]) -> list[str]:
 async def cascade_recover(
     failed_urls: list[str],
     all_results: list[SearchResult],
+    extract_domains: tuple[str, ...] = (),
 ) -> list[ExtractedContent]:
     """
     Try to recover content for URLs that failed direct fetch + extract.
@@ -115,11 +105,11 @@ async def cascade_recover(
         if jina_results:
             logger.info(f"Jina Reader recovered {len(jina_results)} pages")
 
-    # Layer 2: Tavily Extract (high-value domains only, costs credits)
-    if remaining:
+    # Layer 2: Tavily Extract (configured domains only, costs credits)
+    if remaining and extract_domains:
         extract_urls = [
             u for u in remaining
-            if u in forwardable_set and _is_extract_domain(u)
+            if u in forwardable_set and _is_extract_domain(u, extract_domains)
         ]
         if extract_urls:
             tavily_key = os.environ.get("TAVILY_API_KEY")
@@ -222,10 +212,12 @@ async def _fetch_via_tavily_extract(
         return []
 
 
-def _is_extract_domain(url: str) -> bool:
-    """Check if URL belongs to a high-value domain for Tavily Extract."""
+def _is_extract_domain(url: str, extract_domains: tuple[str, ...]) -> bool:
+    """Check if URL belongs to a configured extract-eligible domain."""
+    if not extract_domains:
+        return False
     host = urlparse(url).hostname or ""
-    return any(host == d or host.endswith("." + d) for d in EXTRACT_DOMAINS)
+    return any(host == d or host.endswith("." + d) for d in extract_domains)
 
 
 def _snippet_fallback(

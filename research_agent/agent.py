@@ -229,6 +229,14 @@ class ResearchAgent:
         except (OSError, yaml.YAMLError) as e:
             logger.warning("Self-critique failed: %s", e)
 
+    def _filter_blocked(self, results: list[SearchResult]) -> list[SearchResult]:
+        """Filter blocked domains from search results using run context profile."""
+        if self._run_context.profile:
+            blocked = self._run_context.profile.blocked_domains
+            if blocked:
+                return filter_blocked_urls(results, blocked)
+        return results
+
     @staticmethod
     def _urls_from_evaluation(evaluation: RelevanceEvaluation) -> set[str]:
         """Extract all URLs from an evaluation result (surviving + dropped)."""
@@ -589,11 +597,7 @@ class ResearchAgent:
             quiet: If True, suppress step headers (used by deep mode pass 2).
         """
         # Single blocked-domain filter — covers ALL search paths
-        blocked = ()
-        if self._run_context.profile:
-            blocked = self._run_context.profile.blocked_domains
-        if blocked:
-            results = filter_blocked_urls(results, blocked)
+        results = self._filter_blocked(results)
 
         prefetched, urls_to_fetch = self._split_prefetched(results)
         if not quiet:
@@ -615,7 +619,10 @@ class ResearchAgent:
         if fetch_failed:
             extracted, cascade_from_fetch = await asyncio.gather(
                 asyncio.to_thread(extract_all, pages),
-                cascade_recover(fetch_failed, results),
+                cascade_recover(
+                    fetch_failed, results,
+                    extract_domains=self._run_context.profile.extract_domains if self._run_context.profile else (),
+                ),
             )
         else:
             extracted = await asyncio.to_thread(extract_all, pages)
@@ -625,7 +632,10 @@ class ResearchAgent:
         extracted_urls = {e.url for e in extracted}
         extract_failed = [u for u in fetched_page_urls if u not in extracted_urls]
         if extract_failed:
-            cascade_from_extract = await cascade_recover(extract_failed, results)
+            cascade_from_extract = await cascade_recover(
+                extract_failed, results,
+                extract_domains=self._run_context.profile.extract_domains if self._run_context.profile else (),
+            )
         else:
             cascade_from_extract = []
 
@@ -970,11 +980,7 @@ class ResearchAgent:
 
         # Filter blocked domains BEFORE building seen_urls/snippets
         # so blocked results don't influence query refinement
-        blocked = ()
-        if self._run_context.profile:
-            blocked = self._run_context.profile.blocked_domains
-        if blocked:
-            pass1_results = filter_blocked_urls(pass1_results, blocked)
+        pass1_results = self._filter_blocked(pass1_results)
 
         seen_urls = {r.url for r in pass1_results}
 
@@ -1046,11 +1052,7 @@ class ResearchAgent:
 
         # Filter blocked domains BEFORE building seen_urls
         # so blocked results don't influence deep mode pass 2
-        blocked = ()
-        if self._run_context.profile:
-            blocked = self._run_context.profile.blocked_domains
-        if blocked:
-            results = filter_blocked_urls(results, blocked)
+        results = self._filter_blocked(results)
 
         seen_urls = {r.url for r in results}
 

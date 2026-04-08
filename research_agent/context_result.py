@@ -38,11 +38,14 @@ class ContextProfile:
 
     Attributes:
         blocked_domains: Domains to exclude from search results.
+        extract_domains: Domains eligible for Tavily Extract recovery (layer 2).
+            Empty tuple means layer 2 is skipped (zero Tavily Extract API calls).
         gap_schema: Relative path to a gap schema YAML file.
         synthesis_tone: Preset name or free-text tone instruction (max 500 chars).
     """
 
     blocked_domains: tuple[str, ...] = ()
+    extract_domains: tuple[str, ...] = ()
     gap_schema: str = ""
     synthesis_tone: str = ""
 
