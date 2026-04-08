@@ -39,11 +39,6 @@ def _count_severity(text: str) -> tuple[int, int]:
     return critical, concern
 
 
-def _build_context_block(synthesis_context: str | None) -> str:
-    """Build optional research context XML block."""
-    return build_context_block(synthesis_context)
-
-
 def _build_prior_block(prior_findings: list[SkepticFinding] | None) -> str:
     """Build prior skeptic findings XML block."""
     if not prior_findings:
@@ -139,7 +134,7 @@ async def run_skeptic_evidence(
     inference is presented as observation.
     """
     safe_draft = sanitize_content(draft)
-    context_block = _build_context_block(synthesis_context)
+    context_block = build_context_block(synthesis_context)
     prior_block = _build_prior_block(prior_findings)
 
     prompt = f"""Review the draft analysis below as an adversarial evidence reviewer.
@@ -194,7 +189,7 @@ async def run_skeptic_timing(
     Evaluates cost of waiting vs acting.
     """
     safe_draft = sanitize_content(draft)
-    context_block = _build_context_block(synthesis_context)
+    context_block = build_context_block(synthesis_context)
     prior_block = _build_prior_block(prior_findings)
 
     prompt = f"""Review the draft analysis below as a timing and stakes analyst.
@@ -247,7 +242,7 @@ async def run_skeptic_frame(
     Challenges the analytical frame.
     """
     safe_draft = sanitize_content(draft)
-    context_block = _build_context_block(synthesis_context)
+    context_block = build_context_block(synthesis_context)
     prior_block = _build_prior_block(prior_findings)
 
     prompt = f"""Review the draft analysis below as a strategic frame challenger.
@@ -298,7 +293,7 @@ async def run_skeptic_combined(
     Combines all three lenses into one LLM call with one checklist output.
     """
     safe_draft = sanitize_content(draft)
-    context_block = _build_context_block(synthesis_context)
+    context_block = build_context_block(synthesis_context)
 
     prompt = f"""Review the draft analysis below through three adversarial lenses.
 

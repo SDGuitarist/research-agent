@@ -6,7 +6,7 @@ import asyncio
 
 from research_agent.fetch import (
     _is_private_ip,
-    _is_safe_url,
+    is_safe_url,
     fetch_urls,
     FetchedPage,
 )
@@ -62,62 +62,62 @@ class TestIsPrivateIp:
 
 
 class TestIsSafeUrl:
-    """Tests for _is_safe_url() async function."""
+    """Tests for is_safe_url() async function."""
 
     @pytest.mark.asyncio
-    async def test_is_safe_url_allows_https_public_url(self):
+    async def testis_safe_url_allows_https_public_url(self):
         """HTTPS URLs to public hosts should be allowed."""
         with patch("research_agent.fetch._resolve_and_validate_host", new_callable=AsyncMock, return_value=True):
-            assert await _is_safe_url("https://example.com/page") is True
+            assert await is_safe_url("https://example.com/page") is True
 
     @pytest.mark.asyncio
-    async def test_is_safe_url_allows_http_public_url(self):
+    async def testis_safe_url_allows_http_public_url(self):
         """HTTP URLs to public hosts should be allowed."""
         with patch("research_agent.fetch._resolve_and_validate_host", new_callable=AsyncMock, return_value=True):
-            assert await _is_safe_url("http://example.com/page") is True
+            assert await is_safe_url("http://example.com/page") is True
 
     @pytest.mark.asyncio
-    async def test_is_safe_url_blocks_file_scheme(self):
+    async def testis_safe_url_blocks_file_scheme(self):
         """file:// scheme should be blocked."""
-        assert await _is_safe_url("file:///etc/passwd") is False
+        assert await is_safe_url("file:///etc/passwd") is False
 
     @pytest.mark.asyncio
-    async def test_is_safe_url_blocks_ftp_scheme(self):
+    async def testis_safe_url_blocks_ftp_scheme(self):
         """ftp:// scheme should be blocked."""
-        assert await _is_safe_url("ftp://example.com/file") is False
+        assert await is_safe_url("ftp://example.com/file") is False
 
     @pytest.mark.asyncio
-    async def test_is_safe_url_blocks_localhost(self):
+    async def testis_safe_url_blocks_localhost(self):
         """localhost should be blocked."""
-        assert await _is_safe_url("http://localhost/admin") is False
-        assert await _is_safe_url("https://localhost:8080/") is False
+        assert await is_safe_url("http://localhost/admin") is False
+        assert await is_safe_url("https://localhost:8080/") is False
 
     @pytest.mark.asyncio
-    async def test_is_safe_url_blocks_127_0_0_1(self):
+    async def testis_safe_url_blocks_127_0_0_1(self):
         """127.0.0.1 should be blocked."""
-        assert await _is_safe_url("http://127.0.0.1/") is False
-        assert await _is_safe_url("http://127.0.0.1:3000/api") is False
+        assert await is_safe_url("http://127.0.0.1/") is False
+        assert await is_safe_url("http://127.0.0.1:3000/api") is False
 
     @pytest.mark.asyncio
-    async def test_is_safe_url_blocks_private_ip_ranges(self):
+    async def testis_safe_url_blocks_private_ip_ranges(self):
         """Private IP ranges should be blocked via DNS resolution."""
         with patch("research_agent.fetch._resolve_and_validate_host", new_callable=AsyncMock, return_value=False):
-            assert await _is_safe_url("http://internal.company.com/") is False
+            assert await is_safe_url("http://internal.company.com/") is False
 
     @pytest.mark.asyncio
-    async def test_is_safe_url_returns_false_for_empty_url(self):
+    async def testis_safe_url_returns_false_for_empty_url(self):
         """Empty URL should return False."""
-        assert await _is_safe_url("") is False
+        assert await is_safe_url("") is False
 
     @pytest.mark.asyncio
-    async def test_is_safe_url_returns_false_for_url_without_host(self):
+    async def testis_safe_url_returns_false_for_url_without_host(self):
         """URL without host should return False."""
-        assert await _is_safe_url("http:///path") is False
+        assert await is_safe_url("http:///path") is False
 
     @pytest.mark.asyncio
-    async def test_is_safe_url_blocks_0_0_0_0(self):
+    async def testis_safe_url_blocks_0_0_0_0(self):
         """0.0.0.0 should be blocked."""
-        assert await _is_safe_url("http://0.0.0.0/") is False
+        assert await is_safe_url("http://0.0.0.0/") is False
 
 
 class TestFetchUrls:
@@ -133,7 +133,7 @@ class TestFetchUrls:
             url="https://example.com"
         )
 
-        with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
+        with patch("research_agent.fetch.is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
                 mock_client.stream = MagicMock(return_value=_make_stream_ctx(mock_response))
@@ -152,7 +152,7 @@ class TestFetchUrls:
         # Don't raise for 403 since it's in SKIP_STATUS_CODES
         mock_response.raise_for_status = MagicMock()
 
-        with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
+        with patch("research_agent.fetch.is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
                 mock_client.stream = MagicMock(return_value=_make_stream_ctx(mock_response))
@@ -167,7 +167,7 @@ class TestFetchUrls:
         """Timeout errors should result in skipped URLs."""
         import httpx
 
-        with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
+        with patch("research_agent.fetch.is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
                 err_ctx = AsyncMock()
@@ -189,7 +189,7 @@ class TestFetchUrls:
             url="https://example.com/doc.pdf"
         )
 
-        with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
+        with patch("research_agent.fetch.is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
                 mock_client.stream = MagicMock(return_value=_make_stream_ctx(mock_response))
@@ -202,7 +202,7 @@ class TestFetchUrls:
     @pytest.mark.asyncio
     async def test_fetch_urls_skips_unsafe_urls(self, mock_httpx_response):
         """Unsafe URLs should be filtered before fetching."""
-        with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=False):
+        with patch("research_agent.fetch.is_safe_url", new_callable=AsyncMock, return_value=False):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
                 mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -222,7 +222,7 @@ class TestFetchUrls:
             content_type="text/html"
         )
 
-        with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
+        with patch("research_agent.fetch.is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
                 mock_client.stream = MagicMock(
@@ -246,7 +246,7 @@ class TestFetchUrls:
         mock_response = mock_httpx_response(status_code=429)
         mock_response.raise_for_status = MagicMock()  # Don't raise for 429
 
-        with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
+        with patch("research_agent.fetch.is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
                 mock_client.stream = MagicMock(return_value=_make_stream_ctx(mock_response))
@@ -266,7 +266,7 @@ class TestFetchUrls:
             url="https://example.com/file.txt"
         )
 
-        with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
+        with patch("research_agent.fetch.is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
                 mock_client.stream = MagicMock(return_value=_make_stream_ctx(mock_response))
@@ -281,7 +281,7 @@ class TestFetchUrls:
         """Connection errors should result in skipped URLs."""
         import httpx
 
-        with patch("research_agent.fetch._is_safe_url", new_callable=AsyncMock, return_value=True):
+        with patch("research_agent.fetch.is_safe_url", new_callable=AsyncMock, return_value=True):
             with patch("research_agent.fetch.httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
                 err_ctx = AsyncMock()

@@ -5,10 +5,10 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 from anthropic import RateLimitError, APIError, APITimeoutError
 
+from research_agent.sanitize import build_context_block
 from research_agent.skeptic import (
     SkepticFinding,
     _count_severity,
-    _build_context_block,
     _build_prior_block,
     _call_skeptic,
     run_skeptic_evidence,
@@ -52,27 +52,27 @@ class TestCountSeverity:
 
 
 class TestBuildContextBlock:
-    """Tests for _build_context_block()."""
+    """Tests for build_context_block() from sanitize module."""
 
     def test_returns_empty_for_none(self):
         """Should return empty string when no context."""
-        assert _build_context_block(None) == ""
+        assert build_context_block(None) == ""
 
     def test_returns_empty_for_empty_string(self):
         """Should return empty string for empty context."""
-        assert _build_context_block("") == ""
+        assert build_context_block("") == ""
 
     def test_wraps_in_xml(self):
         """Should wrap context in research_context XML tags."""
-        result = _build_context_block("Test context")
+        result = build_context_block("Test context")
         assert "<research_context>" in result
         assert "</research_context>" in result
         assert "Test context" in result
 
     def test_passes_pre_sanitized_content(self):
-        """Context is pre-sanitized at load time; _build_context_block passes it through."""
+        """Context is pre-sanitized at load time; build_context_block passes it through."""
         pre_sanitized = "&lt;script&gt;alert('xss')&lt;/script&gt;"
-        result = _build_context_block(pre_sanitized)
+        result = build_context_block(pre_sanitized)
         assert pre_sanitized in result
         assert "<script>" not in result
 

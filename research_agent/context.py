@@ -562,7 +562,7 @@ def _summarize_patterns(passing_critiques: list[dict]) -> str:
         parts.append("All dimensions averaging above 3.5. Maintain current quality.")
 
     summary = " ".join(parts)
-    return summary
+    return sanitize_content(summary)
 
 
 def load_critique_history(

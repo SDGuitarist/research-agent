@@ -3,6 +3,7 @@
 import logging
 import os
 import random
+import threading
 import time
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -33,9 +34,9 @@ MAX_REFINED_WORDS = 10
 MAX_REFINED_OVERLAP = 0.8  # lenient — refinement should relate to original
 
 # Cached TavilyClient instance (avoids re-instantiation per search call)
+_tavily_lock = threading.Lock()
 _tavily_client: object | None = None
 _tavily_client_key: str | None = None
-_tavily_client_class: type | None = None
 
 
 @dataclass(frozen=True)
@@ -116,15 +117,18 @@ def search(query: str, max_results: int = 5) -> list[SearchResult]:
     return results
 
 
-def _get_tavily_client(api_key: str):
-    """Return a cached TavilyClient, creating one if needed."""
-    global _tavily_client, _tavily_client_key, _tavily_client_class
-    from tavily import TavilyClient
-    if _tavily_client is None or _tavily_client_key != api_key or _tavily_client_class is not TavilyClient:
-        _tavily_client = TavilyClient(api_key=api_key)
-        _tavily_client_key = api_key
-        _tavily_client_class = TavilyClient
-    return _tavily_client
+def get_tavily_client(api_key: str):
+    """Return a cached TavilyClient, creating one if needed.
+
+    Thread-safe: guarded by _tavily_lock for concurrent asyncio.to_thread calls.
+    """
+    global _tavily_client, _tavily_client_key
+    with _tavily_lock:
+        from tavily import TavilyClient
+        if _tavily_client is None or _tavily_client_key != api_key:
+            _tavily_client = TavilyClient(api_key=api_key)
+            _tavily_client_key = api_key
+        return _tavily_client
 
 
 def _search_tavily(query: str, max_results: int, api_key: str) -> list[SearchResult]:
@@ -142,7 +146,7 @@ def _search_tavily(query: str, max_results: int, api_key: str) -> list[SearchRes
     Returns:
         List of SearchResult objects
     """
-    client = _get_tavily_client(api_key)
+    client = get_tavily_client(api_key)
 
     response = client.search(
         query=query,

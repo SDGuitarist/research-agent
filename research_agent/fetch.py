@@ -208,7 +208,7 @@ async def _resolve_and_validate_host(
         return False
 
 
-async def _is_safe_url(
+async def is_safe_url(
     url: str, dns_cache: dict[str, bool] | None = None,
 ) -> bool:
     """
@@ -258,7 +258,7 @@ async def _fetch_single(
     Uses streaming to enforce response size limits before reading into memory.
     """
     # Pre-flight SSRF check on the original URL
-    if not await _is_safe_url(url, dns_cache=dns_cache):
+    if not await is_safe_url(url, dns_cache=dns_cache):
         return None
 
     async with semaphore:
@@ -272,7 +272,7 @@ async def _fetch_single(
                         if not location:
                             return None
                         redirect_url = str(response.url.join(location))
-                        if not await _is_safe_url(redirect_url, dns_cache=dns_cache):
+                        if not await is_safe_url(redirect_url, dns_cache=dns_cache):
                             logger.warning(
                                 "Blocked redirect to unsafe URL: %s", redirect_url
                             )
@@ -370,7 +370,14 @@ async def fetch_urls(
     transport = httpx.AsyncHTTPTransport(
         limits=httpx.Limits(max_connections=max_concurrent),
     )
-    # Pin DNS resolution at TCP connect time to prevent DNS rebinding
+    # Pin DNS resolution at TCP connect time to prevent DNS rebinding.
+    # Pre-check: httpx internals may change across versions — fail loudly.
+    if not hasattr(transport, '_pool') or not hasattr(transport._pool, '_network_backend'):
+        raise RuntimeError(
+            f"httpx {httpx.__version__} internals changed: "
+            "transport._pool._network_backend not found. "
+            "SSRF protection cannot be applied. Pin httpx to a compatible version."
+        )
     transport._pool._network_backend = _SSRFSafeBackend()  # noqa: SLF001
 
     async with httpx.AsyncClient(

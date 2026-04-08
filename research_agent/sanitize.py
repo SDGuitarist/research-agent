@@ -17,6 +17,7 @@ def sanitize_content(text: str) -> str:
     Normalizes any pre-escaped HTML entities before re-escaping, so
     double-sanitization no longer causes corruption (& → &amp; → &amp;amp;).
     """
+    text = text.replace("\x00", "")
     normalized = html.unescape(text)
     return normalized.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 

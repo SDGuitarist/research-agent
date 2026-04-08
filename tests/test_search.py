@@ -4,6 +4,7 @@ import os
 import pytest
 from unittest.mock import patch, MagicMock
 
+import research_agent.search as _search_mod
 from research_agent.search import (
     search,
     _search_tavily,
@@ -12,6 +13,16 @@ from research_agent.search import (
     SearchResult,
 )
 from research_agent.errors import SearchError
+
+
+@pytest.fixture(autouse=True)
+def _reset_tavily_cache():
+    """Reset the Tavily client cache between tests to prevent cross-test leakage."""
+    _search_mod._tavily_client = None
+    _search_mod._tavily_client_key = None
+    yield
+    _search_mod._tavily_client = None
+    _search_mod._tavily_client_key = None
 
 
 class TestSearch:

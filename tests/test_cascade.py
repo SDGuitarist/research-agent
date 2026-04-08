@@ -6,6 +6,19 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 import httpx
 
+import research_agent.search as _search_mod
+
+
+@pytest.fixture(autouse=True)
+def _reset_tavily_cache():
+    """Reset the Tavily client cache between tests to prevent cross-test leakage."""
+    _search_mod._tavily_client = None
+    _search_mod._tavily_client_key = None
+    yield
+    _search_mod._tavily_client = None
+    _search_mod._tavily_client_key = None
+
+
 from research_agent.cascade import (
     cascade_recover,
     _fetch_via_jina,
@@ -547,12 +560,12 @@ class TestCascadeRecover:
             _make_search_result("https://private.example.com", snippet="Private snippet " * 5),
         ]
 
-        async def mock_is_safe_url(url, dns_cache=None):
+        async def mockis_safe_url(url, dns_cache=None):
             return url != "https://private.example.com"
 
         with patch("research_agent.cascade._fetch_via_jina", mock_jina), \
              patch("research_agent.cascade._fetch_via_tavily_extract", mock_tavily), \
-             patch("research_agent.cascade._is_safe_url", side_effect=mock_is_safe_url):
+             patch("research_agent.cascade.is_safe_url", side_effect=mockis_safe_url):
             results = await cascade_recover(
                 ["https://safe.example.com", "https://private.example.com"],
                 all_results,

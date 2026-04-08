@@ -17,8 +17,8 @@ from tavily.errors import (
 )
 
 from .extract import ExtractedContent
-from .fetch import ALLOWED_SCHEMES, BLOCKED_HOSTS, _is_safe_url
-from .search import SearchResult, _get_tavily_client
+from .fetch import ALLOWED_SCHEMES, BLOCKED_HOSTS, is_safe_url
+from .search import SearchResult, get_tavily_client
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ async def _filter_forwardable_urls(urls: list[str]) -> list[str]:
         return []
 
     checks = await asyncio.gather(
-        *[_is_safe_url(url, dns_cache=dns_cache) for url in candidates]
+        *[is_safe_url(url, dns_cache=dns_cache) for url in candidates]
     )
     return [url for url, is_safe in zip(candidates, checks) if is_safe]
 
@@ -197,7 +197,7 @@ async def _fetch_via_tavily_extract(
         return []
 
     try:
-        client = _get_tavily_client(tavily_key)
+        client = get_tavily_client(tavily_key)
         result = await asyncio.to_thread(client.extract, urls=urls[:20])
 
         contents = []
