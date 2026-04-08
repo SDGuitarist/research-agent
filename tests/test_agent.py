@@ -2488,13 +2488,13 @@ class TestUrlsFromEvaluation:
         urls = ResearchAgent._urls_from_evaluation(evaluation)
         assert urls == {"https://a.com", "https://b.com", "https://c.com"}
 
-    def test_extracts_from_dict_dropped(self):
-        """Should extract URLs from dict-typed dropped sources."""
+    def test_extracts_from_multiple_dropped(self):
+        """Should extract URLs from multiple dropped SourceScore objects."""
         surviving = (
             Summary(url="https://a.com", title="A", summary="A"),
         )
         dropped = (
-            {"url": "https://d.com", "title": "D", "score": 1},
+            SourceScore(url="https://d.com", title="D", score=1, explanation="Bad"),
         )
         evaluation = RelevanceEvaluation(
             decision="short_report",
@@ -2515,7 +2515,7 @@ class TestUrlsFromEvaluation:
             Summary(url="https://a.com", title="A", summary="A"),
         )
         dropped = (
-            {"url": "", "title": "Empty"},
+            SourceScore(url="", title="Empty", score=1, explanation="Bad"),
         )
         evaluation = RelevanceEvaluation(
             decision="full_report",

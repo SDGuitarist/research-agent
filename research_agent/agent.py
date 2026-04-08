@@ -16,14 +16,14 @@ from .fetch import fetch_urls
 from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all, Summary
 from .synthesize import synthesize_report, synthesize_draft, synthesize_final, synthesize_mini_report
-from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore
+from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore, compute_gate_decision
 from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_critique_history, new_context_cache, auto_detect_context, CONTEXTS_DIR
 from .context_result import ContextResult, ContextStatus
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .coverage import identify_coverage_gaps
-from .errors import ResearchError, SearchError, SkepticError, StateError, IterationError, SynthesisError, VagueQueryError
+from .errors import ResearchError, SearchError, SkepticError, StateError, IterationError, SynthesisError, VagueQueryError, GateDecision
 from .query_validation import check_query_vagueness
 from .critique import evaluate_report, save_critique, CritiqueResult
 from .iterate import generate_refined_queries, generate_followup_questions
@@ -174,7 +174,7 @@ class ResearchAgent:
                 updated_gaps.append(gap)
                 continue
 
-            if decision in ("full_report", "short_report"):
+            if decision in (GateDecision.FULL_REPORT, GateDecision.SHORT_REPORT):
                 new_gap = mark_verified(gap)
                 if gap.status != new_gap.status:
                     log_flip(
@@ -183,7 +183,7 @@ class ResearchAgent:
                         reason=f"Research completed: {decision}",
                     )
                 updated_gaps.append(new_gap)
-            elif decision == "no_new_findings":
+            elif decision == GateDecision.NO_NEW_FINDINGS:
                 new_gap = mark_checked(gap)
                 updated_gaps.append(new_gap)
                 logger.info("Gap '%s' checked (no new findings)", gap.id)
@@ -231,21 +231,13 @@ class ResearchAgent:
 
     @staticmethod
     def _urls_from_evaluation(evaluation: RelevanceEvaluation) -> set[str]:
-        """Extract all URLs from an evaluation result (surviving + dropped).
-
-        Handles both SourceScore objects and dicts in dropped_sources
-        (aggregation may produce either type).
-        """
+        """Extract all URLs from an evaluation result (surviving + dropped)."""
         urls: set[str] = set()
         for src in evaluation.surviving_sources:
             urls.add(src.url)
         for src in evaluation.dropped_sources:
-            if isinstance(src, dict):
-                url = src.get("url", "")
-            else:
-                url = getattr(src, "url", "")
-            if url:
-                urls.add(url)
+            if src.url:
+                urls.add(src.url)
         return urls
 
     async def _run_iteration(
@@ -773,19 +765,9 @@ class ResearchAgent:
         total_survived = evaluation.total_survived + retry_eval.total_survived
 
         # Determine combined decision using mode thresholds
-        mode = self.mode
-        if total_survived >= mode.min_sources_full_report:
-            decision = "full_report"
-            rationale = f"{total_survived}/{total_scored} sources passed after retry merge"
-        elif total_survived >= mode.min_sources_short_report:
-            decision = "short_report"
-            rationale = f"{total_survived}/{total_scored} sources passed after retry merge (below full threshold)"
-        elif total_scored > 0 and total_survived == 0:
-            decision = "no_new_findings"
-            rationale = f"All {total_scored} sources below cutoff after retry"
-        else:
-            decision = "insufficient_data"
-            rationale = f"Only {total_survived}/{total_scored} sources passed after retry"
+        decision, rationale = compute_gate_decision(
+            total_survived, total_scored, self.mode, context="after retry merge",
+        )
 
         logger.info("Merged decision: %s (%d/%d sources passed)", decision, total_survived, total_scored)
 
@@ -821,7 +803,7 @@ class ResearchAgent:
         )
 
         # Coverage gap retry for insufficient_data or short_report
-        if not self.mode.is_quick and evaluation.decision in ("insufficient_data", "short_report"):
+        if not self.mode.is_quick and evaluation.decision in (GateDecision.INSUFFICIENT_DATA, GateDecision.SHORT_REPORT):
             retry_result = await self._try_coverage_retry(
                 query, summaries, evaluation,
                 tried_queries or [],
@@ -831,11 +813,11 @@ class ResearchAgent:
                 summaries, evaluation = retry_result
 
         # Branch based on relevance gate decision
-        if evaluation.decision in ("insufficient_data", "no_new_findings"):
+        if evaluation.decision in (GateDecision.INSUFFICIENT_DATA, GateDecision.NO_NEW_FINDINGS):
             self._last_source_count = 0
             self._last_gate_decision = evaluation.decision
-            if evaluation.decision == "no_new_findings" and self.schema_path and self._current_research_batch:
-                self._update_gap_states("no_new_findings")
+            if evaluation.decision == GateDecision.NO_NEW_FINDINGS and self.schema_path and self._current_research_batch:
+                self._update_gap_states(evaluation.decision)
             self._next_step("Generating insufficient data response...")
             return await generate_insufficient_data_response(
                 query=query,
@@ -851,7 +833,7 @@ class ResearchAgent:
         self._last_source_count = len(evaluation.surviving_sources)
         self._last_gate_decision = evaluation.decision
         logger.info("Synthesizing report with %s...", self.mode.model)
-        limited_sources = evaluation.decision == "short_report"
+        limited_sources = evaluation.decision == GateDecision.SHORT_REPORT
         surviving = evaluation.surviving_sources
         dropped_count = len(evaluation.dropped_sources)
         total_count = evaluation.total_scored
@@ -939,7 +921,7 @@ class ResearchAgent:
         iteration_sources_added = 0
         if (self.mode.iteration_enabled
                 and not self._skip_iteration
-                and evaluation.decision in ("full_report", "short_report")):
+                and evaluation.decision in (GateDecision.FULL_REPORT, GateDecision.SHORT_REPORT)):
             try:
                 result, iteration_sources_added = await asyncio.wait_for(
                     self._run_iteration(query, result, evaluation),

@@ -52,6 +52,7 @@ class TestAll:
             "ReportTemplate",
             "ResearchAgent",
             "ResearchError",
+            "GateDecision",
             "ResearchMode",
             "ResearchResult",
             "critique_report_file",

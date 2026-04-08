@@ -19,8 +19,8 @@ class ResearchResult:
         mode: The research mode name (quick/standard/deep).
         sources_used: Number of sources that contributed to the report
             (survived the relevance gate).
-        status: Gate decision — "full_report", "short_report",
-                "insufficient_data", or "no_new_findings".
+        status: Gate decision (GateDecision enum value) — "full_report",
+                "short_report", "insufficient_data", or "no_new_findings".
         critique: Self-critique result, or None if critique was skipped
             (quick mode) or failed.
     """

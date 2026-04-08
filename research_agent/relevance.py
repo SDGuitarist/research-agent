@@ -10,6 +10,7 @@ import asyncio
 from anthropic import AsyncAnthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
 from .api_helpers import retry_api_call, process_in_batches
+from .errors import GateDecision
 from .summarize import Summary
 from .modes import DEFAULT_MODEL, ResearchMode
 from .sanitize import sanitize_content
@@ -43,10 +44,10 @@ class SourceScore:
 @dataclass(frozen=True)
 class RelevanceEvaluation:
     """Result of evaluating all sources against the research query."""
-    decision: str
+    decision: GateDecision
     decision_rationale: str
     surviving_sources: tuple[Summary, ...]
-    dropped_sources: tuple  # tuple of SourceScore or dicts from aggregation
+    dropped_sources: tuple[SourceScore, ...]
     total_scored: int
     total_survived: int
     refined_query: str | None
@@ -66,6 +67,54 @@ def _build_instruction_list(include_surviving: bool) -> str:
             "6. Mentions the relevant source(s) listed above that the user may want to investigate directly"
         )
     return "\n".join(instructions)
+
+
+def compute_gate_decision(
+    survived: int,
+    total: int,
+    mode: ResearchMode,
+    context: str = "",
+) -> tuple[GateDecision, str]:
+    """Compute the gate decision and rationale from source counts and mode thresholds.
+
+    Args:
+        survived: Number of sources that passed the relevance cutoff.
+        total: Total number of sources scored.
+        mode: ResearchMode with threshold configuration.
+        context: Optional suffix appended to rationale (e.g. "after retry merge").
+
+    Returns:
+        (decision, rationale) tuple.
+    """
+    suffix = f" {context}" if context else ""
+
+    if survived >= mode.min_sources_full_report:
+        decision = GateDecision.FULL_REPORT
+        rationale = (
+            f"{survived} of {total} sources scored >= {mode.relevance_cutoff}, "
+            f"meeting threshold for full report in {mode.name} mode{suffix}"
+        )
+    elif survived >= mode.min_sources_short_report:
+        decision = GateDecision.SHORT_REPORT
+        rationale = (
+            f"{survived} of {total} sources scored >= {mode.relevance_cutoff}, "
+            f"below full report threshold ({mode.min_sources_full_report}) but above minimum ({mode.min_sources_short_report}) "
+            f"for {mode.name} mode — generating short report with disclaimer{suffix}"
+        )
+    elif total > 0 and survived == 0:
+        decision = GateDecision.NO_NEW_FINDINGS
+        rationale = (
+            f"All {total} sources scored below {mode.relevance_cutoff}, "
+            f"suggesting no new relevant information is publicly available{suffix}"
+        )
+    else:
+        decision = GateDecision.INSUFFICIENT_DATA
+        rationale = (
+            f"Only {survived} of {total} sources scored >= {mode.relevance_cutoff}, "
+            f"below minimum threshold ({mode.min_sources_short_report}) for {mode.name} mode{suffix}"
+        )
+
+    return decision, rationale
 
 
 def _extract_domain(url: str) -> str:
@@ -293,7 +342,7 @@ async def evaluate_sources(
     """
     if not summaries:
         return RelevanceEvaluation(
-            decision="insufficient_data",
+            decision=GateDecision.INSUFFICIENT_DATA,
             decision_rationale="No summaries to evaluate",
             surviving_sources=(),
             dropped_sources=(),
@@ -353,31 +402,7 @@ async def evaluate_sources(
     total_survived = total_scored - len(dropped_sources)
 
     # Determine decision based on mode thresholds
-    if total_survived >= mode.min_sources_full_report:
-        decision = "full_report"
-        rationale = (
-            f"{total_survived} of {total_scored} sources scored >= {mode.relevance_cutoff}, "
-            f"meeting threshold for full report in {mode.name} mode"
-        )
-    elif total_survived >= mode.min_sources_short_report:
-        decision = "short_report"
-        rationale = (
-            f"{total_survived} of {total_scored} sources scored >= {mode.relevance_cutoff}, "
-            f"below full report threshold ({mode.min_sources_full_report}) but above minimum ({mode.min_sources_short_report}) "
-            f"for {mode.name} mode — generating short report with disclaimer"
-        )
-    elif total_scored > 0 and total_survived == 0:
-        decision = "no_new_findings"
-        rationale = (
-            f"All {total_scored} sources scored below {mode.relevance_cutoff}, "
-            f"suggesting no new relevant information is publicly available"
-        )
-    else:
-        decision = "insufficient_data"
-        rationale = (
-            f"Only {total_survived} of {total_scored} sources scored >= {mode.relevance_cutoff}, "
-            f"below minimum threshold ({mode.min_sources_short_report}) for {mode.name} mode"
-        )
+    decision, rationale = compute_gate_decision(total_survived, total_scored, mode)
 
     logger.info("Decision: %s (%d/%d sources passed)", decision, total_survived, total_scored)
 

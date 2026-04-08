@@ -1,7 +1,22 @@
 """Custom exceptions and shared constants for the research agent."""
 
+from enum import StrEnum
+
+from anthropic import APIError, RateLimitError, APIConnectionError, APITimeoutError
+
 # Timeout for Anthropic API calls (seconds)
 ANTHROPIC_TIMEOUT = 30.0
+
+# Shared exception tuple for Anthropic API errors — use in except clauses
+ANTHROPIC_ERRORS = (APIError, RateLimitError, APIConnectionError, APITimeoutError)
+
+
+class GateDecision(StrEnum):
+    """Gate decision for the relevance evaluation pipeline."""
+    FULL_REPORT = "full_report"
+    SHORT_REPORT = "short_report"
+    INSUFFICIENT_DATA = "insufficient_data"
+    NO_NEW_FINDINGS = "no_new_findings"
 
 
 class ResearchError(Exception):

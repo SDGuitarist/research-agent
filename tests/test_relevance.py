@@ -11,12 +11,14 @@ from research_agent.relevance import (
     evaluate_sources,
     generate_insufficient_data_response,
     _fallback_insufficient_response,
+    compute_gate_decision,
     SourceScore,
     RelevanceEvaluation,
     BATCH_SIZE,
     RATE_LIMIT_BACKOFF,
     SNIPPET_SCORE_CAP,
 )
+from research_agent.errors import GateDecision
 from research_agent.summarize import Summary
 from research_agent.modes import ResearchMode
 
@@ -1343,3 +1345,43 @@ class TestSurvivingSourcesInResponse:
         result = _fallback_insufficient_response("test query", None, dropped)
 
         assert "too few for a full report" not in result
+
+
+class TestComputeGateDecision:
+    """Tests for compute_gate_decision()."""
+
+    def test_full_report(self):
+        """Should return FULL_REPORT when survived >= min_sources_full_report."""
+        mode = ResearchMode.standard()
+        decision, rationale = compute_gate_decision(5, 8, mode)
+        assert decision == GateDecision.FULL_REPORT
+        assert "full report" in rationale
+        assert str(mode.relevance_cutoff) in rationale
+
+    def test_short_report(self):
+        """Should return SHORT_REPORT when survived is between min thresholds."""
+        mode = ResearchMode.standard()
+        decision, rationale = compute_gate_decision(2, 8, mode)
+        assert decision == GateDecision.SHORT_REPORT
+        assert "short report" in rationale
+
+    def test_no_new_findings(self):
+        """Should return NO_NEW_FINDINGS when all sources scored below cutoff."""
+        mode = ResearchMode.standard()
+        decision, rationale = compute_gate_decision(0, 5, mode)
+        assert decision == GateDecision.NO_NEW_FINDINGS
+        assert "no new relevant" in rationale
+
+    def test_insufficient_data(self):
+        """Should return INSUFFICIENT_DATA when survived is below minimum."""
+        mode = ResearchMode.deep()
+        decision, rationale = compute_gate_decision(1, 10, mode)
+        assert decision == GateDecision.INSUFFICIENT_DATA
+        assert "below minimum" in rationale
+
+    def test_context_suffix_appended(self):
+        """Context string should be appended to the rationale."""
+        mode = ResearchMode.standard()
+        decision, rationale = compute_gate_decision(5, 8, mode, context="after retry merge")
+        assert decision == GateDecision.FULL_REPORT
+        assert rationale.endswith("after retry merge")
