@@ -129,17 +129,17 @@ Examples:
     mode_group.add_argument(
         "--quick",
         action="store_true",
-        help="Quick mode: 3 sources, ~300 words (~$0.12)",
+        help="Quick mode: 4 sources, ~300 words (~$0.12)",
     )
     mode_group.add_argument(
         "--standard",
         action="store_true",
-        help="Standard mode: 7 sources, ~1000 words (~$0.20), auto-saves [default]",
+        help="Standard mode: 10 sources, ~2000 words (~$0.45), auto-saves [default]",
     )
     mode_group.add_argument(
         "--deep",
         action="store_true",
-        help="Deep mode: 10+ sources, 2 passes, ~2000 words (~$0.50), auto-saves",
+        help="Deep mode: 12 sources, 2 passes, ~3500 words (~$0.95), auto-saves",
     )
 
     parser.add_argument(
