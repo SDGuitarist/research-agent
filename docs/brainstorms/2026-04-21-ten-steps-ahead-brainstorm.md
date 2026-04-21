@@ -143,6 +143,15 @@ The existing C29-31 roadmap and the "10 steps ahead" proposal are **complementar
 
 ## Part 5: Recommended Path — Three Horizons
 
+### Invariants (must not change across all horizons)
+
+- All 1040+ existing tests pass after every cycle
+- Existing CLI flags and MCP tools work unchanged
+- Existing context files (`contexts/pfe.md`) work without modification
+- No PFE-specific logic enters the engine code
+- Additive pattern: new modules layer on, never change downstream module interfaces
+- Report format remains backward compatible (new markers like `[Disputed]` are additive)
+
 ### Horizon 1: Complete the Foundation (C29-31, ~11 sessions)
 
 **What:** Finish the entropy roadmap as planned.
@@ -167,9 +176,21 @@ The existing C29-31 roadmap and the "10 steps ahead" proposal are **complementar
 | **34** | **Research memory that compounds** — persistent knowledge graph queried at the start of every new run | 6 | 60% | **Moved up from C35.** Highest workflow impact — the agent gets smarter over time. Ships after C33 so memory stores confidence-scored claims from day one (no migration). |
 | **35** | **Adaptive mid-flight re-planning** — agent adjusts strategy based on evidence quality mid-run | 6 | 65% | **Moved to last.** Highest risk, most internal. Benefits from all prior infrastructure. Confidence data (C33) + research memory (C34) give the planner maximum information. |
 
-**Key finding from dependency analysis:** C32-35 are mostly independent of each other (all depend on C29, not on each other). The one real dependency within H2: C33's confidence data significantly improves C34's memory quality and C35's planning decisions. C35 (adaptive planning) is highest risk and should ship last.
+**H2 dependency chain:** C32-35 form a real sequential dependency, not a parallel set:
 
-**"Only ship 2" pick:** If time-constrained, ship C32 (counter-search) + C33 (confidence scoring). Counter-search is the moat; confidence scoring makes reports auditable. Together they create the epistemic rigor that no competitor has.
+```
+C29 → C32 (needs skeptic severity markers to prioritize claims)
+     → C33 (needs C32's counter_evidence flag on ClaimConfidence)
+       → C34 (needs C33's structured claims to store; without them, stores raw text)
+         → C35 (needs C33's confidence_spread + C34's prior knowledge for planning)
+```
+
+C35 (adaptive planning) also overlaps existing `iterate.py` and `coverage.py` — both already do post-synthesis gap analysis and query refinement. C35 generalizes these from "one retry" to "continuous adaptive loop," which means it is not an isolated module addition.
+
+**"Only ship 2" — two different answers depending on the goal:**
+
+- **Moat pair (C32 + C33):** Counter-search + confidence scoring. These are the capabilities no competitor has. Together they make every report adversarially verified and epistemically auditable. Best for differentiation.
+- **Workflow pair (C33 + C34):** Confidence scoring + research memory. These create a compounding feedback loop — confidence-scored claims are stored, next run queries them, agent focuses on uncertain areas. Best for the PFE competitive intelligence use case where the same topics are researched repeatedly.
 
 **Why these four first:**
 - They're all **epistemic** — they make the agent's thinking better, not just its output prettier
@@ -197,7 +218,7 @@ See Appendix B for full cycle specs (acceptance criteria, dependencies, design n
 - **5 core roles:** Coordinator, Domain Expert ×N, Contrarian, Verifier, Editor + 2 optional (Temporal Analyst, Context Specialist)
 - **Communication:** Phased blackboard (in-memory dict), reads only at phase boundaries. Same async pattern as `skeptic.py`
 - **Minimum viable swarm (MVS):** 4 roles — Coordinator + 2 Domain Experts + Editor. Proves parallel facet research before adding adversarial roles
-- **Skeptic gets distributed:** Evidence lens → Verifier, timing lens → Temporal Analyst, frame lens → Contrarian
+- **Skeptic in MVS: unified post-synthesis pass preserved.** The current `skeptic.py` three-lens pass runs after synthesis. The MVS keeps this unchanged — distributing skeptic lenses across swarm roles (evidence→Verifier, timing→Temporal, frame→Contrarian) is a later evolution (C39b+) that requires validating whether separated lenses maintain the same adversarial quality as the combined pass
 - **Shared spec:** ~130 lines (within sandbox validated range). Three sections: data contracts, phase contracts, behavioral contracts
 - **7+ agent boundary:** Max depth 6 with parallel Contrarian + Temporal. Never exceed 7 without isolated experiment
 
@@ -213,7 +234,7 @@ See Appendix B for full cycle specs (acceptance criteria, dependencies, design n
 | Dimension | Deep Research Max | Your Agent (After H1-H3) |
 |-----------|------------------|--------------------------|
 | **Epistemic integrity** | Unverified — no adversarial self-check | Triple-verified: skeptic → counter-search → confidence scoring |
-| **Learning** | Stateless — every run starts from zero | Compounds — knowledge graph grows with every query |
+| **Learning** | Stateless — every run starts from zero | Compounds — knowledge store grows with every query |
 | **Transparency** | Streams thinking but doesn't persist or structure it | Persistent reasoning trace + per-claim confidence levels |
 | **Source quality** | Unstated | Five-layer gate: vague detection → relevance scoring → source tiers → diversity gate → skeptic |
 | **Conflict resolution** | Unstated | Explicit protocol: when sources contradict, report both + evidence strength |
@@ -223,7 +244,7 @@ See Appendix B for full cycle specs (acceptance criteria, dependencies, design n
 | **Multi-agent** | Single agent, extended compute | Specialist swarm with adversarial tension between roles |
 | **Customization** | MCP tool definitions | Context profiles (tone, domains, gaps) + MCP + per-task temperature tuning |
 
-**The core thesis:** Google's advantage is scale (search index, compute budget, Gemini). Your advantage is *epistemic rigor* — the agent actively tries to be wrong and corrects itself. That's a moat that more compute doesn't close.
+**The core thesis:** Google's advantage is scale (search index, compute budget, Gemini). Your advantage is *epistemic rigor* — adversarial verification, per-claim confidence scoring, and auditability. This is a positioning advantage, not a permanent moat: it holds as long as commercial incentives discourage competitors from adding self-doubt to their reports. The structural defense is that adversarial verification is woven through the pipeline (not bolted on), making it costly to replicate without rearchitecting.
 
 ---
 
@@ -239,7 +260,7 @@ The agent is already positioned correctly:
 
 - **Engine (31 modules, 1040 tests):** 100% generic — no PFE-specific logic anywhere in the code
 - **Business specificity:** Lives entirely in `contexts/pfe.md` — a 278-line YAML+markdown context profile that injects blocked domains, extract domains, synthesis tone, report templates, and full business context into prompts
-- **Design pattern:** Drop a new `.md` file in `contexts/` and the agent becomes specialized for any domain
+- **Design pattern:** A context package (`.md` file in `contexts/` plus optional auxiliary YAML files for gaps, memory, sources) specializes the agent for any domain
 
 The engine doesn't know about Pacific Flow, weddings, or San Diego. It knows about searching, filtering, verifying, and synthesizing. Context files tell it *what to care about*.
 
@@ -260,23 +281,29 @@ Current `ContextProfile` has 4 fields (`blocked_domains`, `extract_domains`, `ga
 
 | Horizon | New Fields | Pattern |
 |---------|-----------|---------|
-| **H1 (C29-31)** | `preferred_sources`, `evidence_tier_overrides`, `skeptic_focus` | Inline YAML — simple lists and key-value pairs |
-| **H2 (C32-35)** | `knowledge_graph`, `source_config` | File-path references — complex subsystems live in separate YAML files |
-| **H3 (C36-39)** | `swarm_roles` | File-path reference — role definitions with system prompts and search strategies |
+| **H1 (C29-31)** | `evidence_tier_overrides`, `skeptic_focus` | Inline YAML — simple lists and key-value pairs |
+| **H2 (C32-35)** | `confidence_flag_threshold` (inline), `knowledge_store` (file-path) | Inline int + directory reference for persistent memory |
+| **H3 (C36-39)** | `source_config` (file-path), `swarm_roles` (file-path) | File-path references — complex subsystems live in separate YAML files |
 
-**Final field count: 10** (4 existing + 3 H1 + 2 H2 + 1 H3). All default to empty — zero migration needed. Existing `pfe.md` works untouched at every horizon.
+**Final field count: 10** (4 existing + 2 H1 + 2 H2 + 2 H3). All default to empty/zero — zero migration needed. Existing `pfe.md` works untouched at every horizon.
+
+**Dropped from earlier proposal:** `preferred_sources` — Cycle 24 explicitly rejected `preferred_domains` because +0.5 on int scores with int cutoff is a no-op. The same issue applies unless the scoring model changes. If C29's score-aware refinement creates a real mechanism for source preference, the field can be added then. `source_config` moved from H2 to H3 because no H2 cycle consumes it (multi-source fusion is C38).
 
 **The complexity boundary:** If data is declarative, static, and fits in a YAML list → inline. If data is procedural, mutable, or has internal structure → file-path reference.
+
+**Path governance rules:**
+1. **One-hop only.** A context profile references auxiliary files directly. Auxiliary files must not reference further files (no chained references).
+2. **Shared validation.** All file-path fields use the same two-layer defense from Cycle 24: character rejection (no `..`, no absolute paths, no null bytes) at parse time + `resolve()` + `is_relative_to(project_root)` containment at runtime.
+3. **Read-only vs read/write.** `gap_schema`, `source_config`, `swarm_roles` are read-only — the engine never modifies them. `knowledge_store` is the only writable path. It points to a directory (not a file) where the engine appends per-run JSON entries via `atomic_write()`.
+4. **Writable path containment.** `knowledge_store` directories must resolve inside the project root. The engine creates the directory if it doesn't exist but never writes outside it. Per-context isolation (`knowledge_store: memory/pfe`) prevents cross-context data leakage.
 
 **Directory layout after H2:**
 ```
 contexts/          # context profiles (read-only)
   pfe.md, agm.md, venue-intel.md, general.md
-memory/            # knowledge graphs (read/write, C34)
-  pfe.yaml
-sources/           # source configs (read-only, C38)
-  pfe.yaml
-gaps/              # gap schemas (existing)
+memory/            # knowledge stores (read/write, C34)
+  pfe/             # per-context scoped directory of JSON entries
+gaps/              # gap schemas (read-only, existing)
   pfe.yaml
 ```
 
@@ -329,7 +356,7 @@ Full analysis in Appendix A. Key findings:
 |-----------|--------|--------|------------|----------------|------------------------|
 | Adversarial verification | None | None | None | Same-frame review | **Three-lens + counter-search** |
 | Evidence provenance | None | None | Source-level | None | **Per-claim tier labeling** |
-| Cross-session memory | None | None | None | None | **Gap schema + knowledge graph** |
+| Cross-session memory | None | None | None | None | **Gap schema + knowledge store** |
 | Prompt injection defense | Unstated | Acknowledged | Unstated | None | **Three-layer defense** |
 | Search coverage | Full Google index | Web browsing | Multi-source | Any provider | Tavily + DDG (expandable) |
 | Visualization | Native charts | None | None | PDF/DOCX | Planned (C37) |
@@ -352,15 +379,18 @@ H2 is larger than initially estimated (23 sessions vs ~22, ~1135 lines vs ~800) 
 
 ## Feed-Forward
 
-- **Hardest decision:** H2 ordering. The original proposal assumed a linear chain (C32→C33→C34→C35). Research proved they're mostly independent — all depend on C29, not each other. Reordered by impact: counter-search first (quick win), confidence scoring second (data model), memory third (compounds), adaptive planning last (highest risk).
-- **Rejected alternatives:** (1) Scrapping C29-31 to jump to swarm — too fragile without epistemic foundation. (2) Visualization first for demo value — cosmetic without evidence graph. (3) PFE-specific tool — locks out other projects. (4) Interleaving H2 with H1 — dependency chain is real. (5) Research memory before confidence scoring — would store unstructured data and need migration later. (6) LLM-driven adaptive planning — explicit rules are deterministic, testable, and cheaper. (7) SQLite for knowledge store — codebase has zero database dependencies; flat JSON files match existing patterns.
-- **Least confident:** Adaptive planning (C35, 65% confidence). Replacing the fixed two-pass search in `_research_deep()` with a dynamic loop is the riskiest refactor. The decision rules are heuristic and may need tuning after real-world use. Also: `ContextProfile` growing from 4 to 10 fields — the "5-minute context test" simplicity constraint should prevent this from becoming unwieldy, but needs validation.
+- **Hardest decision:** H2 ordering. The chain C29→C32→C33→C34→C35 is a real sequential dependency (each cycle's output feeds the next), not a parallel set. Ordered by dependency + risk: counter-search first (lowest risk, extends existing skeptic), confidence scoring second (builds data model), memory third (stores structured data), adaptive planning last (highest risk, overlaps existing iterate/coverage logic).
+- **Rejected alternatives:** (1) Scrapping C29-31 to jump to swarm — too fragile without epistemic foundation. (2) Visualization first for demo value — cosmetic without evidence graph. (3) PFE-specific tool — locks out other projects. (4) Research memory before confidence scoring — would store unstructured data and need migration later. (5) LLM-driven adaptive planning — explicit rules are deterministic, testable, and cheaper. (6) SQLite for knowledge store — codebase has zero database dependencies. (7) Distributing skeptic across swarm roles in MVS — unvalidated; keep unified post-synthesis pass. (8) `preferred_sources` on ContextProfile — same no-op as C24's `preferred_domains`.
+- **Least confident (ranked):**
+  1. **Search coverage dependency** — the entire epistemic rigor thesis sits on top of Tavily + DuckDuckGo results. If coverage is thin, adversarial verification operates on an incomplete evidence base. Partially mitigated by C38 (Exa), but structurally unfixable without a search index. C33 should include a "coverage confidence" dimension.
+  2. **Adaptive planning (C35, 65% confidence)** — replacing `_research_deep()`'s fixed two-pass with a dynamic loop is the riskiest refactor, and it overlaps existing `iterate.py`/`coverage.py` logic that must be carefully reconciled, not duplicated.
+  3. **Confidence extraction prompt (C33)** — asking Claude to score its own claims is metacognitive and less studied than evidence-tier labeling. Plan phase needs to prototype with 5 real reports.
 
 ## Three Questions
 
-1. **Hardest decision in this session?** H2 cycle ordering. Five agents produced competing recommendations: the scoping agent assumed C32→C33→C34→C35 (dependency-based), the priority agent recommended C33→C35→C32→C34 (impact-based). Reconciled by recognizing the dependency chain is real for data model quality (confidence before memory) but the original "adversarial first" ordering was also valid. Final: C32→C33→C34→C35 with C34/C35 swapped (memory before adaptive planning).
-2. **What did you reject, and why?** Building the swarm as a rewrite of the pipeline. The swarm architecture research showed the right approach is to parallelize the middle and distribute the skeptic — not replace the pipeline. The existing modules (`search.py`, `fetch.py`, `extract.py`, `summarize.py`) become the sub-pipeline each Domain Expert runs. No module rewrites needed.
-3. **Least confident about going into the next phase?** Two things: (a) Confidence extraction prompt (C33, H2-8) — asking Claude to score its own claims' confidence is metacognitive and less studied than evidence-tier labeling. Plan phase needs to prototype with 5 real reports. (b) The `query_knowledge()` matching in C34 — simple word overlap may produce false positives. Plan phase needs to evaluate whether an LLM relevance check is needed (adds cost).
+1. **Hardest decision in this session?** H2 cycle ordering. Five agents produced competing recommendations. Reconciled by verifying the actual code: C32-35 form a real dependency chain (each cycle's data model feeds the next), not a parallel set as initially claimed. The chain C29→C32→C33→C34→C35 is load-bearing.
+2. **What did you reject, and why?** (a) `preferred_sources` on ContextProfile — C24 proved the +0.5 score boost is a no-op with int scores and int cutoffs. Don't add fields with zero effect. (b) Distributing skeptic lenses across swarm roles in the MVS — the current `skeptic.py` runs three lenses as a unified post-synthesis pass. Splitting them across roles is an unvalidated change; keep the proven pattern in v1. (c) `source_config` in H2 — no H2 cycle consumes it; moved to H3/C38.
+3. **Least confident about going into the next phase?** Search coverage dependency. The brainstorm claims epistemic rigor as the differentiator, but every verification layer operates on whatever Tavily/DDG return. If they miss a key source, counter-search can't find it either. This is a structural limitation, not a fixable bug. The plan phase must decide whether to include "coverage confidence" in C33's scoring model or flag it as an accepted risk.
 
 ---
 

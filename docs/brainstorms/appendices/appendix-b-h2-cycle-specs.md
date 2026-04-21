@@ -7,7 +7,7 @@
 
 4. **Adversarial search before confidence scoring** — you cannot confidently score a claim until you have actively looked for evidence against it.
 5. **Structured data before adaptive logic** — adaptive re-planning needs quantitative signals (score distributions, confidence spreads).
-6. **Persistent memory last** — a knowledge graph is only as good as the data flowing into it.
+6. **Persistent memory last** — a knowledge store is only as good as the data flowing into it.
 
 ---
 
@@ -86,7 +86,7 @@
 | H2-22 | Injection into decomposition | `decompose.py` | `prior_knowledge` parameter, `<prior_knowledge>` XML block | ~30 lines |
 | H2-23 | Injection into synthesis | `synthesize.py` | `<prior_knowledge>` XML block — build on prior findings, note confirmations/contradictions | ~40 lines |
 | H2-24 | Accumulation after each run | `agent.py` | Build `KnowledgeEntry` from run results, save via `save_entry()` | ~30 lines |
-| H2-25 | Per-context knowledge isolation | `knowledge.py`, `context_result.py` | `knowledge_dir: str` on `ContextProfile`, scoped storage | ~25 lines |
+| H2-25 | Per-context knowledge isolation | `knowledge.py`, `context_result.py` | `knowledge_store: str` on `ContextProfile`, scoped storage | ~25 lines |
 | H2-26 | Knowledge staleness and pruning | `knowledge.py` | 90-day TTL exclusion, explicit `prune_knowledge()`, warning at 200 entries | ~35 lines |
 
 **Dependencies:** C33 confidence scoring (structured claims to store), C32 counter-search (disputed findings to store).
@@ -102,7 +102,7 @@
 - WHEN standard/deep completes with auto_save THE SYSTEM SHALL write `KnowledgeEntry` JSON
 - WHEN new run starts on topic with prior entries THE SYSTEM SHALL inject up to 3 relevant entries into decomposition and synthesis
 - WHEN prior knowledge contains `[Disputed]` claim THE SYSTEM SHALL include dispute status so new run can re-investigate
-- WHEN context has `knowledge_dir: "memory/pfe"` THE SYSTEM SHALL scope to that directory
+- WHEN context has `knowledge_store: "memory/pfe"` THE SYSTEM SHALL scope to that directory
 - WHEN entry older than 90 days THE SYSTEM SHALL exclude from query results
 - WHEN store exceeds 200 entries THE SYSTEM SHALL log pruning recommendation
 - WHEN mode is quick with auto_save=False THE SYSTEM SHALL skip persistence
@@ -128,6 +128,7 @@
 
 **Design notes:**
 - Confidence 65%. Riskiest cycle in H2.
+- **Overlap with existing modules:** `iterate.py` (`generate_refined_queries`) and `coverage.py` (`identify_coverage_gaps`) already do post-synthesis gap analysis and query refinement. C35 generalizes these from "one retry" to "continuous adaptive loop." The plan phase must decide whether to refactor these into `planner.py` or have the planner delegate to them. This is not an isolated module addition.
 - Explicit rules (not LLM-driven planning) for determinism and testability.
 - Standard mode: conservative win (skip unnecessary pass 2). Deep mode: full adaptive loop.
 - Refactoring risk: `_research_deep()` is ~85 lines. Mitigation: extract `_run_search_pass()` helper first (refactoring commit), then build loop (feature commit).

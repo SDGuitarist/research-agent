@@ -52,7 +52,7 @@ skeptic             →       DISTRIBUTED              Evidence→Verifier, Timi
 synthesize          →       Phase 5: Synthesize      Editor
 ```
 
-**Key insight:** The swarm parallelizes the middle and distributes the skeptic. It does not replace the pipeline.
+**Key insight:** The swarm parallelizes the middle of the pipeline. It does not replace the pipeline. Existing modules (`search.py`, `fetch.py`, `extract.py`, `summarize.py`) become the sub-pipeline each Domain Expert runs.
 
 ## Shared Spec (~130 Lines)
 
@@ -66,12 +66,14 @@ Three sections:
 **Coordinator + 2 Domain Experts + Editor.** Proves parallel facet research before adding adversarial roles.
 
 ```
-Coordinator → Domain Expert 1 || Domain Expert 2 → Editor
+Coordinator → Domain Expert 1 || Domain Expert 2 → [unified skeptic pass] → Editor
 ```
+
+**Skeptic in MVS: unified post-synthesis pass preserved.** The current `skeptic.py` three-lens pass (evidence, timing, strategic frame) runs as a single coordinated step after draft synthesis. The MVS keeps this unchanged rather than distributing lenses across swarm roles. Distributing the skeptic (evidence→Verifier, timing→Temporal, frame→Contrarian) is a later evolution (C39b+) that requires validating whether separated lenses maintain the same adversarial quality as the combined pass. The current `run_deep_skeptic_pass()` orchestration in `skeptic.py` passes prior findings to the frame lens (evidence and timing run independently, but the frame lens receives both as context). This cross-lens context would be lost if roles run independently in the swarm.
 
 Quality gain: broader coverage (2 independent search strategies). Wall-clock savings: Phase 2 runs 2 facets in parallel.
 
-Full 5-agent swarm (adding Contrarian + Verifier) is C39b.
+Full 5-agent swarm (adding Contrarian + Verifier, potentially distributing skeptic) is C39b.
 
 ## 7+ Agent Boundary
 
