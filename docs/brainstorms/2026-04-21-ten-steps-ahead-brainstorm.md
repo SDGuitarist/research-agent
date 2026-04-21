@@ -154,24 +154,35 @@ The existing C29-31 roadmap and the "10 steps ahead" proposal are **complementar
 - C31: When implementing MCP tools, also add **inbound** MCP consumption (not just outbound tools) — this is the #9 fusion foundation
 - C31: Expand novelty decomposition to be the seed for the contrarian agent role
 
-### Horizon 2: The Structural Leap (C32-35, ~20-25 sessions)
+### Horizon 2: The Structural Leap (C32-35, ~23 sessions)
 
 **What:** The unique capabilities that make this agent categorically different from Deep Research Max.
 
-| Cycle | Feature | Why This Order |
-|-------|---------|----------------|
-| **32** | **Adversarial counter-search** — after draft, search for evidence against each major claim | Extends C29 skeptic enforcement. Low-effort, high-impact. Google doesn't do this. |
-| **33** | **Epistemic confidence scoring** — every claim gets a confidence level (documented/inferred/speculative) with evidence type, output as structured data | Extends C29 evidence tiers. Makes reports auditable. Feeds into evidence graph. |
-| **34** | **Adaptive mid-flight re-planning** — agent evaluates search results after each pass and adjusts strategy (new sub-queries, abandon dead ends, shift focus) | Extends C29 score-aware refinement from binary to continuous. Makes deep mode significantly smarter. |
-| **35** | **Research memory that compounds** — persistent knowledge graph from critique history + gap schema + evidence graph; queried at the start of every new run | Extends gap schema + self-enhancing agent brainstorm. The agent gets smarter over time. |
+**Revised ordering** (based on dependency analysis and impact ranking — see Appendix E):
+
+| Cycle | Feature | Sessions | Confidence | Why This Position |
+|-------|---------|----------|------------|-------------------|
+| **32** | **Adversarial counter-search** — after draft, search for evidence against each major claim | 5 | 80% | Lowest implementation risk, immediate report quality gain. Extends existing skeptic with real counter-evidence. Quick win to validate H2 approach. |
+| **33** | **Epistemic confidence scoring** — every claim gets a confidence level with evidence type, output as structured data + JSON sidecar | 6 | 75% | Builds the data model that memory needs. Consumes C32's counter-evidence flag. Every claim gets structured confidence before persistence. |
+| **34** | **Research memory that compounds** — persistent knowledge graph queried at the start of every new run | 6 | 60% | **Moved up from C35.** Highest workflow impact — the agent gets smarter over time. Ships after C33 so memory stores confidence-scored claims from day one (no migration). |
+| **35** | **Adaptive mid-flight re-planning** — agent adjusts strategy based on evidence quality mid-run | 6 | 65% | **Moved to last.** Highest risk, most internal. Benefits from all prior infrastructure. Confidence data (C33) + research memory (C34) give the planner maximum information. |
+
+**Key finding from dependency analysis:** C32-35 are mostly independent of each other (all depend on C29, not on each other). The one real dependency within H2: C33's confidence data significantly improves C34's memory quality and C35's planning decisions. C35 (adaptive planning) is highest risk and should ship last.
+
+**"Only ship 2" pick:** If time-constrained, ship C32 (counter-search) + C33 (confidence scoring). Counter-search is the moat; confidence scoring makes reports auditable. Together they create the epistemic rigor that no competitor has.
 
 **Why these four first:**
 - They're all **epistemic** — they make the agent's thinking better, not just its output prettier
 - They build on C29-31 directly (clear dependency chain)
 - Google can't easily copy them because they require adversarial design, not just bigger models
 - They're the moat: bigger models don't solve "actively try to disprove yourself"
+- No competitor has: active counter-search, per-claim epistemic provenance, cross-session research memory with staleness, or frame-questioning verification
 
-### Horizon 3: The Experience Layer (C36-39, ~15-20 sessions)
+**New modules created:** `confidence.py` (C33), `knowledge.py` (C34), `planner.py` (C35)
+
+See Appendix B for full cycle specs (acceptance criteria, dependencies, design notes).
+
+### Horizon 3: The Experience Layer (C36-39, ~18 sessions)
 
 **What:** The capabilities that make the output beautiful and the agent accessible.
 
@@ -181,6 +192,14 @@ The existing C29-31 roadmap and the "10 steps ahead" proposal are **complementar
 | **37** | **Native visualization** — charts, timelines, relationship maps generated from structured evidence data | Requires evidence graph from H2. Now visualizations show real data, not cosmetic charts. |
 | **38** | **Multi-source data fusion** — inbound MCP + web + local files, with conflict resolution protocol | Requires C31 MCP foundation + H2 confidence scoring to resolve conflicts. |
 | **39** | **Multi-agent research swarm** — parallel specialist agents (domain, contrarian, verifier, editor) | The capstone. Requires H2 epistemic infrastructure so each agent role is meaningful. |
+
+**Swarm architecture (C39) — key decisions from research (see Appendix D):**
+- **5 core roles:** Coordinator, Domain Expert ×N, Contrarian, Verifier, Editor + 2 optional (Temporal Analyst, Context Specialist)
+- **Communication:** Phased blackboard (in-memory dict), reads only at phase boundaries. Same async pattern as `skeptic.py`
+- **Minimum viable swarm (MVS):** 4 roles — Coordinator + 2 Domain Experts + Editor. Proves parallel facet research before adding adversarial roles
+- **Skeptic gets distributed:** Evidence lens → Verifier, timing lens → Temporal Analyst, frame lens → Contrarian
+- **Shared spec:** ~130 lines (within sandbox validated range). Three sections: data contracts, phase contracts, behavioral contracts
+- **7+ agent boundary:** Max depth 6 with parallel Contrarian + Temporal. Never exceed 7 without isolated experiment
 
 **Why these are last:**
 - Streaming and visualization are presentation — they make good research *look* good, but don't make research *better*
@@ -233,15 +252,33 @@ The engine doesn't know about Pacific Flow, weddings, or San Diego. It knows abo
 
 ### Where To Invest Business Specificity: Richer Context Profiles
 
-Current `ContextProfile` has 4 fields (`blocked_domains`, `extract_domains`, `gap_schema`, `synthesis_tone`). The H2/H3 features create opportunities to make this dramatically richer without hardcoding business logic:
+Current `ContextProfile` has 4 fields (`blocked_domains`, `extract_domains`, `gap_schema`, `synthesis_tone`). The H2/H3 features grow this to 10 fields — but with a strict simplicity constraint (see Appendix C for full data model).
 
-| Feature | Context Profile Extension |
-|---------|--------------------------|
-| Research memory (C35) | Per-context knowledge graph — PFE remembers competitor pricing across runs |
-| Confidence scoring (C33) | Per-context confidence thresholds — "flag anything about pricing that's inferred, not documented" |
-| Counter-search (C32) | Per-context adversarial prompts — "always verify claims about venue exclusivity deals" |
-| Multi-source fusion (C38) | Per-context data sources — PFE pulls from WeddingWire + TheKnot + Yelp; AGM from Instagram + YouTube |
-| Swarm roles (C39) | Per-context specialist roles — PFE gets a "venue intelligence" agent; a biotech context gets a "clinical trials" agent |
+**Simplicity constraint: the "5-minute context test."** If a new context author can't understand and correctly fill in a field within 5 minutes of reading a one-line YAML comment, the field is too complex for the profile. Complex behavior gets a file-path reference (like `gap_schema` already does).
+
+**Evolution path:**
+
+| Horizon | New Fields | Pattern |
+|---------|-----------|---------|
+| **H1 (C29-31)** | `preferred_sources`, `evidence_tier_overrides`, `skeptic_focus` | Inline YAML — simple lists and key-value pairs |
+| **H2 (C32-35)** | `knowledge_graph`, `source_config` | File-path references — complex subsystems live in separate YAML files |
+| **H3 (C36-39)** | `swarm_roles` | File-path reference — role definitions with system prompts and search strategies |
+
+**Final field count: 10** (4 existing + 3 H1 + 2 H2 + 1 H3). All default to empty — zero migration needed. Existing `pfe.md` works untouched at every horizon.
+
+**The complexity boundary:** If data is declarative, static, and fits in a YAML list → inline. If data is procedural, mutable, or has internal structure → file-path reference.
+
+**Directory layout after H2:**
+```
+contexts/          # context profiles (read-only)
+  pfe.md, agm.md, venue-intel.md, general.md
+memory/            # knowledge graphs (read/write, C34)
+  pfe.yaml
+sources/           # source configs (read-only, C38)
+  pfe.yaml
+gaps/              # gap schemas (existing)
+  pfe.yaml
+```
 
 ### Context Profile Roadmap
 
@@ -270,27 +307,71 @@ Pure Generic ←————————————————→ Pure Busines
 
 ---
 
-## Part 8: Effort Estimate
+## Part 8: Competitive Landscape Summary
 
-| Horizon | Cycles | Sessions | Lines (est) | Calendar (2 sessions/week) |
-|---------|--------|----------|-------------|---------------------------|
-| H1: Foundation (C29-31) | 3 | 11 | ~470 | ~6 weeks |
-| H2: Structural Leap (C32-35) | 4 | ~22 | ~800 | ~11 weeks |
-| H3: Experience Layer (C36-39) | 4 | ~18 | ~600 | ~9 weeks |
-| **Total** | **11** | **~51** | **~1870** | **~26 weeks** |
+Full analysis in Appendix A. Key findings:
 
-This is ambitious. The full vision is ~6 months at 2 sessions/week. But H1 alone (6 weeks) delivers significant value, and H2 (the structural leap) is where you pull ahead of Google.
+**The epistemic rigor moat holds.** Commercial products (Google, OpenAI, Perplexity) are incentivized to produce confident-sounding reports. Adversarial self-verification produces reports that sometimes say "we're not sure" — epistemically correct but commercially unappealing. They're unlikely to voluntarily add this.
+
+**Biggest risk: search index dependency.** Google queries the full Google Search index directly. You depend on Tavily + DuckDuckGo. Mitigation: add Exa as a semantic search provider (C38), and include "search coverage confidence" in C33's confidence scoring.
+
+**No competitor has:** active counter-search, per-claim epistemic provenance, context-isolated synthesis, cross-session research memory with staleness, or frame-questioning verification.
+
+**Quick wins to adopt from competitors:**
+- **Collaborative planning** (`--plan-review` flag) — low effort, closes visible gap with Google
+- **Exa as third search provider** — semantic/conceptual queries where Tavily's keyword results are weak
+- **Code execution during research** — consider for H3 (OpenAI's genuine differentiator)
+- **Study Perplexity's citation UX** — gold standard for inline citations when visualization ships
+
+**Competitive position matrix:**
+
+| Dimension | Google | OpenAI | Perplexity | GPT-Researcher | **Your Agent (H1-H3)** |
+|-----------|--------|--------|------------|----------------|------------------------|
+| Adversarial verification | None | None | None | Same-frame review | **Three-lens + counter-search** |
+| Evidence provenance | None | None | Source-level | None | **Per-claim tier labeling** |
+| Cross-session memory | None | None | None | None | **Gap schema + knowledge graph** |
+| Prompt injection defense | Unstated | Acknowledged | Unstated | None | **Three-layer defense** |
+| Search coverage | Full Google index | Web browsing | Multi-source | Any provider | Tavily + DDG (expandable) |
+| Visualization | Native charts | None | None | PDF/DOCX | Planned (C37) |
+| Customization | MCP tools | None | None | LLM choice | **Context profiles + modes** |
+
+---
+
+## Part 9: Effort Estimate (Revised)
+
+| Horizon | Cycles | Sessions | Lines (est) | New Modules | Calendar (2 sessions/week) |
+|---------|--------|----------|-------------|-------------|---------------------------|
+| H1: Foundation (C29-31) | 3 | 11 | ~470 | 0 | ~6 weeks |
+| H2: Structural Leap (C32-35) | 4 | 23 | ~1135 | 3 (`confidence.py`, `knowledge.py`, `planner.py`) | ~12 weeks |
+| H3: Experience Layer (C36-39) | 4 | ~18 | ~600 | TBD | ~9 weeks |
+| **Total** | **11** | **~52** | **~2205** | **3+** | **~27 weeks** |
+
+H2 is larger than initially estimated (23 sessions vs ~22, ~1135 lines vs ~800) due to detailed scoping revealing 26 individual items across 4 cycles. But H1 alone (6 weeks) delivers significant value, and H2 is where you pull ahead of Google.
 
 ---
 
 ## Feed-Forward
 
-- **Hardest decision:** Whether to build a business-specific tool or a generalized engine. Chose generalized engine with rich business configuration because: (1) multiple brands need different research contexts, (2) other projects consume the same engine via MCP, (3) the "10 steps ahead" features are all generic capabilities. User agreed 2026-04-21.
-- **Rejected alternatives:** (1) Scrapping C29-31 to jump straight to swarm architecture — too fragile without the epistemic foundation. (2) Building visualization first for demo value — cosmetic without structured evidence data to visualize. (3) Treating this as a rewrite — the existing pipeline is solid; this is additive. (4) Building a PFE-specific tool — locks out other projects and brands. (5) Interleaving H2 features with H1 — dependency chain is real, building confidence scoring without evidence-tier labeling is building on sand.
-- **Least confident:** The swarm architecture (C39) is conceptually clear but architecturally untested at this scale in this codebase. The shared-spec pattern from sandbox validated 6 agents, but research swarm roles have richer interdependencies than web app agents. The 7+ agent boundary from the sandbox solution doc is a real unknown.
+- **Hardest decision:** H2 ordering. The original proposal assumed a linear chain (C32→C33→C34→C35). Research proved they're mostly independent — all depend on C29, not each other. Reordered by impact: counter-search first (quick win), confidence scoring second (data model), memory third (compounds), adaptive planning last (highest risk).
+- **Rejected alternatives:** (1) Scrapping C29-31 to jump to swarm — too fragile without epistemic foundation. (2) Visualization first for demo value — cosmetic without evidence graph. (3) PFE-specific tool — locks out other projects. (4) Interleaving H2 with H1 — dependency chain is real. (5) Research memory before confidence scoring — would store unstructured data and need migration later. (6) LLM-driven adaptive planning — explicit rules are deterministic, testable, and cheaper. (7) SQLite for knowledge store — codebase has zero database dependencies; flat JSON files match existing patterns.
+- **Least confident:** Adaptive planning (C35, 65% confidence). Replacing the fixed two-pass search in `_research_deep()` with a dynamic loop is the riskiest refactor. The decision rules are heuristic and may need tuning after real-world use. Also: `ContextProfile` growing from 4 to 10 fields — the "5-minute context test" simplicity constraint should prevent this from becoming unwieldy, but needs validation.
 
 ## Three Questions
 
-1. **Hardest decision in this session?** Generalized vs. business-specific positioning. The PFE context file is so rich (278 lines of business intelligence) that it was tempting to lean into building a "PFE intelligence tool." But the architecture already separates engine from configuration correctly — the right move is to deepen that separation, not collapse it.
-2. **What did you reject, and why?** Interleaving H2 features into H1. The dependency chain from the entropy roadmap is validated across 6 cycles — C29's evidence-tier labeling is a prerequisite for C33's confidence scoring. Breaking the chain to ship a flashy feature sooner risks building on a leaky pipeline.
-3. **Least confident about going into the next phase?** The `ContextProfile` extension roadmap. Right now it has 4 fields and works cleanly. By H2 it needs per-context knowledge graphs, confidence thresholds, adversarial prompts, and data source definitions. That's a significant expansion of the context system that could become unwieldy if not carefully designed. The plan phase needs to nail the `ContextProfile` data model evolution.
+1. **Hardest decision in this session?** H2 cycle ordering. Five agents produced competing recommendations: the scoping agent assumed C32→C33→C34→C35 (dependency-based), the priority agent recommended C33→C35→C32→C34 (impact-based). Reconciled by recognizing the dependency chain is real for data model quality (confidence before memory) but the original "adversarial first" ordering was also valid. Final: C32→C33→C34→C35 with C34/C35 swapped (memory before adaptive planning).
+2. **What did you reject, and why?** Building the swarm as a rewrite of the pipeline. The swarm architecture research showed the right approach is to parallelize the middle and distribute the skeptic — not replace the pipeline. The existing modules (`search.py`, `fetch.py`, `extract.py`, `summarize.py`) become the sub-pipeline each Domain Expert runs. No module rewrites needed.
+3. **Least confident about going into the next phase?** Two things: (a) Confidence extraction prompt (C33, H2-8) — asking Claude to score its own claims' confidence is metacognitive and less studied than evidence-tier labeling. Plan phase needs to prototype with 5 real reports. (b) The `query_knowledge()` matching in C34 — simple word overlap may produce false positives. Plan phase needs to evaluate whether an LLM relevance check is needed (adds cost).
+
+---
+
+## Research Appendices
+
+Detailed research produced by 5 parallel agents on 2026-04-21. These feed into the Plan phase.
+
+| Appendix | File | Contents |
+|----------|------|----------|
+| A | [Competitive Landscape](appendices/appendix-a-competitive-landscape.md) | Google, OpenAI, Perplexity, Exa, Tavily, open-source agents. Position matrix. Moat analysis. |
+| B | [H2 Detailed Cycle Specs](appendices/appendix-b-h2-cycle-specs.md) | C32-35 at entropy-roadmap depth: modules, acceptance criteria (EARS), dependencies, design notes. 26 items, ~1135 lines. |
+| C | [ContextProfile Evolution](appendices/appendix-c-context-profile-evolution.md) | Data model from 4→10 fields. Migration path. Simplicity constraints. File-path reference pattern. |
+| D | [Swarm Architecture](appendices/appendix-d-swarm-architecture.md) | 5 roles, blackboard pattern, shared spec (~130 lines), MVS (4 roles), pipeline mapping. |
+| E | [H2 Prioritization Analysis](appendices/appendix-e-h2-prioritization.md) | Dependency graph, impact ranking, alternative orderings, "only ship 2" test. |
