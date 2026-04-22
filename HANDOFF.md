@@ -2,48 +2,29 @@
 
 **Date:** 2026-04-21
 **Branch:** `main`
-**Phase:** Brainstorm COMPLETE. Ready for C29 Plan.
+**Phase:** Work — Session 1 of 4 COMPLETE. Ready for Session 2.
 
 ## Current State
 
-"10 Steps Ahead" strategic brainstorm complete — 3 horizons (H1: C29-31 foundation, H2: C32-35 structural leap, H3: C36-39 experience layer), 5 appendices, Codex review findings addressed, self-review passed. Brainstorm declared ready for Plan phase.
+Session 1 (Skeptic Enforcement) shipped. `extract_critical_findings()` added to `skeptic.py`, integrated into `synthesize_final()` with `<critical_findings>` XML block and per-finding enforcement instruction.
 
 **Key commits this session:**
-- `36fc689` — initial brainstorm
-- `2a37659` — 5-agent deep research (cycle specs, context evolution, swarm, competitive landscape, prioritization)
-- `8acc7f4` — Codex brainstorm review handoff
-- `0252faa` — Codex review fixes (7 findings + 3 self-review fixes)
+- `cf1052b` — feat(29-1): extract and enforce skeptic critical findings
 
-**Tests:** 1040 passing (no code changes this session — docs only)
+**Tests:** 1052 passing (12 new: 9 extraction + 3 synthesis integration)
 
-## Key Decisions Made
+## What Changed
 
-1. **Positioning:** Generalized engine, business-specific configuration via context packages (agreed with user)
-2. **H2 dependency chain:** C29→C32→C33→C34→C35 is sequential, not parallel
-3. **H2 ordering:** C32 counter-search → C33 confidence → C34 memory → C35 adaptive planning
-4. **ContextProfile:** 4→10 fields across H1/H2/H3 with path governance (one-hop, shared validation, read-only/read-write split)
-5. **Dropped:** `preferred_sources` (YAGNI per C24), `source_config` moved to H3
-6. **Swarm MVS:** 4 roles, unified skeptic pass preserved (no distribution in v1)
-7. **Moat thesis:** Softened from "moat" to "positioning advantage" — holds while commercial incentives discourage self-doubt
+1. **`skeptic.py`** — Added `extract_critical_findings(findings) -> tuple[str, ...]` with case-insensitive regex, deduplication, bold/em-dash handling
+2. **`synthesize.py`** — Runtime import of `extract_critical_findings`, builds numbered `<critical_findings>` XML block when critical markers found, appends enforcement instruction to `skeptic_instruction`
+3. **`tests/test_skeptic.py`** — 9 tests: empty input, no markers, single/multiple extraction, case-insensitive, dedup, bold markdown, em-dash, tuple type
+4. **`tests/test_synthesize.py`** — 3 tests: block present with criticals, block absent without criticals, existing skeptic_findings preserved
 
-## Top Risks (carried forward from brainstorm Feed-Forward)
+## Three Questions
 
-1. **Search coverage dependency** — epistemic rigor sits on Tavily + DDG. C33 plan must decide: include "coverage confidence" or accept as structural risk.
-2. **Adaptive planning (C35, 65%)** — overlaps iterate.py/coverage.py, riskiest refactor
-3. **Confidence extraction prompt (C33)** — metacognitive, needs prototyping with 5 real reports
-
-## Key Artifacts
-
-| Artifact | Location |
-|----------|----------|
-| Brainstorm (main) | `docs/brainstorms/2026-04-21-ten-steps-ahead-brainstorm.md` |
-| Appendix A: Competitive landscape | `docs/brainstorms/appendices/appendix-a-competitive-landscape.md` |
-| Appendix B: H2 cycle specs | `docs/brainstorms/appendices/appendix-b-h2-cycle-specs.md` |
-| Appendix C: ContextProfile evolution | `docs/brainstorms/appendices/appendix-c-context-profile-evolution.md` |
-| Appendix D: Swarm architecture | `docs/brainstorms/appendices/appendix-d-swarm-architecture.md` |
-| Appendix E: H2 prioritization | `docs/brainstorms/appendices/appendix-e-h2-prioritization.md` |
-| Codex review handoff | `docs/brainstorms/2026-04-21-codex-brainstorm-review-handoff.md` |
-| Entropy roadmap (C29-31 spec) | `docs/research/2026-03-09-entropy-fixes-roadmap.md` |
+1. **Hardest implementation decision in this session?** The regex pattern for `[Critical Finding]` extraction. LLM output varies — could be `[Critical Finding]`, `**[Critical Finding]**`, `[Critical Finding] —`. Chose a regex that handles `]` + optional `**` + optional dashes, with end-of-line capture. The `_count_severity()` function already proved case-insensitive works; this extends it to extraction.
+2. **What did you consider changing but left alone, and why?** The existing `skeptic_instruction` text that says "Any finding rated [Critical Finding] MUST be explicitly addressed." Left it — the new `<critical_findings>` block is additive enforcement (lists specific findings), not a replacement of the general instruction. Belt-and-suspenders.
+3. **Least confident about going into review?** Whether the regex catches all LLM output variants. The plan flagged "fragile parsing" as risk #1. Current tests cover bold and em-dash variants, but LLMs could produce `[Critical finding:]` or `- Critical Finding:` without brackets. Mitigation: start with exact match, add fuzzy matching in review if real outputs show misses.
 
 ## Deferred Items
 
@@ -51,24 +32,13 @@
 - **MCP `--cost` + `--critique-history` tools** (#123) — Cycle 31
 - **A/B live validation** — run `scripts/validate_cutoff_ab.py` when API keys renewed
 
-## Three Questions
-
-1. **Hardest decision in this session?** H2 dependency chain. Codex caught that the brainstorm claimed C32-35 were "mostly independent" when they actually form a sequential chain. The correction was right — each cycle's data model feeds the next.
-2. **What did you reject, and why?** `preferred_sources` on ContextProfile. Cycle 24 proved +0.5 on int scores with int cutoff is a no-op. Same issue applies. Don't add fields with zero behavioral effect.
-3. **Least confident about going into plan?** Search coverage dependency. The brainstorm claims epistemic rigor as the differentiator, but every verification layer operates on whatever Tavily/DDG return. The C29 plan must decide whether to include "coverage confidence" in C33's scoring model or flag it as an accepted risk.
-
 ## Next Phase
 
-**Plan** — Write C29 implementation plan (skeptic enforcement + score-aware refinement + evidence-tier labeling).
+**Work** — Session 2: Quality Gate + Noun Phrases
 
 ### Prompt for Next Session
 
 ```
-Read HANDOFF.md and docs/research/2026-03-09-entropy-fixes-roadmap.md (C29 section).
-Read docs/brainstorms/2026-04-21-ten-steps-ahead-brainstorm.md (Part 5 H1 modifications).
-Write docs/plans/2026-04-21-cycle-29-skeptic-enforcement-plan.md.
-Include EARS acceptance tests, Codex handoff prompt, Feed-Forward + Three Questions.
-Address prior risk: decide whether C33 includes "coverage confidence" or accept as structural risk.
-Do only the plan — commit and stop. Do NOT begin implementation.
+Read docs/plans/2026-04-21-cycle-29-skeptic-enforcement-plan.md. Implement Session 2: Quality Gate + Noun Phrases. Relevant files: research_agent/agent.py, research_agent/search.py. Do only Session 2 — commit and stop. Do NOT proceed to Session 3.
 Start with /compound-start to load lessons and kick off.
 ```
