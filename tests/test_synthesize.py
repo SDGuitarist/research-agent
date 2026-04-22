@@ -1149,3 +1149,60 @@ class TestEvidenceTiers:
         prompt = call_args.kwargs["messages"][0]["content"]
         assert EVIDENCE_TIER_INSTRUCTION not in prompt
         assert EVIDENCE_TIER_REMINDER not in prompt
+
+
+class TestCycle29Integration:
+    """End-to-end integration: skeptic enforcement + evidence tiers in one prompt."""
+
+    def test_final_prompt_has_all_cycle29_features(self):
+        """synthesize_final with critical findings should have all three blocks."""
+        findings = [
+            SkepticFinding(
+                lens="evidence_alignment",
+                checklist="- [Critical Finding] Revenue claim lacks source\n- [Concern] Minor gap",
+                critical_count=1,
+                concern_count=1,
+            ),
+            SkepticFinding(
+                lens="timing_stakes",
+                checklist="- [Observation] Timeline noted",
+                critical_count=0,
+                concern_count=0,
+            ),
+        ]
+        client = _make_streaming_client("Final sections")
+        synthesize_final(client, "query", "draft", findings, SAMPLE_SUMMARIES)
+        prompt = client.messages.stream.call_args.kwargs["messages"][0]["content"]
+
+        # Skeptic findings block (existing)
+        assert "<skeptic_findings>" in prompt
+        assert "Revenue claim lacks source" in prompt
+
+        # Critical findings enforcement block (Session 1)
+        assert "<critical_findings>" in prompt
+        assert "1." in prompt  # numbered list
+        assert "must either refute it with evidence" in prompt
+
+        # Evidence-tier labeling (Session 3)
+        assert "[Documented]" in prompt
+        assert "[Speculative]" in prompt
+        assert EVIDENCE_TIER_REMINDER in prompt
+
+    def test_final_prompt_without_critical_still_has_tiers(self):
+        """No critical findings should still include evidence tiers but no enforcement block."""
+        findings = [
+            SkepticFinding(
+                lens="combined",
+                checklist="- [Concern] Minor issue",
+                critical_count=0,
+                concern_count=1,
+            ),
+        ]
+        client = _make_streaming_client("Final sections")
+        synthesize_final(client, "query", "draft", findings, SAMPLE_SUMMARIES)
+        prompt = client.messages.stream.call_args.kwargs["messages"][0]["content"]
+
+        assert "<skeptic_findings>" in prompt
+        assert "<critical_findings>" not in prompt
+        assert "[Documented]" in prompt
+        assert EVIDENCE_TIER_REMINDER in prompt
