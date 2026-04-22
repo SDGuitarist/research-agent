@@ -585,6 +585,61 @@ class TestSynthesizeFinal:
                 client, "query", "draft", [], SAMPLE_SUMMARIES,
             )
 
+    def test_includes_critical_findings_block_when_present(self):
+        """Should include <critical_findings> block when findings have critical markers."""
+        findings = [
+            SkepticFinding(
+                lens="combined",
+                checklist="- [Critical Finding] Evidence does not support conclusion",
+                critical_count=1,
+                concern_count=0,
+            )
+        ]
+        client = _make_streaming_client("Final sections")
+        synthesize_final(client, "query", "draft", findings, SAMPLE_SUMMARIES)
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "<critical_findings>" in prompt
+        assert "Evidence does not support conclusion" in prompt
+        assert "must either refute it with evidence or incorporate it" in prompt
+
+    def test_no_critical_findings_block_when_no_critical_markers(self):
+        """Should NOT include <critical_findings> block when findings lack critical markers."""
+        findings = [
+            SkepticFinding(
+                lens="combined",
+                checklist="- [Concern] Minor issue only",
+                critical_count=0,
+                concern_count=1,
+            )
+        ]
+        client = _make_streaming_client("Final sections")
+        synthesize_final(client, "query", "draft", findings, SAMPLE_SUMMARIES)
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "<critical_findings>" not in prompt
+        # Existing skeptic_findings block should still be there
+        assert "<skeptic_findings>" in prompt
+
+    def test_existing_skeptic_findings_preserved_with_critical(self):
+        """Existing <skeptic_findings> block should remain when critical findings added."""
+        findings = [
+            SkepticFinding(
+                lens="evidence_alignment",
+                checklist="- [Critical Finding] Major gap\n- [Concern] Minor note",
+                critical_count=1,
+                concern_count=1,
+            )
+        ]
+        client = _make_streaming_client("Final sections")
+        synthesize_final(client, "query", "draft", findings, SAMPLE_SUMMARIES)
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        # Both blocks present
+        assert "<skeptic_findings>" in prompt
+        assert "<critical_findings>" in prompt
+        assert "Major gap" in prompt
+
 
 # --- Token budget enforcement tests ---
 

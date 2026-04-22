@@ -24,6 +24,8 @@ from .errors import SynthesisError
 from .sanitize import sanitize_content, build_context_block
 from .token_budget import allocate_budget, truncate_to_budget
 
+from .skeptic import extract_critical_findings
+
 if TYPE_CHECKING:
     from .skeptic import SkepticFinding
 
@@ -602,6 +604,23 @@ def synthesize_final(
                 "and explain how the final recommendations address them.\n\n"
                 "Any finding rated [Critical Finding] MUST be explicitly addressed in "
                 "your recommendations. Do not ignore critical findings."
+            )
+
+        # Extract specific critical findings for enforcement
+        critical = extract_critical_findings(skeptic_findings)
+        if critical:
+            numbered = "\n".join(
+                f"{i}. {sanitize_content(f)}" for i, f in enumerate(critical, 1)
+            )
+            skeptic_block += (
+                f"\n<critical_findings>\n{numbered}\n</critical_findings>\n"
+            )
+            skeptic_instruction += (
+                "\n\nThe <critical_findings> block lists specific critical findings "
+                "that MUST each be explicitly addressed in the report. For each "
+                "numbered finding, your recommendations must either refute it with "
+                "evidence or incorporate it. Do not leave any critical finding "
+                "unaddressed."
             )
     else:
         # No skeptic findings — skip Adversarial Analysis

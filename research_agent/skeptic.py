@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 
 from anthropic import (
@@ -37,6 +38,33 @@ def _count_severity(text: str) -> tuple[int, int]:
     critical = lower.count("critical finding")
     concern = lower.count("[concern]")
     return critical, concern
+
+
+_CRITICAL_FINDING_RE = re.compile(
+    r"\[critical\s+finding\]\**\s*[—–\-]*\s*(.+)",
+    re.IGNORECASE,
+)
+
+
+def extract_critical_findings(findings: list[SkepticFinding]) -> tuple[str, ...]:
+    """Extract critical finding descriptions from skeptic output.
+
+    Searches each finding's checklist for [Critical Finding] markers
+    (case-insensitive). Extracts the text following each marker to end
+    of line. Deduplicates by normalized (lowered, stripped) text.
+    """
+    seen: set[str] = set()
+    results: list[str] = []
+
+    for finding in findings:
+        for match in _CRITICAL_FINDING_RE.finditer(finding.checklist):
+            text = match.group(1).strip().rstrip("*").strip()
+            normalized = text.lower()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                results.append(text)
+
+    return tuple(results)
 
 
 def _build_prior_block(prior_findings: list[SkepticFinding] | None) -> str:

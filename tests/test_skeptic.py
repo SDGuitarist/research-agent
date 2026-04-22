@@ -11,6 +11,7 @@ from research_agent.skeptic import (
     _count_severity,
     _build_prior_block,
     _call_skeptic,
+    extract_critical_findings,
     run_skeptic_evidence,
     run_skeptic_timing,
     run_skeptic_frame,
@@ -102,6 +103,135 @@ class TestBuildPriorBlock:
         assert "<prior_skeptic_findings>" in result
         assert "### evidence_alignment" in result
         assert "Claim X unsupported" in result
+
+
+class TestExtractCriticalFindings:
+    """Tests for extract_critical_findings()."""
+
+    def test_returns_empty_for_no_findings(self):
+        """Should return empty tuple when no findings provided."""
+        assert extract_critical_findings([]) == ()
+
+    def test_returns_empty_when_no_critical_markers(self):
+        """Should return empty tuple when findings have no critical markers."""
+        findings = [
+            SkepticFinding(
+                lens="evidence_alignment",
+                checklist="- [Concern] Minor issue\n- [Observation] Note",
+                critical_count=0,
+                concern_count=1,
+            )
+        ]
+        assert extract_critical_findings(findings) == ()
+
+    def test_extracts_single_critical_finding(self):
+        """Should extract text after [Critical Finding] marker."""
+        findings = [
+            SkepticFinding(
+                lens="evidence_alignment",
+                checklist="- [Critical Finding] Claim X lacks source support",
+                critical_count=1,
+                concern_count=0,
+            )
+        ]
+        result = extract_critical_findings(findings)
+        assert result == ("Claim X lacks source support",)
+
+    def test_extracts_multiple_critical_findings(self):
+        """Should extract all critical findings across multiple lenses."""
+        findings = [
+            SkepticFinding(
+                lens="evidence_alignment",
+                checklist="- [Critical Finding] Unsupported claim A",
+                critical_count=1,
+                concern_count=0,
+            ),
+            SkepticFinding(
+                lens="timing_stakes",
+                checklist="- [Observation] Note\n- [Critical Finding] Missed deadline risk",
+                critical_count=1,
+                concern_count=0,
+            ),
+            SkepticFinding(
+                lens="strategic_frame",
+                checklist="- [Critical Finding] Wrong problem framing",
+                critical_count=1,
+                concern_count=0,
+            ),
+        ]
+        result = extract_critical_findings(findings)
+        assert len(result) == 3
+        assert "Unsupported claim A" in result
+        assert "Missed deadline risk" in result
+        assert "Wrong problem framing" in result
+
+    def test_case_insensitive_matching(self):
+        """Should match [CRITICAL FINDING] and [critical finding] variants."""
+        findings = [
+            SkepticFinding(
+                lens="combined",
+                checklist=(
+                    "- [CRITICAL FINDING] Uppercase variant\n"
+                    "- [critical finding] Lowercase variant"
+                ),
+                critical_count=2,
+                concern_count=0,
+            )
+        ]
+        result = extract_critical_findings(findings)
+        assert len(result) == 2
+        assert "Uppercase variant" in result
+        assert "Lowercase variant" in result
+
+    def test_deduplication_by_normalized_text(self):
+        """Should deduplicate findings with same text (case-insensitive)."""
+        findings = [
+            SkepticFinding(
+                lens="evidence_alignment",
+                checklist="- [Critical Finding] Unsupported claim",
+                critical_count=1,
+                concern_count=0,
+            ),
+            SkepticFinding(
+                lens="timing_stakes",
+                checklist="- [Critical Finding] Unsupported Claim",
+                critical_count=1,
+                concern_count=0,
+            ),
+        ]
+        result = extract_critical_findings(findings)
+        assert len(result) == 1
+
+    def test_handles_bold_markdown_markers(self):
+        """Should handle **[Critical Finding]** bold markdown variant."""
+        findings = [
+            SkepticFinding(
+                lens="combined",
+                checklist="- **[Critical Finding]** Bold description",
+                critical_count=1,
+                concern_count=0,
+            )
+        ]
+        result = extract_critical_findings(findings)
+        assert result == ("Bold description",)
+
+    def test_handles_em_dash_separator(self):
+        """Should handle [Critical Finding] — dash-separated description."""
+        findings = [
+            SkepticFinding(
+                lens="combined",
+                checklist="- [Critical Finding] — Dash separated text",
+                critical_count=1,
+                concern_count=0,
+            )
+        ]
+        result = extract_critical_findings(findings)
+        assert result == ("Dash separated text",)
+
+    def test_returns_frozen_tuple(self):
+        """Should return a tuple (immutable)."""
+        result = extract_critical_findings([])
+        assert isinstance(result, tuple)
 
 
 def _make_async_client(response_text):
