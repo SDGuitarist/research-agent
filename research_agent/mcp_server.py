@@ -293,7 +293,8 @@ def list_research_modes() -> str:
         gate_info = (
             f"relevance: cutoff={m.relevance_cutoff}, "
             f"full>={m.min_sources_full_report}, "
-            f"short>={m.min_sources_short_report}"
+            f"short>={m.min_sources_short_report}, "
+            f"min_domains={m.min_unique_domains}"
         )
         lines.append(
             f"- {m.name}: {m.max_sources} sources, ~{m.word_target} words, "

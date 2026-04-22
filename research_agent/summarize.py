@@ -97,6 +97,8 @@ async def summarize_chunk(
     rate_limit_event: asyncio.Event | None = None,
     temperature: float = 1.0,
     source_tier: SourceTier = "full",
+    chunk_index: int = 1,
+    total_chunks: int = 1,
     prior_summary: str = "",
 ) -> Summary | None:
     """Summarize a single chunk of content."""
@@ -107,9 +109,14 @@ async def summarize_chunk(
 
     # Build optional prior-chunk context header
     context_header = ""
-    if prior_summary:
+    if total_chunks > 1 and chunk_index > 1 and prior_summary:
         safe_prior = sanitize_content(prior_summary)
-        context_header = f"\n<prior_chunk_context>\nPrevious chunk covered: {safe_prior}\n</prior_chunk_context>\n"
+        context_header = (
+            f"\n<prior_chunk_context>\n"
+            f"This is chunk {chunk_index} of {total_chunks}. "
+            f"Previous chunk covered: {safe_prior}\n"
+            f"</prior_chunk_context>\n"
+        )
 
     # Choose prompt and token limit based on structured flag
     if structured:
@@ -209,12 +216,13 @@ async def summarize_content(
         List of summaries (one per chunk)
     """
     chunks = _chunk_text(content.text, max_chunks=max_chunks)
+    total_chunks = len(chunks)
 
     start = time.monotonic()
     summaries = []
     prior_context = ""
 
-    for chunk in chunks:
+    for i, chunk in enumerate(chunks, 1):
         async with semaphore if semaphore is not None else contextlib.nullcontext():
             try:
                 result = await summarize_chunk(
@@ -222,6 +230,7 @@ async def summarize_content(
                     title=content.title, model=model, structured=structured,
                     rate_limit_event=rate_limit_event, temperature=temperature,
                     source_tier=content.source_tier,
+                    chunk_index=i, total_chunks=total_chunks,
                     prior_summary=prior_context,
                 )
                 if isinstance(result, Summary):

@@ -1980,6 +1980,56 @@ class TestCoverageGapRetry:
         assert merged_evaluation.total_scored == 4
 
     @pytest.mark.asyncio
+    async def test_retry_merged_downgrades_on_low_domain_diversity(self):
+        """Retry merge with enough sources but too few domains → short_report."""
+        agent = self._make_agent()
+        # 3 existing from same domain → short_report by count
+        existing = [
+            Summary(url="https://same.com/1", title="S1", summary="Content 1"),
+            Summary(url="https://same.com/2", title="S2", summary="Content 2"),
+            Summary(url="https://same.com/3", title="S3", summary="Content 3"),
+        ]
+        evaluation = self._make_evaluation(
+            "short_report", surviving=tuple(existing), total_scored=3,
+        )
+
+        gap = CoverageGap(
+            gap_type="QUERY_MISMATCH",
+            description="Wrong terminology",
+            retry_recommendation="RETRY",
+            retry_queries=("better terms",),
+            reasoning="Mismatch",
+        )
+
+        # New source also from same.com → 4 sources, 1 domain
+        new_results = [
+            SearchResult(title="New", url="https://same.com/4", snippet="New content with enough length for quality gate")
+        ]
+        new_summaries = [
+            Summary(url="https://same.com/4", title="New", summary="New content")
+        ]
+        retry_eval = self._make_evaluation(
+            "insufficient_data",
+            surviving=tuple(new_summaries),
+            total_scored=1,
+        )
+
+        with patch("research_agent.agent.identify_coverage_gaps", new_callable=AsyncMock, return_value=gap), \
+             patch("research_agent.agent.search", return_value=new_results), \
+             patch.object(agent, "_fetch_extract_summarize", new_callable=AsyncMock, return_value=new_summaries), \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock, return_value=retry_eval):
+            result = await agent._try_coverage_retry(
+                "test query", existing, evaluation, ["test query"],
+            )
+
+        assert result is not None
+        combined, merged_evaluation = result
+        assert len(combined) == 4
+        # 4 sources meets full_report by count, but 1 domain < 3 required
+        assert merged_evaluation.decision == "short_report"
+        assert "unique domains" in merged_evaluation.decision_rationale
+
+    @pytest.mark.asyncio
     async def test_retry_returns_none_when_fetch_fails(self):
         """ResearchError during fetch → returns None (graceful degradation)."""
         agent = self._make_agent()

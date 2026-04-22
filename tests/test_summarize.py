@@ -726,8 +726,8 @@ class TestCrossChunkContext:
         assert "<prior_chunk_context>" not in prompt
 
     @pytest.mark.asyncio
-    async def test_multi_chunk_includes_prior_context(self):
-        """Chunk with prior_summary should include context header in prompt."""
+    async def test_multi_chunk_includes_prior_context_and_position(self):
+        """Chunk 2+ should include positional header and prior summary in prompt."""
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="Summary.")]
@@ -735,11 +735,28 @@ class TestCrossChunkContext:
 
         await summarize_chunk(
             client=mock_client, chunk="Content", url="https://ex.com",
-            title="T", prior_summary="Previous chunk covered this topic.",
+            title="T", chunk_index=2, total_chunks=3,
+            prior_summary="Previous chunk covered this topic.",
         )
         prompt = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
         assert "<prior_chunk_context>" in prompt
+        assert "chunk 2 of 3" in prompt
         assert "Previous chunk covered this topic." in prompt
+
+    @pytest.mark.asyncio
+    async def test_first_chunk_no_context_even_with_total(self):
+        """Chunk 1 of N should not include context header."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary.")]
+        mock_client.messages.create.return_value = mock_response
+
+        await summarize_chunk(
+            client=mock_client, chunk="Content", url="https://ex.com",
+            title="T", chunk_index=1, total_chunks=3, prior_summary="",
+        )
+        prompt = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+        assert "<prior_chunk_context>" not in prompt
 
     @pytest.mark.asyncio
     async def test_sequential_chunks_pass_context(self):
@@ -764,6 +781,7 @@ class TestCrossChunkContext:
         assert len(call_prompts) >= 2
         # First chunk should NOT have prior context
         assert "<prior_chunk_context>" not in call_prompts[0]
-        # Second chunk SHOULD have prior context from first
+        # Second chunk SHOULD have positional header and prior context
         assert "<prior_chunk_context>" in call_prompts[1]
+        assert "chunk 2 of" in call_prompts[1]
         assert "Summary for this chunk." in call_prompts[1]

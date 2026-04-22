@@ -340,6 +340,7 @@ class TestListResearchModes:
         assert "standard" in text
         assert "deep" in text
         assert "sources" in text
+        assert "min_domains=" in text
 
 
 # ---------------------------------------------------------------------------
