@@ -233,6 +233,81 @@ class TestExtractCriticalFindings:
         result = extract_critical_findings([])
         assert isinstance(result, tuple)
 
+    def test_combined_mode_lens_prefixed_critical(self):
+        """Should extract from combined-mode format: [Evidence][Critical Finding] — desc."""
+        findings = [
+            SkepticFinding(
+                lens="combined",
+                checklist=(
+                    "## Combined Adversarial Review\n\n"
+                    "- **[Evidence][Critical Finding]** — Revenue projection unsupported by any cited source\n"
+                    "  - Evidence: Sources discuss market trends but no revenue figures\n"
+                    "  - Gap: $10M claim has no citation\n\n"
+                    "- **[Timing][Critical Finding]** — Deadline window misread as open when data shows closing\n"
+                    "  - Timeline evidence: Q3 filing date is 6 weeks away\n"
+                    "  - Risk assessment: High cost of waiting\n\n"
+                    "- **[Frame][Concern]** — Analysis assumes competitive framing\n"
+                    "  - Current frame: Zero-sum market\n"
+                    "  - Alternative: Partnership opportunity\n"
+                ),
+                critical_count=2,
+                concern_count=1,
+            )
+        ]
+        result = extract_critical_findings(findings)
+        assert len(result) == 2
+        assert "Revenue projection unsupported by any cited source" in result
+        assert "Deadline window misread as open when data shows closing" in result
+
+    def test_deep_mode_multiline_with_indented_bullets(self):
+        """Should extract from deep-mode format with indented evidence/gap bullets."""
+        findings = [
+            SkepticFinding(
+                lens="evidence_alignment",
+                checklist=(
+                    "## Evidence Alignment Review\n\n"
+                    "- [Critical Finding] Market share claim contradicts source data\n"
+                    "  - Evidence: Source 2 reports 15% share, draft states 30%\n"
+                    "  - Gap: No source supports the 30% figure\n\n"
+                    "- [Concern] Timeline for product launch is estimated\n"
+                    "  - Evidence: Only one source mentions Q4\n"
+                ),
+                critical_count=1,
+                concern_count=1,
+            ),
+            SkepticFinding(
+                lens="timing_stakes",
+                checklist=(
+                    "## Timing & Stakes Review\n\n"
+                    "- [Observation] Market timing is neutral\n"
+                    "  - Timeline evidence: No closing windows identified\n"
+                ),
+                critical_count=0,
+                concern_count=0,
+            ),
+        ]
+        result = extract_critical_findings(findings)
+        assert len(result) == 1
+        assert "Market share claim contradicts source data" in result
+
+    def test_combined_mode_ignores_non_critical_lens_tags(self):
+        """Should not extract from [Evidence][Concern] or [Frame][Observation]."""
+        findings = [
+            SkepticFinding(
+                lens="combined",
+                checklist=(
+                    "- **[Evidence][Concern]** — Minor data gap\n"
+                    "- **[Frame][Observation]** — Alternative frame noted\n"
+                    "- **[Timing][Critical Finding]** — Window closing in 2 weeks\n"
+                ),
+                critical_count=1,
+                concern_count=1,
+            )
+        ]
+        result = extract_critical_findings(findings)
+        assert len(result) == 1
+        assert "Window closing in 2 weeks" in result
+
 
 def _make_async_client(response_text):
     """Create a mock AsyncAnthropic client returning given text."""

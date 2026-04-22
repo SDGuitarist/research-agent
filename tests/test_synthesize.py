@@ -602,7 +602,9 @@ class TestSynthesizeFinal:
         prompt = call_args.kwargs["messages"][0]["content"]
         assert "<critical_findings>" in prompt
         assert "Evidence does not support conclusion" in prompt
-        assert "must either refute it with evidence or incorporate it" in prompt
+        assert "Remove the disputed claim" in prompt
+        assert "Mark the claim [Disputed]" in prompt
+        assert "Cite additional evidence" in prompt
 
     def test_no_critical_findings_block_when_no_critical_markers(self):
         """Should NOT include <critical_findings> block when findings lack critical markers."""
@@ -1178,10 +1180,12 @@ class TestCycle29Integration:
         assert "<skeptic_findings>" in prompt
         assert "Revenue claim lacks source" in prompt
 
-        # Critical findings enforcement block (Session 1)
+        # Critical findings enforcement block (Session 1) — three-way contract
         assert "<critical_findings>" in prompt
         assert "1." in prompt  # numbered list
-        assert "must either refute it with evidence" in prompt
+        assert "Remove the disputed claim" in prompt
+        assert "Mark the claim [Disputed]" in prompt
+        assert "Cite additional evidence" in prompt
 
         # Evidence-tier labeling (Session 3)
         assert "[Documented]" in prompt

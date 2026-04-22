@@ -624,9 +624,11 @@ def synthesize_final(
             skeptic_instruction += (
                 "\n\nThe <critical_findings> block lists specific critical findings "
                 "that MUST each be explicitly addressed in the report. For each "
-                "numbered finding, your recommendations must either refute it with "
-                "evidence or incorporate it. Do not leave any critical finding "
-                "unaddressed."
+                "numbered finding, you must do exactly one of:\n"
+                "  (a) Remove the disputed claim from the report entirely.\n"
+                "  (b) Mark the claim [Disputed] with a one-sentence reason.\n"
+                "  (c) Cite additional evidence that directly addresses it.\n"
+                "Do not leave any critical finding unaddressed."
             )
     else:
         # No skeptic findings — skip Adversarial Analysis
