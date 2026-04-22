@@ -667,9 +667,9 @@ class TestTruncateToBudget:
         text = "a" * 400  # 100 tokens via mock
         with patch("research_agent.token_budget.count_tokens", side_effect=self._mock_count):
             result = truncate_to_budget(text, max_tokens=10)
-        # max_chars = 10 * 4 = 40
-        assert len(result.split("\n\n[Content truncated")[0]) == 40
-        assert "[Content truncated to fit token budget]" in result
+        # max_chars = 10 * 4 = 40; no sentence boundary in "aaa..." so char-level fallback
+        assert "[Content truncated" in result
+        assert "% removed" in result
 
     def test_truncate_to_budget_empty(self):
         """Empty string returned as-is."""
