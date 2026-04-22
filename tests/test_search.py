@@ -9,6 +9,7 @@ from research_agent.search import (
     search,
     _search_tavily,
     refine_query,
+    extract_noun_phrases,
     filter_blocked_urls,
     SearchResult,
 )
@@ -304,6 +305,37 @@ class TestRefineQuery:
         )
 
         assert result == "python async concurrency benchmarks performance"
+
+
+class TestExtractNounPhrases:
+    """Tests for extract_noun_phrases()."""
+
+    def test_removes_stopwords(self):
+        """Should remove common stopwords from query."""
+        result = extract_noun_phrases("what is the impact of climate change")
+        assert "what" not in result.lower().split()
+        assert "the" not in result.lower().split()
+        assert "climate" in result.lower()
+        assert "change" in result.lower()
+
+    def test_preserves_content_words_order(self):
+        """Should keep content words in original order."""
+        result = extract_noun_phrases("how does quantum computing affect security")
+        words = result.lower().split()
+        assert words.index("quantum") < words.index("computing")
+
+    def test_returns_original_for_all_stopwords(self):
+        """Should return original query if all words are stopwords."""
+        query = "what is the"
+        result = extract_noun_phrases(query)
+        assert result == query
+
+    def test_returns_original_for_single_content_word(self):
+        """Should return original if extraction produces < 2 valid words."""
+        # "climate" alone is 1 word, below min_words=2
+        query = "the climate"
+        result = extract_noun_phrases(query)
+        assert result == query
 
 
 class TestTavilySearch:

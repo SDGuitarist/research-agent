@@ -306,7 +306,7 @@ class TestResearchAgentStandardMode:
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             search_results = [
-                SearchResult(title="R", url=f"https://ex{i}.com", snippet=f"Snippet {i}")
+                SearchResult(title="R", url=f"https://ex{i}.com", snippet=f"Snippet {i} with enough content to exceed the quality gate threshold for refinement")
                 for i in range(4)
             ]
             mock_search.return_value = search_results
@@ -339,7 +339,7 @@ class TestResearchAgentStandardMode:
             # refine_query should be called with snippets
             refine_call = mock_refine.call_args
             snippets_arg = refine_call[0][2]  # Third positional arg
-            assert "Snippet 0" in snippets_arg or any("Snippet" in s for s in snippets_arg)
+            assert any("Snippet" in s for s in snippets_arg)
 
     def test_research_standard_mode_auto_saves_enabled(self):
         """Standard mode should have auto_save=True."""
@@ -423,7 +423,7 @@ class TestResearchAgentDeepMode:
                 ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
             ]
             summaries = [
-                Summary(url="https://ex1.com", title="T", summary="Deep summary content")
+                Summary(url="https://ex1.com", title="T", summary="Deep summary content with enough detail to exceed the hundred character quality gate threshold for deep mode")
             ]
             mock_summarize.return_value = summaries
             mock_refine.return_value = "refined query"
@@ -615,7 +615,7 @@ class TestResearchAgentRelevanceGate:
         """Setup base mocks for pipeline testing."""
         return {
             "search_results": [
-                SearchResult(title=f"Result {i}", url=f"https://example{i}.com", snippet=f"Snippet {i}")
+                SearchResult(title=f"Result {i}", url=f"https://example{i}.com", snippet=f"Snippet {i} with enough content to exceed the quality gate threshold")
                 for i in range(5)
             ],
             "fetched_pages": [
@@ -2606,7 +2606,7 @@ class TestPlanningModelRouting:
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
-                SearchResult(title="R", url="https://ex1.com", snippet="S")
+                SearchResult(title="R", url="https://ex1.com", snippet="Snippet with enough content to exceed the quality gate threshold for refinement")
             ]
             mock_refine.return_value = "refined query"
             mock_fetch.return_value = [
@@ -2655,12 +2655,12 @@ class TestSourceCounts:
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             pass1 = [
-                SearchResult(title=f"R{i}", url=f"https://ex{i}.com", snippet="S")
+                SearchResult(title=f"R{i}", url=f"https://ex{i}.com", snippet="Snippet with enough content to exceed the quality gate threshold")
                 for i in range(3)
             ]
             pass2 = [
-                SearchResult(title="R10", url="https://ex10.com", snippet="S"),
-                SearchResult(title="R0dup", url="https://ex0.com", snippet="S"),  # dup
+                SearchResult(title="R10", url="https://ex10.com", snippet="Snippet with enough content"),
+                SearchResult(title="R0dup", url="https://ex0.com", snippet="Snippet dup"),  # dup
             ]
             mock_search.side_effect = [pass1, pass2]
             mock_refine.return_value = "refined query"
@@ -2718,14 +2718,14 @@ class TestSourceCountsDeep:
 
             # Pass 1: 5 results
             pass1 = [
-                SearchResult(title=f"R{i}", url=f"https://ex{i}.com", snippet="S")
+                SearchResult(title=f"R{i}", url=f"https://ex{i}.com", snippet="Snippet content")
                 for i in range(5)
             ]
             # Pass 2: 3 results, 1 dup from pass 1
             pass2 = [
-                SearchResult(title="New1", url="https://new1.com", snippet="S"),
-                SearchResult(title="New2", url="https://new2.com", snippet="S"),
-                SearchResult(title="Dup", url="https://ex0.com", snippet="S"),
+                SearchResult(title="New1", url="https://new1.com", snippet="Snippet content"),
+                SearchResult(title="New2", url="https://new2.com", snippet="Snippet content"),
+                SearchResult(title="Dup", url="https://ex0.com", snippet="Snippet content"),
             ]
             mock_search.side_effect = [pass1, pass2]
             mock_refine.return_value = "deep refined query"
@@ -2735,7 +2735,8 @@ class TestSourceCountsDeep:
             mock_extract.return_value = [
                 ExtractedContent(url="https://ex0.com", title="T", text="C " * 100)
             ]
-            summaries = [Summary(url="https://ex0.com", title="T", summary="S")]
+            # Summary must exceed 100-char deep mode threshold to avoid noun-phrase fallback
+            summaries = [Summary(url="https://ex0.com", title="T", summary="Summary with enough detailed content to comfortably exceed the deep mode quality gate threshold for refinement queries")]
             mock_summarize.return_value = summaries
             mock_evaluate.return_value = RelevanceEvaluation(
                 decision="full_report",
@@ -2890,3 +2891,171 @@ class TestDoubleHaikuRouting:
             from research_agent.modes import DEFAULT_MODEL
             assert decompose_model != DEFAULT_MODEL
             assert eval_mode.relevance_model != eval_mode.model
+
+
+class TestSnippetQualityGate:
+    """Tests for snippet/summary quality gate with noun-phrase fallback."""
+
+    @pytest.mark.asyncio
+    async def test_standard_mode_uses_noun_phrases_on_short_snippets(self):
+        """Should use extract_noun_phrases when avg snippet < 50 chars."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.extract_noun_phrases") as mock_noun, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_full_context") as mock_full_ctx, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
+
+            # Short snippets (< 50 chars avg)
+            search_results = [
+                SearchResult(title="R", url=f"https://ex{i}.com", snippet="Short")
+                for i in range(4)
+            ]
+            mock_search.return_value = search_results
+            mock_noun.return_value = "quantum computing security"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report",
+                decision_rationale="OK",
+                surviving_sources=tuple(summaries),
+                dropped_sources=(),
+                total_scored=1,
+                total_survived=1,
+                refined_query="quantum computing security",
+            )
+            mock_draft.return_value = "## 1. Executive Summary\nDraft"
+            mock_skeptic.return_value = MagicMock(
+                lens="combined", checklist="[Observation] OK",
+                critical_count=0, concern_count=0,
+            )
+            mock_full_ctx.return_value = ContextResult.loaded("Ctx")
+            mock_final.return_value = "Report"
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
+            await agent.research_async("test query")
+
+            mock_noun.assert_called_once()
+            mock_refine.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_standard_mode_uses_refine_on_normal_snippets(self):
+        """Should use refine_query when avg snippet >= 50 chars."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.extract_noun_phrases") as mock_noun, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_skeptic_combined") as mock_skeptic, \
+             patch("research_agent.agent.load_full_context") as mock_full_ctx, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
+
+            # Normal snippets (>= 50 chars avg)
+            long_snippet = "This is a sufficiently long snippet that exceeds the fifty character threshold"
+            search_results = [
+                SearchResult(title="R", url=f"https://ex{i}.com", snippet=long_snippet)
+                for i in range(4)
+            ]
+            mock_search.return_value = search_results
+            mock_refine.return_value = "refined query"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            summaries = [Summary(url="https://ex1.com", title="T", summary="S")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report",
+                decision_rationale="OK",
+                surviving_sources=tuple(summaries),
+                dropped_sources=(),
+                total_scored=1,
+                total_survived=1,
+                refined_query="refined query",
+            )
+            mock_draft.return_value = "## 1. Executive Summary\nDraft"
+            mock_skeptic.return_value = MagicMock(
+                lens="combined", checklist="[Observation] OK",
+                critical_count=0, concern_count=0,
+            )
+            mock_full_ctx.return_value = ContextResult.loaded("Ctx")
+            mock_final.return_value = "Report"
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.standard())
+            await agent.research_async("test query")
+
+            mock_refine.assert_called()
+            mock_noun.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_deep_mode_uses_noun_phrases_on_short_summaries(self):
+        """Should use extract_noun_phrases when avg summary < 100 chars."""
+        with patch("research_agent.agent.search") as mock_search, \
+             patch("research_agent.agent.refine_query") as mock_refine, \
+             patch("research_agent.agent.extract_noun_phrases") as mock_noun, \
+             patch("research_agent.agent.fetch_urls") as mock_fetch, \
+             patch("research_agent.agent.extract_all") as mock_extract, \
+             patch("research_agent.agent.summarize_all") as mock_summarize, \
+             patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock) as mock_evaluate, \
+             patch("research_agent.agent.synthesize_draft") as mock_draft, \
+             patch("research_agent.agent.synthesize_final") as mock_final, \
+             patch("research_agent.agent.run_deep_skeptic_pass") as mock_skeptic, \
+             patch("research_agent.agent.load_full_context") as mock_full_ctx, \
+             patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
+
+            search_results = [
+                SearchResult(title="R", url=f"https://ex{i}.com", snippet="Snippet")
+                for i in range(6)
+            ]
+            mock_search.return_value = search_results
+            mock_noun.return_value = "quantum computing security"
+            mock_fetch.return_value = [
+                FetchedPage(url="https://ex1.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+            ]
+            mock_extract.return_value = [
+                ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+            ]
+            # Short summaries (< 100 chars avg)
+            summaries = [Summary(url="https://ex1.com", title="T", summary="Short")]
+            mock_summarize.return_value = summaries
+            mock_evaluate.return_value = RelevanceEvaluation(
+                decision="full_report",
+                decision_rationale="OK",
+                surviving_sources=tuple(summaries),
+                dropped_sources=(),
+                total_scored=1,
+                total_survived=1,
+                refined_query="quantum computing security",
+            )
+            mock_draft.return_value = "## 1. Executive Summary\nDraft"
+            mock_skeptic.return_value = [
+                MagicMock(lens="evidence_alignment", checklist="OK", critical_count=0, concern_count=0),
+                MagicMock(lens="timing_stakes", checklist="OK", critical_count=0, concern_count=0),
+                MagicMock(lens="strategic_frame", checklist="OK", critical_count=0, concern_count=0),
+            ]
+            mock_full_ctx.return_value = ContextResult.loaded("Ctx")
+            mock_final.return_value = "Report"
+
+            agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
+            await agent.research_async("test query")
+
+            mock_noun.assert_called_once()
+            mock_refine.assert_not_called()

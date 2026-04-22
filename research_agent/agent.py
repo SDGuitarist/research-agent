@@ -11,7 +11,7 @@ import yaml
 
 from anthropic import Anthropic, AsyncAnthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
-from .search import search, refine_query, filter_blocked_urls, SearchResult
+from .search import search, refine_query, extract_noun_phrases, filter_blocked_urls, SearchResult
 from .fetch import fetch_urls
 from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all, Summary
@@ -994,11 +994,16 @@ class ResearchAgent:
             self._source_counts["(sub-queries)"] = len(new_from_subs)
             pass1_results.extend(new_from_subs)
 
-        # Refine query using snippets
+        # Refine query using snippets (with quality gate)
         snippets = [r.snippet for r in pass1_results if r.snippet]
-        refined_query = await asyncio.to_thread(
-            refine_query, self.client, query, snippets, model=self.mode.planning_model, temperature=self.mode.planning_temperature
-        )
+        avg_snippet_len = sum(len(s) for s in snippets) / max(len(snippets), 1)
+        if avg_snippet_len < 50:
+            logger.info("Snippet quality below threshold (avg %.0f chars), using noun-phrase fallback", avg_snippet_len)
+            refined_query = extract_noun_phrases(query)
+        else:
+            refined_query = await asyncio.to_thread(
+                refine_query, self.client, query, snippets, model=self.mode.planning_model, temperature=self.mode.planning_temperature
+            )
         if refined_query == query:
             logger.info("Query refinement skipped (using original query)")
         else:
@@ -1075,9 +1080,14 @@ class ResearchAgent:
         self._next_step("Deep mode: refining search...")
 
         summary_texts = [s.summary for s in summaries]
-        refined_query = await asyncio.to_thread(
-            refine_query, self.client, query, summary_texts, model=self.mode.planning_model, temperature=self.mode.planning_temperature
-        )
+        avg_summary_len = sum(len(t) for t in summary_texts) / max(len(summary_texts), 1)
+        if avg_summary_len < 100:
+            logger.info("Summary quality below threshold (avg %.0f chars), using noun-phrase fallback", avg_summary_len)
+            refined_query = extract_noun_phrases(query)
+        else:
+            refined_query = await asyncio.to_thread(
+                refine_query, self.client, query, summary_texts, model=self.mode.planning_model, temperature=self.mode.planning_temperature
+            )
         if refined_query == query:
             logger.info("Query refinement skipped (using original query)")
         else:

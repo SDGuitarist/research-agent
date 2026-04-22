@@ -23,7 +23,7 @@ from tavily.errors import (
 )
 
 from .errors import ANTHROPIC_TIMEOUT, SearchError
-from .query_validation import validate_query_list
+from .query_validation import validate_query_list, STOP_WORDS
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
@@ -295,3 +295,29 @@ Generate ONE follow-up search query that fills gaps in the research. Return ONLY
     except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
         logger.warning(f"Query refinement failed: {e}, using original query")
         return original_query
+
+
+def extract_noun_phrases(query: str) -> str:
+    """Extract content words from query by removing stopwords.
+
+    Fallback for when snippet/summary quality is too low for
+    LLM-based query refinement. Returns original query if
+    extraction produces nothing valid.
+    """
+    words = query.split()
+    content = [
+        w for w in words
+        if w.lower().strip(",.?!;:\"'()[]") not in STOP_WORDS
+    ]
+
+    if not content:
+        return query
+
+    candidate = " ".join(content)
+    valid = validate_query_list(
+        [candidate],
+        min_words=2,
+        max_words=8,
+        max_results=1,
+    )
+    return valid[0] if valid else query
