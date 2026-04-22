@@ -18,7 +18,7 @@ from research_agent.synthesize import (
     synthesize_final,
     synthesize_mini_report,
 )
-from research_agent.evidence import EVIDENCE_TIERS, EVIDENCE_TIER_INSTRUCTION, EVIDENCE_TIER_REMINDER
+from research_agent.evidence import ABSTENTION_INSTRUCTION, EVIDENCE_TIERS, EVIDENCE_TIER_INSTRUCTION, EVIDENCE_TIER_REMINDER
 from research_agent.skeptic import SkepticFinding
 from research_agent.summarize import Summary
 from research_agent.errors import SynthesisError
@@ -1210,3 +1210,49 @@ class TestCycle29Integration:
         assert "<critical_findings>" not in prompt
         assert "[Documented]" in prompt
         assert EVIDENCE_TIER_REMINDER in prompt
+
+
+class TestAbstentionInstruction:
+    """Tests for synthesis abstention gate."""
+
+    def test_synthesize_report_includes_abstention(self):
+        """synthesize_report() prompt should include abstention instruction."""
+        client = _make_streaming_client("Report content")
+        synthesize_report(client, "test query", SAMPLE_SUMMARIES)
+        prompt = client.messages.stream.call_args.kwargs["messages"][0]["content"]
+        assert ABSTENTION_INSTRUCTION in prompt
+        assert "single-source" in ABSTENTION_INSTRUCTION  # sanity check on wording
+
+    def test_synthesize_final_includes_abstention(self):
+        """synthesize_final() prompt should include abstention instruction."""
+        client = _make_streaming_client("Final sections")
+        synthesize_final(client, "query", "draft", [], SAMPLE_SUMMARIES)
+        prompt = client.messages.stream.call_args.kwargs["messages"][0]["content"]
+        assert ABSTENTION_INSTRUCTION in prompt
+
+    def test_synthesize_draft_does_not_include_abstention(self):
+        """synthesize_draft() should NOT include abstention instruction."""
+        client = _make_streaming_client("Draft content")
+        synthesize_draft(client, "query", SAMPLE_SUMMARIES)
+        prompt = client.messages.stream.call_args.kwargs["messages"][0]["content"]
+        assert ABSTENTION_INSTRUCTION not in prompt
+
+    def test_abstention_coexists_with_evidence_tiers_and_critical_findings(self):
+        """All C29+C30 instructions should coexist in synthesize_final."""
+        findings = [
+            SkepticFinding(
+                lens="combined",
+                checklist="- [Critical Finding] Revenue claim lacks source",
+                critical_count=1,
+                concern_count=0,
+            ),
+        ]
+        client = _make_streaming_client("Final sections")
+        synthesize_final(client, "query", "draft", findings, SAMPLE_SUMMARIES)
+        prompt = client.messages.stream.call_args.kwargs["messages"][0]["content"]
+
+        assert ABSTENTION_INSTRUCTION in prompt
+        assert EVIDENCE_TIER_INSTRUCTION in prompt
+        assert EVIDENCE_TIER_REMINDER in prompt
+        assert "<critical_findings>" in prompt
+        assert "<skeptic_findings>" in prompt

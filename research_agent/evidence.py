@@ -24,3 +24,12 @@ EVIDENCE_TIER_REMINDER = (
     "Remember: every factual claim must carry one of these evidence-tier "
     "labels: [Documented], [Inferred], [Illustrative], [Speculative]."
 )
+
+ABSTENTION_INSTRUCTION = (
+    "When presenting a specific factual claim (statistic, date, named study, "
+    "direct quote) found in only one source, qualify it with explicit source "
+    "attribution (e.g., 'according to Source N' or 'Source N reports'). "
+    "Do not present single-source specific claims as established fact. "
+    "General analysis and inferences drawn from multiple sources do not "
+    "require this qualification."
+)
