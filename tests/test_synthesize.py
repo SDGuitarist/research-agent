@@ -18,6 +18,7 @@ from research_agent.synthesize import (
     synthesize_final,
     synthesize_mini_report,
 )
+from research_agent.evidence import EVIDENCE_TIERS, EVIDENCE_TIER_INSTRUCTION, EVIDENCE_TIER_REMINDER
 from research_agent.skeptic import SkepticFinding
 from research_agent.summarize import Summary
 from research_agent.errors import SynthesisError
@@ -1091,3 +1092,60 @@ class TestBuildToneInstruction:
         result = _build_tone_instruction(long_tone)
         # The tone text inside should be at most 500 chars
         assert "x" * 501 not in result
+
+
+class TestEvidenceTiers:
+    """Tests for evidence-tier labeling constants and prompt integration."""
+
+    def test_evidence_tiers_has_four_values(self):
+        """EVIDENCE_TIERS should contain exactly 4 canonical tier names."""
+        assert len(EVIDENCE_TIERS) == 4
+        assert "Documented" in EVIDENCE_TIERS
+        assert "Inferred" in EVIDENCE_TIERS
+        assert "Illustrative" in EVIDENCE_TIERS
+        assert "Speculative" in EVIDENCE_TIERS
+
+    def test_synthesize_report_includes_tier_instruction(self):
+        """synthesize_report() prompt should include evidence-tier instruction."""
+        client = _make_streaming_client("Report content")
+        synthesize_report(client, "test query", SAMPLE_SUMMARIES)
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "[Documented]" in prompt
+        assert "[Inferred]" in prompt
+        assert "[Illustrative]" in prompt
+        assert "[Speculative]" in prompt
+
+    def test_synthesize_report_includes_tier_reminder(self):
+        """synthesize_report() prompt should include mid-report tier reminder."""
+        client = _make_streaming_client("Report content")
+        synthesize_report(client, "test query", SAMPLE_SUMMARIES)
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert EVIDENCE_TIER_REMINDER in prompt
+
+    def test_synthesize_final_includes_tier_instruction(self):
+        """synthesize_final() prompt should include evidence-tier instruction."""
+        client = _make_streaming_client("Final sections")
+        synthesize_final(client, "query", "draft", [], SAMPLE_SUMMARIES)
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "[Documented]" in prompt
+        assert "[Speculative]" in prompt
+
+    def test_synthesize_final_includes_tier_reminder(self):
+        """synthesize_final() prompt should include mid-report tier reminder."""
+        client = _make_streaming_client("Final sections")
+        synthesize_final(client, "query", "draft", [], SAMPLE_SUMMARIES)
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert EVIDENCE_TIER_REMINDER in prompt
+
+    def test_synthesize_draft_does_not_include_tier_instruction(self):
+        """synthesize_draft() should NOT include evidence-tier instruction."""
+        client = _make_streaming_client("Draft content")
+        synthesize_draft(client, "query", SAMPLE_SUMMARIES)
+        call_args = client.messages.stream.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert EVIDENCE_TIER_INSTRUCTION not in prompt
+        assert EVIDENCE_TIER_REMINDER not in prompt

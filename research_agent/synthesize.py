@@ -24,6 +24,7 @@ from .errors import SynthesisError
 from .sanitize import sanitize_content, build_context_block
 from .token_budget import allocate_budget, truncate_to_budget
 
+from .evidence import EVIDENCE_TIER_INSTRUCTION, EVIDENCE_TIER_REMINDER
 from .skeptic import extract_critical_findings
 
 if TYPE_CHECKING:
@@ -284,6 +285,9 @@ def synthesize_report(
     # Append balance instruction for comparison queries
     mode_instructions = f"{mode_instructions}\n\n{BALANCE_INSTRUCTION}"
 
+    # Append evidence-tier labeling instruction
+    mode_instructions = f"{mode_instructions}\n\n{EVIDENCE_TIER_INSTRUCTION}"
+
     # Modify instructions for limited sources
     if limited_sources:
         limited_disclaimer = _build_limited_disclaimer(total_count, dropped_count)
@@ -336,6 +340,8 @@ Write a well-structured markdown report that:
 {mode_instructions}{context_instruction}
 
 Use bullet points for lists of items.
+
+{EVIDENCE_TIER_REMINDER}
 </instructions>
 {_build_tone_instruction(synthesis_tone)}
 Write the report now:"""
@@ -684,7 +690,11 @@ Write the following sections to complete the report. Use ## headings for each se
 
 {lessons_instruction}
 
+{EVIDENCE_TIER_INSTRUCTION}
+
 Cite sources using [Source N] notation. Ground recommendations in evidence from the draft analysis.
+
+{EVIDENCE_TIER_REMINDER}
 </instructions>
 {_build_tone_instruction(synthesis_tone)}
 Continue the report now:"""
