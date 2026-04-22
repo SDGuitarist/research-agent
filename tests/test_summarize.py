@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 from research_agent.summarize import (
     _chunk_text,
+    _extract_prior_context,
     summarize_chunk,
     summarize_content,
     summarize_all,
@@ -683,3 +684,86 @@ class TestSummarySourceTier:
         summaries = await summarize_content(mock_client, content)
         assert len(summaries) == 1
         assert summaries[0].source_tier == "snippet"
+
+
+class TestExtractPriorContext:
+    """Tests for _extract_prior_context()."""
+
+    def test_extracts_first_sentence(self):
+        """Should extract up to first '. ' boundary."""
+        s = Summary(url="u", title="t", summary="First sentence. Second sentence.")
+        assert _extract_prior_context(s) == "First sentence."
+
+    def test_falls_back_to_truncation(self):
+        """Should truncate to max_chars when no sentence boundary."""
+        s = Summary(url="u", title="t", summary="A" * 200)
+        result = _extract_prior_context(s, max_chars=100)
+        assert len(result) == 103  # 100 + "..."
+        assert result.endswith("...")
+
+    def test_short_text_returned_as_is(self):
+        """Should return short text without truncation."""
+        s = Summary(url="u", title="t", summary="Short text")
+        assert _extract_prior_context(s) == "Short text"
+
+
+class TestCrossChunkContext:
+    """Tests for cross-chunk context in summarize_chunk and summarize_content."""
+
+    @pytest.mark.asyncio
+    async def test_single_chunk_no_context_header(self):
+        """Single-chunk source should not have prior_chunk_context in prompt."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary.")]
+        mock_client.messages.create.return_value = mock_response
+
+        await summarize_chunk(
+            client=mock_client, chunk="Content", url="https://ex.com",
+            title="T", prior_summary="",
+        )
+        prompt = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+        assert "<prior_chunk_context>" not in prompt
+
+    @pytest.mark.asyncio
+    async def test_multi_chunk_includes_prior_context(self):
+        """Chunk with prior_summary should include context header in prompt."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Summary.")]
+        mock_client.messages.create.return_value = mock_response
+
+        await summarize_chunk(
+            client=mock_client, chunk="Content", url="https://ex.com",
+            title="T", prior_summary="Previous chunk covered this topic.",
+        )
+        prompt = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+        assert "<prior_chunk_context>" in prompt
+        assert "Previous chunk covered this topic." in prompt
+
+    @pytest.mark.asyncio
+    async def test_sequential_chunks_pass_context(self):
+        """summarize_content should pass prior context sequentially."""
+        mock_client = AsyncMock()
+        call_prompts = []
+
+        async def track_create(**kwargs):
+            call_prompts.append(kwargs["messages"][0]["content"])
+            mock_resp = MagicMock()
+            mock_resp.content = [MagicMock(text="Summary for this chunk.")]
+            return mock_resp
+
+        mock_client.messages.create.side_effect = track_create
+
+        # Text long enough for 2 chunks
+        long_text = "Paragraph one content. " * 200 + "\n\n" + "Paragraph two content. " * 200
+        content = ExtractedContent(url="https://ex.com", title="T", text=long_text)
+
+        await summarize_content(mock_client, content)
+
+        assert len(call_prompts) >= 2
+        # First chunk should NOT have prior context
+        assert "<prior_chunk_context>" not in call_prompts[0]
+        # Second chunk SHOULD have prior context from first
+        assert "<prior_chunk_context>" in call_prompts[1]
+        assert "Summary for this chunk." in call_prompts[1]

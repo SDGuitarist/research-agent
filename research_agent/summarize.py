@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import logging
+import time
 from dataclasses import dataclass
 
 from anthropic import AsyncAnthropic, RateLimitError, APIError, APIConnectionError, APITimeoutError
@@ -70,6 +71,22 @@ def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE, max_chunks: int = MAX_C
 
 
 
+def _extract_prior_context(summary: Summary, max_chars: int = 150) -> str:
+    """Extract a one-sentence context from a Summary for the next chunk.
+
+    Takes the first sentence (up to first '. ' or '.\\n') capped at max_chars.
+    Falls back to first max_chars + '...' if no sentence boundary found.
+    """
+    text = summary.summary.strip()
+    for sep in (". ", ".\n"):
+        idx = text.find(sep)
+        if idx != -1 and idx < max_chars:
+            return text[: idx + 1]
+    if len(text) > max_chars:
+        return text[:max_chars] + "..."
+    return text
+
+
 async def summarize_chunk(
     client: AsyncAnthropic,
     chunk: str,
@@ -80,12 +97,19 @@ async def summarize_chunk(
     rate_limit_event: asyncio.Event | None = None,
     temperature: float = 1.0,
     source_tier: SourceTier = "full",
+    prior_summary: str = "",
 ) -> Summary | None:
     """Summarize a single chunk of content."""
     # Sanitize untrusted web content to prevent prompt injection
     safe_chunk = sanitize_content(chunk)
     safe_title = sanitize_content(title)
     safe_url = sanitize_content(url)
+
+    # Build optional prior-chunk context header
+    context_header = ""
+    if prior_summary:
+        safe_prior = sanitize_content(prior_summary)
+        context_header = f"\n<prior_chunk_context>\nPrevious chunk covered: {safe_prior}\n</prior_chunk_context>\n"
 
     # Choose prompt and token limit based on structured flag
     if structured:
@@ -95,7 +119,7 @@ async def summarize_chunk(
 Title: {safe_title}
 URL: {safe_url}
 </webpage_metadata>
-
+{context_header}
 <webpage_content>
 {safe_chunk}
 </webpage_content>
@@ -112,7 +136,7 @@ PERSPECTIVE: [one sentence on the source's analytical stance or framing, or "N/A
 Title: {safe_title}
 URL: {safe_url}
 </webpage_metadata>
-
+{context_header}
 <webpage_content>
 {safe_chunk}
 </webpage_content>
@@ -186,24 +210,31 @@ async def summarize_content(
     """
     chunks = _chunk_text(content.text, max_chunks=max_chunks)
 
-    async def _guarded_summarize(chunk: str) -> Summary | None:
-        async with semaphore if semaphore is not None else contextlib.nullcontext():
-            return await summarize_chunk(
-                client=client, chunk=chunk, url=content.url,
-                title=content.title, model=model, structured=structured,
-                rate_limit_event=rate_limit_event, temperature=temperature,
-                source_tier=content.source_tier,
-            )
-
-    tasks = [_guarded_summarize(chunk) for chunk in chunks]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
+    start = time.monotonic()
     summaries = []
-    for result in results:
-        if isinstance(result, Summary):
-            summaries.append(result)
-        elif isinstance(result, Exception):
-            logger.warning("Chunk summarization failed: %s", result)
+    prior_context = ""
+
+    for chunk in chunks:
+        async with semaphore if semaphore is not None else contextlib.nullcontext():
+            try:
+                result = await summarize_chunk(
+                    client=client, chunk=chunk, url=content.url,
+                    title=content.title, model=model, structured=structured,
+                    rate_limit_event=rate_limit_event, temperature=temperature,
+                    source_tier=content.source_tier,
+                    prior_summary=prior_context,
+                )
+                if isinstance(result, Summary):
+                    summaries.append(result)
+                    prior_context = _extract_prior_context(result)
+                else:
+                    prior_context = ""
+            except Exception as e:
+                logger.warning("Chunk summarization failed: %s", e)
+                prior_context = ""
+
+    elapsed = time.monotonic() - start
+    logger.info("Source %s: %d chunks in %.1fs", content.url, len(chunks), elapsed)
 
     return summaries
 
