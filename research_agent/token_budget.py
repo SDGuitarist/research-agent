@@ -161,4 +161,22 @@ def truncate_to_budget(text: str, max_tokens: int) -> str:
         return text
     # Truncate by character estimate (conservative: 4 chars/token)
     max_chars = max_tokens * 4
-    return text[:max_chars] + "\n\n[Content truncated to fit token budget]"
+    min_chars = int(max_chars * 0.6)  # Use at least 60% of budget
+
+    # Tiered boundary detection (matches _chunk_text pattern in summarize.py)
+    truncated = text[:max_chars]
+    pos = truncated.rfind("\n\n", min_chars)
+    if pos == -1:
+        pos = max(truncated.rfind(". ", min_chars), truncated.rfind(".\n", min_chars))
+    if pos == -1:
+        pos = truncated.rfind("\n", min_chars)
+    if pos == -1:
+        pos = truncated.rfind(" ", min_chars)
+
+    if pos != -1:
+        # Include the boundary character (period, newline, etc.)
+        truncated = text[: pos + 1]
+    # else: fall back to character-level (truncated stays as text[:max_chars])
+
+    pct = round((1 - len(truncated) / len(text)) * 100)
+    return truncated + f"\n\n[Content truncated — {pct}% removed to fit token budget]"

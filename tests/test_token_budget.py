@@ -10,6 +10,7 @@ from research_agent.token_budget import (
     BudgetAllocation,
     allocate_budget,
     count_tokens,
+    truncate_to_budget,
 )
 
 
@@ -221,3 +222,45 @@ class TestComponentPriority:
         assert COMPONENT_PRIORITY["critique_guidance"] < COMPONENT_PRIORITY["sources"]
         assert COMPONENT_PRIORITY["sources"] < COMPONENT_PRIORITY["instructions"]
         assert COMPONENT_PRIORITY["instructions"] == 7
+
+
+class TestTruncateToBudget:
+    """Tests for truncate_to_budget() sentence-boundary truncation."""
+
+    def test_no_truncation_within_budget(self):
+        """Text within budget should be returned unchanged."""
+        text = "Short text."
+        assert truncate_to_budget(text, 1000) == text
+
+    def test_truncates_at_sentence_boundary(self):
+        """Should truncate at last sentence boundary before limit."""
+        # 4 chars/token, so 10 tokens = 40 chars budget
+        text = "First sentence. Second sentence. Third sentence that is longer."
+        result = truncate_to_budget(text, 10)
+        assert result.startswith("First sentence. Second sentence.")
+        assert "truncated" in result
+
+    def test_falls_back_to_character_level(self):
+        """Text with no sentence boundaries should fall back to char truncation."""
+        text = "A" * 200  # No periods, newlines, or spaces in first 60%
+        result = truncate_to_budget(text, 10)  # 40 chars budget
+        assert "truncated" in result
+
+    def test_percentage_marker(self):
+        """Marker should include percentage of content removed."""
+        # 200 chars of text, budget for ~40 chars → ~80% removed
+        text = "First sentence. " + "X" * 184
+        result = truncate_to_budget(text, 10)
+        assert "% removed" in result
+
+    def test_empty_text(self):
+        """Empty text should be returned as-is."""
+        assert truncate_to_budget("", 100) == ""
+
+    def test_paragraph_boundary_preferred(self):
+        """Should prefer paragraph breaks over sentence breaks."""
+        text = "First paragraph content.\n\nSecond paragraph with more content. And more."
+        # Budget enough for first paragraph + some of second
+        result = truncate_to_budget(text, 15)  # 60 chars
+        assert "First paragraph" in result
+        assert "truncated" in result
