@@ -2,29 +2,30 @@
 
 **Date:** 2026-04-21
 **Branch:** `main`
-**Phase:** Work — Session 1 of 4 COMPLETE. Ready for Session 2.
+**Phase:** Work — Session 2 of 4 COMPLETE. Ready for Session 3.
 
 ## Current State
 
-Session 1 (Skeptic Enforcement) shipped. `extract_critical_findings()` added to `skeptic.py`, integrated into `synthesize_final()` with `<critical_findings>` XML block and per-finding enforcement instruction.
+Sessions 1-2 shipped. Skeptic enforcement + snippet/summary quality gate with noun-phrase fallback.
 
 **Key commits this session:**
 - `cf1052b` — feat(29-1): extract and enforce skeptic critical findings
+- `1d26e21` — feat(29-2): snippet/summary quality gate with noun-phrase fallback
 
-**Tests:** 1052 passing (12 new: 9 extraction + 3 synthesis integration)
+**Tests:** 1059 passing (19 new across both sessions)
 
-## What Changed
+## What Changed (Session 2)
 
-1. **`skeptic.py`** — Added `extract_critical_findings(findings) -> tuple[str, ...]` with case-insensitive regex, deduplication, bold/em-dash handling
-2. **`synthesize.py`** — Runtime import of `extract_critical_findings`, builds numbered `<critical_findings>` XML block when critical markers found, appends enforcement instruction to `skeptic_instruction`
-3. **`tests/test_skeptic.py`** — 9 tests: empty input, no markers, single/multiple extraction, case-insensitive, dedup, bold markdown, em-dash, tuple type
-4. **`tests/test_synthesize.py`** — 3 tests: block present with criticals, block absent without criticals, existing skeptic_findings preserved
+1. **`search.py`** — Added `extract_noun_phrases(query) -> str` using existing `STOP_WORDS` from `query_validation.py`, validated with `validate_query_list()`, falls back to original query
+2. **`agent.py`** — Quality gates in `_research_with_refinement` (avg snippet < 50 chars) and `_research_deep` (avg summary < 100 chars) that bypass LLM refinement in favor of noun-phrase fallback
+3. **`tests/test_search.py`** — 4 tests: stopword removal, order preservation, all-stopwords fallback, single-word fallback
+4. **`tests/test_agent.py`** — 3 integration tests (short snippets→noun phrases, normal snippets→refine, short summaries→noun phrases) + 6 existing tests updated with longer mock data to avoid false gate triggers
 
 ## Three Questions
 
-1. **Hardest implementation decision in this session?** The regex pattern for `[Critical Finding]` extraction. LLM output varies — could be `[Critical Finding]`, `**[Critical Finding]**`, `[Critical Finding] —`. Chose a regex that handles `]` + optional `**` + optional dashes, with end-of-line capture. The `_count_severity()` function already proved case-insensitive works; this extends it to extraction.
-2. **What did you consider changing but left alone, and why?** The existing `skeptic_instruction` text that says "Any finding rated [Critical Finding] MUST be explicitly addressed." Left it — the new `<critical_findings>` block is additive enforcement (lists specific findings), not a replacement of the general instruction. Belt-and-suspenders.
-3. **Least confident about going into review?** Whether the regex catches all LLM output variants. The plan flagged "fragile parsing" as risk #1. Current tests cover bold and em-dash variants, but LLMs could produce `[Critical finding:]` or `- Critical Finding:` without brackets. Mitigation: start with exact match, add fuzzy matching in review if real outputs show misses.
+1. **Hardest implementation decision in this session?** Whether to create a new STOPWORDS set in search.py or reuse the existing STOP_WORDS from query_validation.py. The plan said "prebuilt STOPWORDS" but an identical set already existed. Chose to import the existing one — no duplication, single source of truth.
+2. **What did you consider changing but left alone, and why?** The 50-char and 100-char thresholds. The plan noted they're heuristic and may need tuning. Left them as-is since they're simple constants and the plan explicitly said "log when the gate fires so we can audit post-deployment."
+3. **Least confident about going into review?** Six existing tests needed longer mock data to avoid triggering the quality gate. The fix was mechanical (longer strings), but it means any future test with short mock snippets/summaries will silently take the noun-phrase path. Could cause confusing test failures if someone doesn't know about the gate.
 
 ## Deferred Items
 
@@ -34,11 +35,11 @@ Session 1 (Skeptic Enforcement) shipped. `extract_critical_findings()` added to 
 
 ## Next Phase
 
-**Work** — Session 2: Quality Gate + Noun Phrases
+**Work** — Session 3: Evidence-Tier Labeling
 
 ### Prompt for Next Session
 
 ```
-Read docs/plans/2026-04-21-cycle-29-skeptic-enforcement-plan.md. Implement Session 2: Quality Gate + Noun Phrases. Relevant files: research_agent/agent.py, research_agent/search.py. Do only Session 2 — commit and stop. Do NOT proceed to Session 3.
+Read docs/plans/2026-04-21-cycle-29-skeptic-enforcement-plan.md. Implement Session 3: Evidence-Tier Labeling. Relevant files: research_agent/evidence.py (new), research_agent/synthesize.py. Do only Session 3 — commit and stop. Do NOT proceed to Session 4.
 Start with /compound-start to load lessons and kick off.
 ```
