@@ -52,6 +52,7 @@ class ModeInfo:
     relevance_cutoff: int = 3
     min_sources_full_report: int = 3
     min_sources_short_report: int = 1
+    min_unique_domains: int = 2
 
 
 @dataclass(frozen=True)

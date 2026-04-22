@@ -7,6 +7,7 @@ from research_agent.relevance import (
     _extract_domain,
     _parse_score_response,
     _aggregate_by_source,
+    check_domain_diversity,
     score_source,
     evaluate_sources,
     generate_insufficient_data_response,
@@ -1416,3 +1417,96 @@ class TestComputeGateDecision:
         decision, rationale = compute_gate_decision(1, 10, mode, verbose=False)
         assert decision == GateDecision.INSUFFICIENT_DATA
         assert rationale == "Only 1/10 sources passed after retry"
+
+
+class TestCheckDomainDiversity:
+    """Tests for check_domain_diversity()."""
+
+    def test_passes_when_enough_domains(self):
+        """Should pass when unique domains >= min_domains."""
+        urls = ["https://a.com/1", "https://b.com/2", "https://c.com/3"]
+        passed, count = check_domain_diversity(urls, 3)
+        assert passed is True
+        assert count == 3
+
+    def test_fails_when_too_few_domains(self):
+        """Should fail when unique domains < min_domains."""
+        urls = ["https://a.com/1", "https://a.com/2", "https://b.com/3"]
+        passed, count = check_domain_diversity(urls, 3)
+        assert passed is False
+        assert count == 2
+
+    def test_empty_urls(self):
+        """Should fail with 0 domains for empty list."""
+        passed, count = check_domain_diversity([], 2)
+        assert passed is False
+        assert count == 0
+
+    def test_subdomains_count_separately(self):
+        """blog.example.com and www.example.com are distinct domains."""
+        urls = ["https://blog.example.com/1", "https://www.example.com/2"]
+        passed, count = check_domain_diversity(urls, 2)
+        assert passed is True
+        assert count == 2
+
+
+class TestDiversityGateInEvaluateSources:
+    """Tests for diversity gate integration in evaluate_sources()."""
+
+    @pytest.mark.asyncio
+    async def test_downgrades_full_report_when_low_diversity(self):
+        """4 sources from 2 domains, standard mode (min=3) → short_report."""
+        mode = ResearchMode.standard()  # min_unique_domains=3
+        summaries = [
+            Summary(url="https://domainA.com/1", title="A1", summary="Content with enough length to pass quality gate threshold for testing"),
+            Summary(url="https://domainA.com/2", title="A2", summary="Content with enough length to pass quality gate threshold for testing"),
+            Summary(url="https://domainA.com/3", title="A3", summary="Content with enough length to pass quality gate threshold for testing"),
+            Summary(url="https://domainB.com/1", title="B1", summary="Content with enough length to pass quality gate threshold for testing"),
+        ]
+
+        async def mock_score(query, summary, client, **kwargs):
+            return SourceScore(url=summary.url, title=summary.title, score=4, explanation="Good")
+
+        with patch("research_agent.relevance.score_source", mock_score):
+            result = await evaluate_sources("test", summaries, mode, AsyncMock())
+
+        assert result.decision == GateDecision.SHORT_REPORT
+        assert "unique domains" in result.decision_rationale
+
+    @pytest.mark.asyncio
+    async def test_no_downgrade_when_diversity_passes(self):
+        """4 sources from 4 domains, standard mode → full_report."""
+        mode = ResearchMode.standard()  # min_unique_domains=3
+        summaries = [
+            Summary(url="https://a.com/1", title="A", summary="Content with enough length to pass quality gate threshold for testing"),
+            Summary(url="https://b.com/1", title="B", summary="Content with enough length to pass quality gate threshold for testing"),
+            Summary(url="https://c.com/1", title="C", summary="Content with enough length to pass quality gate threshold for testing"),
+            Summary(url="https://d.com/1", title="D", summary="Content with enough length to pass quality gate threshold for testing"),
+        ]
+
+        async def mock_score(query, summary, client, **kwargs):
+            return SourceScore(url=summary.url, title=summary.title, score=4, explanation="Good")
+
+        with patch("research_agent.relevance.score_source", mock_score):
+            result = await evaluate_sources("test", summaries, mode, AsyncMock())
+
+        assert result.decision == GateDecision.FULL_REPORT
+
+    @pytest.mark.asyncio
+    async def test_does_not_downgrade_short_report_further(self):
+        """Already short_report → diversity gate is a no-op (no downgrade to insufficient)."""
+        mode = ResearchMode.standard()  # min_sources_full_report=4
+        # Only 2 sources → short_report by count, both from same domain
+        summaries = [
+            Summary(url="https://same.com/1", title="S1", summary="Content with enough length to pass quality gate threshold for testing"),
+            Summary(url="https://same.com/2", title="S2", summary="Content with enough length to pass quality gate threshold for testing"),
+        ]
+
+        async def mock_score(query, summary, client, **kwargs):
+            return SourceScore(url=summary.url, title=summary.title, score=4, explanation="Good")
+
+        with patch("research_agent.relevance.score_source", mock_score):
+            result = await evaluate_sources("test", summaries, mode, AsyncMock())
+
+        # Should be SHORT_REPORT (by count), NOT insufficient_data
+        assert result.decision == GateDecision.SHORT_REPORT

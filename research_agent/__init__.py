@@ -178,6 +178,7 @@ def list_modes() -> list[ModeInfo]:
             relevance_cutoff=m.relevance_cutoff,
             min_sources_full_report=m.min_sources_full_report,
             min_sources_short_report=m.min_sources_short_report,
+            min_unique_domains=m.min_unique_domains,
         )
         for m in modes
     ]

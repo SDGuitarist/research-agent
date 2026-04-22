@@ -16,7 +16,7 @@ from .fetch import fetch_urls
 from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all, Summary
 from .synthesize import synthesize_report, synthesize_draft, synthesize_final, synthesize_mini_report
-from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore, compute_gate_decision
+from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore, compute_gate_decision, check_domain_diversity
 from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_critique_history, new_context_cache, auto_detect_context, CONTEXTS_DIR
 from .context_result import ContextResult, ContextStatus
@@ -778,6 +778,19 @@ class ResearchAgent:
         decision, rationale = compute_gate_decision(
             total_survived, total_scored, self.mode, verbose=False,
         )
+
+        # Apply diversity gate to merged results (same rule as evaluate_sources)
+        if decision == GateDecision.FULL_REPORT:
+            surviving_urls = [s.url for s in merged_surviving]
+            diversity_passed, unique_count = check_domain_diversity(
+                surviving_urls, self.mode.min_unique_domains,
+            )
+            if not diversity_passed:
+                decision = GateDecision.SHORT_REPORT
+                rationale += (
+                    f" Downgraded: {unique_count} unique domains"
+                    f" < {self.mode.min_unique_domains} required"
+                )
 
         logger.info("Merged decision: %s (%d/%d sources passed)", decision, total_survived, total_scored)
 

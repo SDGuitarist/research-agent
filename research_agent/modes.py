@@ -25,6 +25,7 @@ class ResearchMode:
     min_sources_full_report: int  # Minimum survivors for full report
     min_sources_short_report: int  # Minimum survivors for short report (below = insufficient)
     relevance_cutoff: int = 3  # Minimum score (1-5) for a source to be kept
+    min_unique_domains: int = 2  # Minimum unique domains among surviving sources for full report
     decompose: bool = True  # Whether to attempt query decomposition
     retry_sources_per_query: int = 3  # Sources per retry query during coverage gap retry
     cost_estimate: str = ""  # Estimated cost per query (e.g., "~$0.20")
@@ -82,6 +83,8 @@ class ResearchMode:
             )
         if self.followup_questions < 0:
             errors.append(f"followup_questions must be >= 0, got {self.followup_questions}")
+        if self.min_unique_domains < 1:
+            errors.append(f"min_unique_domains must be >= 1, got {self.min_unique_domains}")
         for temp_field in ("planning_temperature", "summarize_temperature", "synthesis_temperature"):
             val = getattr(self, temp_field)
             if not (0.0 <= val <= 1.0):
@@ -138,6 +141,7 @@ class ResearchMode:
             min_sources_full_report=4,
             min_sources_short_report=2,
             relevance_cutoff=4,  # Raised from 3 — filters low-quality sources more aggressively
+            min_unique_domains=3,
             cost_estimate="~$0.45",
             iteration_enabled=True,
             followup_questions=2,
@@ -164,6 +168,7 @@ class ResearchMode:
             min_sources_full_report=8,  # Increased for deep mode
             min_sources_short_report=5,  # Increased for deep mode
             relevance_cutoff=4,  # Raised from 3 — filters low-quality sources more aggressively
+            min_unique_domains=4,
             retry_sources_per_query=5,
             cost_estimate="~$0.95",
             iteration_enabled=True,

@@ -142,6 +142,21 @@ def _extract_domain(url: str) -> str:
         return url[:30]
 
 
+def check_domain_diversity(surviving_urls: list[str], min_domains: int) -> tuple[bool, int]:
+    """Check whether surviving sources meet the minimum unique domain threshold.
+
+    Args:
+        surviving_urls: URLs of sources that passed the relevance gate.
+        min_domains: Minimum unique domains required.
+
+    Returns:
+        Tuple of (passed, unique_count).
+    """
+    unique_domains = {_extract_domain(url) for url in surviving_urls}
+    count = len(unique_domains)
+    return count >= min_domains, count
+
+
 def _parse_score_response(response_text: str) -> tuple[int, str]:
     """
     Parse Claude's scoring response to extract score and explanation.
@@ -419,6 +434,23 @@ async def evaluate_sources(
 
     # Determine decision based on mode thresholds
     decision, rationale = compute_gate_decision(total_survived, total_scored, mode)
+
+    # Post-decision diversity check: downgrade FULL_REPORT if domain diversity is insufficient
+    if decision == GateDecision.FULL_REPORT:
+        surviving_urls = [s.url for s in surviving_sources]
+        diversity_passed, unique_count = check_domain_diversity(
+            surviving_urls, mode.min_unique_domains,
+        )
+        if not diversity_passed:
+            decision = GateDecision.SHORT_REPORT
+            rationale += (
+                f" Downgraded: {unique_count} unique domains"
+                f" < {mode.min_unique_domains} required"
+            )
+            logger.info(
+                "Diversity gate: %d unique domains < %d required, downgrading to short_report",
+                unique_count, mode.min_unique_domains,
+            )
 
     logger.info("Decision: %s (%d/%d sources passed)", decision, total_survived, total_scored)
 
