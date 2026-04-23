@@ -538,3 +538,8 @@ class TestNoveltyQueries:
             min_sources_full_report=3, min_sources_short_report=1,
         )
         assert mode.novelty_queries == 0
+
+    def test_novelty_queries_upper_bound_matches_max_sub_queries(self):
+        """Ensure modes.py validation stays in sync with decompose.MAX_SUB_QUERIES."""
+        from research_agent.decompose import MAX_SUB_QUERIES
+        assert ResearchMode.deep().novelty_queries <= MAX_SUB_QUERIES
