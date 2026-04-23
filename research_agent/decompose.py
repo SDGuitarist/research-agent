@@ -91,6 +91,8 @@ def decompose_query(
         context_content: Optional research context text (already loaded)
         model: Claude model to use for decomposition
         critique_guidance: Optional adaptive guidance from past self-critiques
+        temperature: Sampling temperature for the API call (0.0-1.0, default 1.0)
+        novelty_queries: How many sub-queries to frame for novelty angles (0=none, max=MAX_SUB_QUERIES)
 
     Returns:
         DecompositionResult with fields:
@@ -98,6 +100,9 @@ def decompose_query(
             - is_complex: bool whether decomposition occurred
             - reasoning: str brief explanation of the decision
     """
+    if not isinstance(novelty_queries, int) or not (0 <= novelty_queries <= MAX_SUB_QUERIES):
+        raise ValueError(f"novelty_queries must be int 0-{MAX_SUB_QUERIES}, got {novelty_queries!r}")
+
     safe_query = sanitize_content(query)
 
     # Build optional context block from pre-loaded content
