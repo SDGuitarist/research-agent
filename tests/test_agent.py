@@ -2640,6 +2640,7 @@ class TestPlanningModelRouting:
 
             mock_decompose.assert_called_once()
             assert mock_decompose.call_args[1]["model"] == AUTO_DETECT_MODEL
+            assert mock_decompose.call_args[1]["novelty_queries"] == ResearchMode.standard().novelty_queries
 
     @pytest.mark.asyncio
     async def test_refine_query_receives_planning_model(self):

@@ -515,6 +515,15 @@ class TestGetCritiqueHistory:
         assert "No critique history available" in result.data
 
     @patch("research_agent.context.load_critique_history")
+    async def test_empty_context_result_returns_no_history(self, mock_load, client):
+        """ContextResult.empty() should fall through to no-history message."""
+        from research_agent.context_result import ContextResult
+        mock_load.return_value = ContextResult.empty(source="reports/meta")
+
+        result = await client.call_tool("get_critique_history", {})
+        assert "No critique history available" in result.data
+
+    @patch("research_agent.context.load_critique_history")
     async def test_unexpected_exception_returns_tool_error(self, mock_load, client):
         """Unexpected exceptions should be caught and returned as ToolError."""
         from fastmcp.exceptions import ToolError
