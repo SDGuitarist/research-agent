@@ -176,3 +176,10 @@ class TestListModes:
             assert m.planning_temperature == 0.2
             assert m.summarize_temperature == 0.5
             assert m.synthesis_temperature == 0.8
+
+    def test_list_modes_returns_novelty_queries(self):
+        from research_agent import list_modes
+        modes = list_modes()
+        expected = {"quick": 0, "standard": 1, "deep": 2}
+        for m in modes:
+            assert m.novelty_queries == expected[m.name]

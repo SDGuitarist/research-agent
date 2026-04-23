@@ -296,9 +296,11 @@ def list_research_modes() -> str:
             f"short>={m.min_sources_short_report}, "
             f"min_domains={m.min_unique_domains}"
         )
+        novelty_info = f"novelty={m.novelty_queries}"
         lines.append(
             f"- {m.name}: {m.max_sources} sources, ~{m.word_target} words, "
-            f"{m.cost_estimate}, {save_str}, {model_info}, {temp_info}, {gate_info}"
+            f"{m.cost_estimate}, {save_str}, {model_info}, {temp_info}, "
+            f"{gate_info}, {novelty_info}"
         )
     return "\n".join(lines)
 

@@ -474,6 +474,7 @@ class ResearchAgent:
                 model=self.mode.planning_model,
                 critique_guidance=critique_context,
                 temperature=self.mode.planning_temperature,
+                novelty_queries=self.mode.novelty_queries,
             )
             if decomposition.is_complex:
                 sub_queries = decomposition.sub_queries

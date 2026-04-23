@@ -366,3 +366,111 @@ class TestCritiqueGuidanceParam:
         prompt = call_args[1]["messages"][0]["content"]
         assert "<critique_guidance>" in prompt
         assert "Improve source diversity" in prompt
+
+
+class TestNoveltyQueriesParam:
+    """Tests for novelty_queries parameter in decompose_query."""
+
+    def test_novelty_zero_excludes_instruction(self):
+        """novelty_queries=0 should not add novelty instruction to system prompt."""
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = MagicMock(
+            content=[MagicMock(text="TYPE: SIMPLE\nREASONING: simple\nSUB_QUERIES:\n")]
+        )
+
+        decompose_query(mock_client, "test query", novelty_queries=0)
+        call_args = mock_client.messages.create.call_args
+        system_prompt = call_args.kwargs["system"]
+        assert "typical searches would miss" not in system_prompt
+
+    def test_novelty_one_includes_instruction(self):
+        """novelty_queries=1 should add novelty instruction to system prompt."""
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = MagicMock(
+            content=[MagicMock(text="TYPE: SIMPLE\nREASONING: simple\nSUB_QUERIES:\n")]
+        )
+
+        decompose_query(mock_client, "test query", novelty_queries=1)
+        call_args = mock_client.messages.create.call_args
+        system_prompt = call_args.kwargs["system"]
+        assert "typical searches would miss" in system_prompt
+        assert "frame 1 to target angles" in system_prompt
+
+    def test_novelty_two_includes_correct_count(self):
+        """novelty_queries=2 should interpolate the count into the instruction."""
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = MagicMock(
+            content=[MagicMock(text="TYPE: SIMPLE\nREASONING: simple\nSUB_QUERIES:\n")]
+        )
+
+        decompose_query(mock_client, "test query", novelty_queries=2)
+        call_args = mock_client.messages.create.call_args
+        system_prompt = call_args.kwargs["system"]
+        assert "frame 2 to target angles" in system_prompt
+
+    def test_novelty_instruction_appended_after_last_rule(self):
+        """Novelty instruction should appear after 'Keep the original query's key terms'."""
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = MagicMock(
+            content=[MagicMock(text="TYPE: SIMPLE\nREASONING: simple\nSUB_QUERIES:\n")]
+        )
+
+        decompose_query(mock_client, "test query", novelty_queries=1)
+        call_args = mock_client.messages.create.call_args
+        system_prompt = call_args.kwargs["system"]
+        keep_terms_pos = system_prompt.index("Keep the original query")
+        novelty_pos = system_prompt.index("typical searches would miss")
+        assert novelty_pos > keep_terms_pos
+
+    def test_novelty_instruction_requires_core_term_retention(self):
+        """Novelty instruction should tell LLM to retain core terms per sub-query."""
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = MagicMock(
+            content=[MagicMock(text="TYPE: SIMPLE\nREASONING: simple\nSUB_QUERIES:\n")]
+        )
+
+        decompose_query(mock_client, "test query", novelty_queries=1)
+        call_args = mock_client.messages.create.call_args
+        system_prompt = call_args.kwargs["system"]
+        assert "retain at least one core term from the original query" in system_prompt
+
+    def test_simple_classification_unaffected_by_novelty(self, mock_anthropic_response):
+        """SIMPLE query should return original even with novelty_queries=2."""
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_anthropic_response(
+            "TYPE: SIMPLE\nREASONING: One clear topic"
+        )
+
+        result = decompose_query(mock_client, "test query", novelty_queries=2)
+        assert result.sub_queries == ("test query",)
+        assert result.is_complex is False
+
+    def test_divergent_novelty_sub_queries_pass_validation(self):
+        """Genuinely divergent novelty sub-queries should pass _validate_sub_queries."""
+        from research_agent.decompose import _validate_sub_queries
+
+        original = "impact of AI on software development jobs"
+        novelty_sub_queries = [
+            # Shares {software, ai} with original — contrarian angle
+            "software developer skills AI cannot replicate evidence",
+            # Shares {ai, development} — lesser-known data
+            "AI development workforce retraining program outcomes",
+            # Shares {jobs} — underrepresented angle
+            "jobs created by AI tooling adoption statistics",
+        ]
+        validated = _validate_sub_queries(novelty_sub_queries, original)
+        assert len(validated) >= 2
+
+    def test_zero_overlap_novelty_sub_query_rejected(self):
+        """A sub-query sharing zero words with original should be rejected."""
+        from research_agent.decompose import _validate_sub_queries
+
+        original = "luxury wedding music market San Diego"
+        sub_queries = [
+            # Shares {wedding} — passes
+            "wedding entertainment alternatives comparison",
+            # Shares zero meaningful words — should be rejected
+            "blockchain cryptocurrency exchange regulations",
+        ]
+        validated = _validate_sub_queries(sub_queries, original)
+        assert "blockchain cryptocurrency exchange regulations" not in validated

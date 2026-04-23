@@ -179,6 +179,7 @@ def list_modes() -> list[ModeInfo]:
             min_sources_full_report=m.min_sources_full_report,
             min_sources_short_report=m.min_sources_short_report,
             min_unique_domains=m.min_unique_domains,
+            novelty_queries=m.novelty_queries,
         )
         for m in modes
     ]

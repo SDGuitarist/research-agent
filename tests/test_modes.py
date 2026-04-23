@@ -481,3 +481,60 @@ class TestResearchModeTemperature:
         mode = ResearchMode.quick()
         with pytest.raises(AttributeError):
             mode.planning_temperature = 0.9
+
+
+class TestNoveltyQueries:
+    """Tests for novelty_queries field on ResearchMode."""
+
+    def test_quick_mode_has_zero_novelty_queries(self):
+        assert ResearchMode.quick().novelty_queries == 0
+
+    def test_standard_mode_has_one_novelty_query(self):
+        assert ResearchMode.standard().novelty_queries == 1
+
+    def test_deep_mode_has_two_novelty_queries(self):
+        assert ResearchMode.deep().novelty_queries == 2
+
+    def test_novelty_queries_rejects_negative(self):
+        with pytest.raises(ValueError, match="novelty_queries must be between 0 and 3"):
+            ResearchMode(
+                name="test", max_sources=5, search_passes=1,
+                word_target=500, max_tokens=1000, auto_save=False,
+                synthesis_instructions="Test",
+                pass1_sources=3, pass2_sources=2,
+                min_sources_full_report=3, min_sources_short_report=1,
+                novelty_queries=-1,
+            )
+
+    def test_novelty_queries_rejects_above_max(self):
+        with pytest.raises(ValueError, match="novelty_queries must be between 0 and 3"):
+            ResearchMode(
+                name="test", max_sources=5, search_passes=1,
+                word_target=500, max_tokens=1000, auto_save=False,
+                synthesis_instructions="Test",
+                pass1_sources=3, pass2_sources=2,
+                min_sources_full_report=3, min_sources_short_report=1,
+                novelty_queries=4,
+            )
+
+    def test_novelty_queries_accepts_boundary_values(self):
+        for val in (0, 1, 2, 3):
+            mode = ResearchMode(
+                name="test", max_sources=5, search_passes=1,
+                word_target=500, max_tokens=1000, auto_save=False,
+                synthesis_instructions="Test",
+                pass1_sources=3, pass2_sources=2,
+                min_sources_full_report=3, min_sources_short_report=1,
+                novelty_queries=val,
+            )
+            assert mode.novelty_queries == val
+
+    def test_novelty_queries_default_is_zero(self):
+        mode = ResearchMode(
+            name="test", max_sources=5, search_passes=1,
+            word_target=500, max_tokens=1000, auto_save=False,
+            synthesis_instructions="Test",
+            pass1_sources=3, pass2_sources=2,
+            min_sources_full_report=3, min_sources_short_report=1,
+        )
+        assert mode.novelty_queries == 0

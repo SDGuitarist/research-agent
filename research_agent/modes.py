@@ -37,6 +37,7 @@ class ResearchMode:
     planning_temperature: float = 0.2  # Low temp for classification: decompose, relevance, refine, coverage, iterate
     summarize_temperature: float = 0.5  # Mid temp for chunk summarization
     synthesis_temperature: float = 0.8  # Higher temp for report synthesis, skeptic, critique
+    novelty_queries: int = 0  # How many sub-queries get novelty framing (0 = none)
 
     @property
     def is_quick(self) -> bool:
@@ -85,6 +86,9 @@ class ResearchMode:
             errors.append(f"followup_questions must be >= 0, got {self.followup_questions}")
         if self.min_unique_domains < 1:
             errors.append(f"min_unique_domains must be >= 1, got {self.min_unique_domains}")
+        # Must match decompose.MAX_SUB_QUERIES
+        if not (0 <= self.novelty_queries <= 3):
+            errors.append(f"novelty_queries must be between 0 and 3, got {self.novelty_queries}")
         for temp_field in ("planning_temperature", "summarize_temperature", "synthesis_temperature"):
             val = getattr(self, temp_field)
             if not (0.0 <= val <= 1.0):
@@ -118,6 +122,7 @@ class ResearchMode:
             cost_estimate="~$0.12",
             iteration_enabled=False,
             followup_questions=0,
+            novelty_queries=0,
         )
 
     @classmethod
@@ -145,6 +150,7 @@ class ResearchMode:
             cost_estimate="~$0.45",
             iteration_enabled=True,
             followup_questions=2,
+            novelty_queries=1,
         )
 
     @classmethod
@@ -173,6 +179,7 @@ class ResearchMode:
             cost_estimate="~$0.95",
             iteration_enabled=True,
             followup_questions=3,
+            novelty_queries=2,
         )
 
     @classmethod

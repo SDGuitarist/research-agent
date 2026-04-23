@@ -342,6 +342,15 @@ class TestListResearchModes:
         assert "sources" in text
         assert "min_domains=" in text
 
+    async def test_novelty_queries_visible_in_output(self, client):
+        """novelty_queries should appear in list_research_modes output."""
+        result = await client.call_tool("list_research_modes", {})
+
+        text = result.data
+        assert "novelty=0" in text  # quick
+        assert "novelty=1" in text  # standard
+        assert "novelty=2" in text  # deep
+
 
 # ---------------------------------------------------------------------------
 # list_contexts
