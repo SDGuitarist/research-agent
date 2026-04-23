@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-23
 **Branch:** `feat/31-novelty-decomposition-mcp-critique`
-**Phase:** Cycle 31 WORK COMPLETE. Ready for review.
+**Phase:** Cycle 31 REVIEW + FIXES COMPLETE. Ready for compound phase.
 
 ## What Was Done
 
@@ -46,17 +46,55 @@
 - **`META_DIR` promotion to public location** — accepted as existing pattern (cli.py does same)
 - **`to_mode_info()` method on ResearchMode** — eliminates manual ModeInfo field syncing
 
+## Review Results
+
+**Review date:** 2026-04-23
+**Agents used:** 7 (kieran-python, security-sentinel, architecture-strategist, pattern-recognition, agent-native, learnings-researcher, code-simplicity)
+**Tests:** 1116 passing | MCP lint: 8/8
+
+### Findings Summary
+
+| ID | Sev | Description | Status |
+|----|-----|-------------|--------|
+| 132 | P2 | decompose_query docstring missing temperature + novelty_queries params | pending |
+| 133 | P2 | No runtime type guard on novelty_queries in decompose_query | pending |
+| 134 | P2 | Cross-module invariant test for novelty_queries vs MAX_SUB_QUERIES | pending |
+| 135 | P2 | critique_report MCP doesn't save critiques (pre-existing) | pending |
+| 136 | P3 | Missing ContextResult.empty() test for get_critique_history | pending |
+| 137 | P3 | No integration test for agent.py novelty_queries threading | pending |
+| 123 | P2 | MCP missing cost/critique-history tools | done (this PR) |
+
+**0 P1 findings. No merge blockers.**
+
+### Discarded / Accepted Risks
+
+- `except Exception` catch-all in get_critique_history: all 7 agents validated as consistent with established MCP boundary pattern
+- TOCTOU symlink gap in critique file loading: pre-existing, requires local write access, strict YAML schema validation limits exploitation
+- META_DIR private import by 3 consumers: plan already tracks as deferred housekeeping
+- ModeInfo/ResearchMode manual sync: plan already defers to_mode_info() method
+- Test redundancy (simplicity reviewer): optional polish, not actionable
+
 ## Three Questions
 
-1. **Hardest implementation decision?** Building the system prompt as a variable instead of inline string literal. The existing code had a single string in the `system=` kwarg — refactoring to `system_prompt = ...` + conditional append was the cleanest approach but touched the most lines.
-2. **What did you consider changing but left alone?** The existing prompt rule "Keep the original query's key terms in at least one sub-query" — it's technically weaker than the per-sub-query validation requires, but changing the original rule would be scope creep. The novelty template adds its own explicit per-sub-query retention requirement.
-3. **Least confident going into review?** Whether the `get_critique_history` `except Exception` catch-all is too broad — `load_critique_history` has its own internal error handling and the function docstring says it never raises, but the boundary pattern requires the catch-all for defense-in-depth.
+1. **Hardest judgment call in this review?** Whether to create a todo for the `critique_report` save gap (135). It's pre-existing — not introduced by this PR — but now more visible because `get_critique_history` was added. An agent following the recommended workflow would find standalone re-critiques invisible. P2 felt right because it affects the feedback loop this PR explicitly enables.
+2. **What did you consider flagging but chose not to, and why?** The `except Exception` boundary catch-all. The HANDOFF flagged this as a risk, but every agent that reviewed it confirmed it follows the established pattern used by all 4 existing MCP tools. Changing one without changing all would be inconsistent.
+3. **What might this review have missed?** Whether novelty-framed sub-queries interact badly with the C30 diversity gate in practice. The architectural safety nets are in place (relevance scoring, diversity gate, source tier caps), but contrarian perspectives may score lower on relevance, causing more SHORT_REPORT downgrades for niche queries. This is a runtime quality question requiring live A/B testing.
+
+### Fix Phase Results
+
+4 fix commits: `94df004`, `c87ac0b`, `329c469`, `622522a`
+- Batch 1: Docstring + type guard in decompose.py (132, 133)
+- Batch 2: Cross-module invariant test in test_modes.py (134)
+- Batch 3: critique_report save_critique in mcp_server.py (135)
+- Batch 4: ContextResult.empty() + agent threading tests (136, 137)
+
+**Tests:** 1118 passing (was 1116) | MCP lint: 8/8
 
 ## Prompt for Next Session
 
 ```
 Read HANDOFF.md for context. This is research-agent on branch
 feat/31-novelty-decomposition-mcp-critique.
-Cycle 31 work complete. Run /workflows:review on this branch.
-Plan: docs/plans/2026-04-23-feat-novelty-decomposition-mcp-cost-critique-plan.md
+Cycle 31 review + fixes complete. All 6 findings resolved.
+Run /workflows:compound to document this cycle and propagate learnings.
 ```
