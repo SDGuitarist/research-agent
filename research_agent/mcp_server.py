@@ -187,6 +187,8 @@ def critique_report(filename: str) -> str:
     from fastmcp.exceptions import ToolError
 
     from research_agent import critique_report_file
+    from research_agent.critique import save_critique
+    from research_agent.agent import META_DIR
     from research_agent.modes import DEFAULT_MODEL
 
     try:
@@ -197,6 +199,7 @@ def critique_report(filename: str) -> str:
     try:
         client = Anthropic()
         result = critique_report_file(client, path, model=DEFAULT_MODEL, temperature=0.8)
+        save_critique(result, META_DIR)
     except Exception:
         logger.exception("Unexpected error in critique_report")
         raise ToolError(
