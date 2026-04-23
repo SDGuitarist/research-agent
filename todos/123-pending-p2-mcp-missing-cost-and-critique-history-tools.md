@@ -1,5 +1,5 @@
 ---
-status: deferred
+status: done
 priority: p2
 issue_id: "123"
 tags: [code-review, agent-native, mcp]
