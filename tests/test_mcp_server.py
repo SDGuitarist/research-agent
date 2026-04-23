@@ -472,6 +472,59 @@ class TestGenerateFollowups:
 
 
 # ---------------------------------------------------------------------------
+# get_critique_history
+# ---------------------------------------------------------------------------
+
+
+class TestGetCritiqueHistory:
+    @patch("research_agent.context.load_critique_history")
+    async def test_returns_summary_when_history_available(self, mock_load, client):
+        """Should return critique summary text when enough passing critiques exist."""
+        from research_agent.context_result import ContextResult
+        mock_load.return_value = ContextResult.loaded(
+            "Based on 5 recent self-critiques:\n"
+            "Weakest dimensions: source_diversity (3.2).",
+            source="reports/meta",
+        )
+
+        result = await client.call_tool("get_critique_history", {})
+        text = result.data
+        assert "Weakest dimensions" in text
+        assert "source_diversity" in text
+
+    @patch("research_agent.context.load_critique_history")
+    async def test_no_history_message_mentions_passing_threshold(self, mock_load, client):
+        """Should return user-friendly message mentioning passing critiques when none available."""
+        from research_agent.context_result import ContextResult
+        mock_load.return_value = ContextResult.not_configured(source="reports/meta")
+
+        result = await client.call_tool("get_critique_history", {})
+        text = result.data
+        assert "No critique history available" in text
+        assert "3 passing" in text
+        assert "overall_pass: true" in text
+
+    @patch("research_agent.context.load_critique_history")
+    async def test_three_failing_critiques_still_no_history(self, mock_load, client):
+        """3 failing critiques should not produce history — threshold is passing critiques."""
+        from research_agent.context_result import ContextResult
+        # load_critique_history filters to passing only, returns not_configured if < 3
+        mock_load.return_value = ContextResult.not_configured(source="reports/meta")
+
+        result = await client.call_tool("get_critique_history", {})
+        assert "No critique history available" in result.data
+
+    @patch("research_agent.context.load_critique_history")
+    async def test_unexpected_exception_returns_tool_error(self, mock_load, client):
+        """Unexpected exceptions should be caught and returned as ToolError."""
+        from fastmcp.exceptions import ToolError
+        mock_load.side_effect = OSError("Permission denied")
+
+        with pytest.raises(ToolError, match="Failed to load critique history"):
+            await client.call_tool("get_critique_history", {})
+
+
+# ---------------------------------------------------------------------------
 # run_research — skip_critique and max_sources params
 # ---------------------------------------------------------------------------
 

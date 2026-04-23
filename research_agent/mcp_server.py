@@ -24,6 +24,7 @@ mcp = FastMCP(
         "Use get_report to retrieve a saved report by filename. "
         "Use critique_report to evaluate report quality after research completes. "
         "Use generate_followups to suggest what to research next based on a report. "
+        "Use get_critique_history to review patterns across past research runs. "
         "Queries must contain at least 2 specific, non-generic words — vague queries like 'stuff' or 'best things' will be rejected with a suggestion. "
         "Typical workflow: list_research_modes → run_research → critique_report → generate_followups. "
         "Set 'cwd' in your MCP client config to the research-agent project root."
@@ -320,6 +321,36 @@ def list_contexts() -> str:
     for name, preview in contexts:
         lines.append(f"- {name}: {preview[:100]}")
     return "\n".join(lines)
+
+
+@mcp.tool
+def get_critique_history() -> str:
+    """Show summarized self-critique patterns from recent research runs.
+
+    Returns aggregate quality patterns from recent research critiques,
+    including weakest dimensions and recurring weaknesses. Requires at
+    least 3 passing critiques (overall_pass: true) — failed critiques
+    do not count toward this threshold.
+    """
+    from fastmcp.exceptions import ToolError
+    from research_agent.context import load_critique_history
+    from research_agent.agent import META_DIR  # accepted private import (see plan §4)
+
+    try:
+        result = load_critique_history(META_DIR)
+    except Exception:
+        logger.exception("Unexpected error in get_critique_history")
+        raise ToolError(
+            "Failed to load critique history. Check that the research-agent "
+            "project root is accessible."
+        )
+    if result.content:
+        return result.content
+    return (
+        "No critique history available. Need at least 3 passing "
+        "critiques (overall_pass: true) to generate patterns. Run "
+        "research in standard or deep mode with critique enabled."
+    )
 
 
 def _validate_report_filename(filename: str) -> Path:
