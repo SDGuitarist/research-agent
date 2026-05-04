@@ -1,8 +1,8 @@
 # HANDOFF — Research Agent
 
 **Date:** 2026-05-03
-**Branch:** `chore/32-hygiene-bundle`
-**Phase:** Cycle 32 WORK COMPLETE. Awaiting review.
+**Branch:** `chore/32-hygiene-bundle` (merged to main)
+**Phase:** Cycle 32 COMPLETE.
 
 ## Current State
 
@@ -22,6 +22,8 @@ Cycle 32 shipped three mechanical hygiene refactors:
 |-------|----------|
 | Brainstorm | `docs/brainstorms/2026-05-03-cycle-32-hygiene-bundle-brainstorm.md` |
 | Plan | `docs/plans/2026-05-03-cycle-32-hygiene-bundle-plan.md` |
+| Review | `docs/reviews/2026-05-03-cycle-32-review-summary.md` |
+| Solution | `docs/solutions/architecture/constant-consolidation-and-dataclass-conversion.md` |
 
 ## Commits
 
