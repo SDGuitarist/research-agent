@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-03
 **Branch:** `chore/32-hygiene-bundle` (merged to main)
-**Phase:** Cycle 32 COMPLETE.
+**Phase:** Cycle 32 COMPLETE. Project PARKED -- resume when Tavily API key is renewed.
 
 ## Current State
 
