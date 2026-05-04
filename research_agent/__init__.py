@@ -162,24 +162,4 @@ def list_modes() -> list[ModeInfo]:
         cost_estimate, and auto_save fields.
     """
     modes = [ResearchMode.quick(), ResearchMode.standard(), ResearchMode.deep()]
-    return [
-        ModeInfo(
-            name=m.name,
-            max_sources=m.max_sources,
-            word_target=m.word_target,
-            cost_estimate=m.cost_estimate,
-            auto_save=m.auto_save,
-            model=m.model,
-            planning_model=m.planning_model,
-            relevance_model=m.relevance_model,
-            planning_temperature=m.planning_temperature,
-            summarize_temperature=m.summarize_temperature,
-            synthesis_temperature=m.synthesis_temperature,
-            relevance_cutoff=m.relevance_cutoff,
-            min_sources_full_report=m.min_sources_full_report,
-            min_sources_short_report=m.min_sources_short_report,
-            min_unique_domains=m.min_unique_domains,
-            novelty_queries=m.novelty_queries,
-        )
-        for m in modes
-    ]
+    return [m.to_mode_info() for m in modes]

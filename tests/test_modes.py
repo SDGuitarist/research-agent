@@ -1,7 +1,10 @@
 """Tests for research_agent.modes module."""
 
+import dataclasses
+
 import pytest
 from research_agent.modes import AUTO_DETECT_MODEL, ResearchMode
+from research_agent.results import ModeInfo
 
 
 class TestResearchModeFactoryMethods:
@@ -543,3 +546,43 @@ class TestNoveltyQueries:
         """Ensure modes.py validation stays in sync with decompose.MAX_SUB_QUERIES."""
         from research_agent.decompose import MAX_SUB_QUERIES
         assert ResearchMode.deep().novelty_queries <= MAX_SUB_QUERIES
+
+
+class TestToModeInfo:
+    """Tests for ResearchMode.to_mode_info() conversion."""
+
+    def test_to_mode_info_returns_mode_info(self):
+        """to_mode_info() returns a ModeInfo instance."""
+        info = ResearchMode.standard().to_mode_info()
+        assert isinstance(info, ModeInfo)
+
+    def test_to_mode_info_all_fields_present(self):
+        """Every ModeInfo field is populated by to_mode_info().
+
+        Uses dataclasses.fields() so this test auto-detects new fields
+        added to ModeInfo without manual updates.
+        """
+        mode = ResearchMode.standard()
+        info = mode.to_mode_info()
+        mode_info_fields = {f.name for f in dataclasses.fields(ModeInfo)}
+        mode_fields = {f.name for f in dataclasses.fields(ResearchMode)}
+
+        # Every ModeInfo field must exist on ResearchMode (subset check)
+        assert mode_info_fields <= mode_fields, (
+            f"ModeInfo has fields not on ResearchMode: {mode_info_fields - mode_fields}"
+        )
+
+        # Every ModeInfo field must match the source ResearchMode value
+        for field_name in mode_info_fields:
+            assert getattr(info, field_name) == getattr(mode, field_name), (
+                f"Field {field_name!r}: ModeInfo={getattr(info, field_name)!r} "
+                f"!= ResearchMode={getattr(mode, field_name)!r}"
+            )
+
+    def test_to_mode_info_all_modes(self):
+        """to_mode_info() works for quick, standard, and deep."""
+        for factory in (ResearchMode.quick, ResearchMode.standard, ResearchMode.deep):
+            mode = factory()
+            info = mode.to_mode_info()
+            assert info.name == mode.name
+            assert info.max_sources == mode.max_sources
