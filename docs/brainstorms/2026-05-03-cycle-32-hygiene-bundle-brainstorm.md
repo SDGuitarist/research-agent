@@ -19,8 +19,8 @@ are renewed. Accepted as-is for this hygiene cycle.
 Bundle three small deferred items into one cycle to reduce maintenance tax
 before the next feature cycle:
 
-1. **ANTHROPIC_ERRORS consolidation** -- replace 11 inline exception tuples
-   with the shared constant from `errors.py`
+1. **ANTHROPIC_ERRORS consolidation** -- replace ~10 grouped inline exception
+   tuples with the shared constant from `errors.py`
 2. **META_DIR promotion** -- move from `agent.py` private constant to a shared
    location importable without reaching into `agent`
 3. **`to_mode_info()` method** -- add to `ResearchMode` so `ModeInfo`
@@ -35,69 +35,33 @@ before the next feature cycle:
 Zero files import it. All 11 modules import the 4 types directly from
 `anthropic` and assemble their own tuples in `except` clauses.
 
-**Files with inline tuples (from grep):**
-- `relevance.py` (2 sites -- one grouped, one split by type)
-- `context.py` (1 site)
-- `api_helpers.py` (1 site, plus individual imports for retry logic)
-- `skeptic.py` (1 site grouped + 4 individual catches for logging)
-- `synthesize.py` (4 individual catches for logging)
-- `critique.py` (1 site)
-- `summarize.py` (1 site)
-- `coverage.py` (1 site)
-- `search.py` (1 site)
-- `agent.py` (1 site)
-- `iterate.py` (2 sites)
-- `decompose.py` (1 site)
+**Scope:** 12 files have inline exception tuples. ~10 sites use grouped
+`except (APIError, RateLimitError, ...)` and can switch to
+`except ANTHROPIC_ERRORS`. Exact per-site audit deferred to plan phase.
 
-**Design decision: What about files that catch each type separately?**
+**Exceptions (do NOT consolidate):**
+- `skeptic.py` -- 4 individual `except` blocks with per-type log messages
+- `synthesize.py` -- same pattern, per-type logging is intentional
 
-`skeptic.py` and `synthesize.py` catch `RateLimitError`, `APITimeoutError`,
-`APIConnectionError`, and `APIError` in separate `except` blocks with
-different log messages. These should NOT be consolidated into
-`except ANTHROPIC_ERRORS` because the per-type logging is intentional.
-
-For these files, the fix is limited to:
-- Replace `from anthropic import APIError, RateLimitError, ...` with
-  `from research_agent.errors import ANTHROPIC_ERRORS` only where the grouped
-  tuple is used
-- Leave the individual imports where individual catches are needed
-
-Wait -- simpler approach: these files still need individual imports for their
-per-type catches. The win from ANTHROPIC_ERRORS is in files that use the
-grouped tuple pattern. For skeptic/synthesize, we leave imports as-is and
-don't force the constant where it doesn't fit.
-
-**Conclusion:** Replace grouped `except (APIError, RateLimitError, ...)` with
-`except ANTHROPIC_ERRORS` in ~10 sites. Leave `skeptic.py` and
-`synthesize.py` per-type catches untouched. In those files, also add
-`ANTHROPIC_ERRORS` import only if they have a grouped catch alongside the
-individual ones (skeptic does not, synthesize does not -- so skip both).
+These two files keep their direct `anthropic` imports. Don't force the
+constant where per-type handling exists.
 
 ### Item 2: META_DIR
 
 **Current state:** Defined at `agent.py:47` as `META_DIR = Path("reports/meta")`.
-Imported by:
-- `mcp_server.py:191` and `mcp_server.py:340` (via `from research_agent.agent import META_DIR`)
+Used by 4 sites:
+- `agent.py:224, 447` (defines and uses it internally)
+- `mcp_server.py:191, 340` (via `from research_agent.agent import META_DIR`)
 - `cli.py:15` (via `from research_agent.agent import META_DIR`)
 
 **Problem:** Importing from `agent.py` pulls in a heavy module (the
 orchestrator) just for a path constant. `mcp_server.py` even has a comment
 acknowledging it: "accepted private import (see plan S4)".
 
-**Options:**
-1. Move to `modes.py` -- already imported everywhere, but `modes.py` is about
-   research mode configs, not paths. Doesn't fit semantically.
-2. Move to `errors.py` -- already imported everywhere, but it's about errors.
-   Same problem.
-3. Create `config.py` -- new file for shared constants. Clean but adds a file.
-4. Move to `__init__.py` -- public API surface. META_DIR is an implementation
-   detail, not something external users need. Bad fit.
-
-**Decision:** Option 3 -- `config.py`. It's the natural home for shared path
-constants, and if future constants need a home (e.g., `DEFAULT_REPORTS_DIR`),
-they go here too. The file will be tiny (under 10 lines). This follows the
-Cycle 29H pattern of moving hardcoded values to a config surface
-(`EXTRACT_DOMAINS` to context profile).
+**Decision:** New `config.py` -- the natural home for shared path constants.
+Tiny file (under 10 lines). Follows the Cycle 29H pattern of moving hardcoded
+values to a config surface (`EXTRACT_DOMAINS` to context profile). Rejected
+alternatives captured in Feed-Forward.
 
 ### Item 3: to_mode_info()
 
@@ -134,7 +98,7 @@ is lightweight.
 
 ### In scope
 - ANTHROPIC_ERRORS import replacement (~10 call sites)
-- New `config.py` with `META_DIR`; update 3 import sites
+- New `config.py` with `META_DIR`; update 4 import sites (agent, mcp_server x2, cli)
 - `to_mode_info()` method on `ResearchMode`; simplify `list_modes()`
 - Tests for `to_mode_info()` field completeness
 - MCP lint passes (8/8 tools)
@@ -142,6 +106,7 @@ is lightweight.
 ### Out of scope
 - Changing exception handling behavior (just import paths)
 - Changing META_DIR value or adding new config constants
+- Moving other constants into `config.py` (scope creep risk -- just META_DIR)
 - Changing ModeInfo fields (just relocating construction)
 - Anything touching novelty, decomposition, or synthesis logic
 - A/B testing or threshold tuning
