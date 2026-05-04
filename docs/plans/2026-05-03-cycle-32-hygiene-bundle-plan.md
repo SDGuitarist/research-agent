@@ -40,8 +40,8 @@ so `mcp_server.py`'s lazy imports still avoid loading the heavy `agent.py`
 orchestrator. Note: `cli.py` gets no import-time benefit because it already
 eagerly imports `agent.py` through `from research_agent import ResearchAgent`.
 
-Also audit docstrings and comments for stale references to META_DIR's old
-location in `agent.py`.
+Also audit docstrings and comments in the 4 changed files for stale
+references to META_DIR's old location in `agent.py`.
 
 | File | Change |
 |------|--------|
@@ -76,18 +76,22 @@ Adopt the existing `ANTHROPIC_ERRORS` constant (already defined at
 `errors.py:11`) at 8 call sites that currently inline the tuple. Leave 3
 files untouched.
 
-**Replace (8 sites in 8 files):**
+**Replace (10 sites across 9 files):**
+
+For each file below: before removing `anthropic` error imports, verify they
+are not used elsewhere in the same file (e.g., isinstance checks, type hints,
+re-raises). Only remove imports that are exclusively used in the grouped catch.
 
 | File | Line | Notes |
 |------|------|-------|
 | `api_helpers.py:56` | Replace grouped catch. Keep `from anthropic import RateLimitError` (used at lines 32, 60). Remove other 3 individual imports. |
-| `context.py:443` | Replace grouped catch. Remove all 4 `anthropic` imports. |
-| `decompose.py:176` | Replace grouped catch. Remove all 4 `anthropic` imports. |
-| `iterate.py:99, 223` | Replace both grouped catches. Remove all 4 `anthropic` imports. |
-| `critique.py:221` | Replace grouped catch. Remove all 4 `anthropic` imports. |
-| `coverage.py:267` | Replace grouped catch. Remove all 4 `anthropic` imports. |
-| `summarize.py:186` | Replace grouped catch. Remove all 4 `anthropic` imports. |
-| `search.py:295` | Replace grouped catch. Remove all 4 `anthropic` imports. |
+| `context.py:443` | Replace grouped catch. Remove all 4 `anthropic` error imports. |
+| `decompose.py:176` | Replace grouped catch. Remove all 4 `anthropic` error imports. |
+| `iterate.py:99, 223` | Replace both grouped catches (2 sites). Remove all 4 `anthropic` error imports. |
+| `critique.py:221` | Replace grouped catch. Remove all 4 `anthropic` error imports. |
+| `coverage.py:267` | Replace grouped catch. Remove all 4 `anthropic` error imports. |
+| `summarize.py:186` | Replace grouped catch. Remove all 4 `anthropic` error imports. |
+| `search.py:295` | Replace grouped catch. Remove all 4 `anthropic` error imports. |
 | `relevance.py:573` | Replace grouped catch. Keep `from anthropic import ...` for line 280 per-type catches (see below). |
 
 **Leave untouched (3 files):**
@@ -102,7 +106,7 @@ files untouched.
 
 | File | Situation |
 |------|-----------|
-| `agent.py:1127` | Catches `(ResearchError, APIError, RateLimitError, APIConnectionError, APITimeoutError)`. Can't use `ANTHROPIC_ERRORS` without tuple unpacking: `except (ResearchError, *ANTHROPIC_ERRORS)` is invalid Python syntax in except clauses. Leave as-is, or use `except (*ANTHROPIC_ERRORS, ResearchError)` -- **wait, that's also invalid.** Leave this site as-is and add a comment: `# ResearchError + ANTHROPIC_ERRORS (can't unpack in except clause)`. |
+| `agent.py:1127` | Catches `(ResearchError, APIError, RateLimitError, APIConnectionError, APITimeoutError)`. Python does not support tuple unpacking in `except` clauses. Leave as-is with comment: `# ResearchError + ANTHROPIC_ERRORS (can't unpack in except clause)`. |
 
 **Import pattern per file after consolidation:**
 
@@ -147,11 +151,10 @@ from research_agent.errors import ANTHROPIC_ERRORS
 ### Error Cases
 
 - WHEN a new field is added to `ModeInfo` but not to `to_mode_info()` THE
-  SYSTEM SHALL fail the `dataclasses.fields()`-based completeness test
+  SYSTEM SHALL fail via two mechanisms: `TypeError` at construction time
+  (explicit mapping) AND the `dataclasses.fields()`-based completeness test
 - WHEN `modes.py` imports from `results.py` THE SYSTEM SHALL not create a
   circular import (verified by importing from both entry points)
-- WHEN a new field is added to `ModeInfo` but not to `to_mode_info()` THE
-  SYSTEM SHALL raise `TypeError` at construction time (explicit mapping)
 
 ### Verification Commands
 
