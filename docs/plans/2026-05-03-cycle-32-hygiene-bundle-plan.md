@@ -1,7 +1,7 @@
 ---
 feed_forward:
-  risk: "api_helpers.py dual-import situation"
-  verify_first: true
+  risk: "modes.py -> results.py import edge between leaf modules"
+  verify_first: false
 ---
 
 # Cycle 32 Plan: Hygiene Bundle
@@ -28,17 +28,35 @@ Clean dual-import, not awkward.
 
 Three mechanical refactors, each in its own commit:
 
-### Commit 1: META_DIR to config.py
+### Commit 1: META_DIR to report_store.py
 
-Create `research_agent/config.py` with `META_DIR = Path("reports/meta")`.
-Update 3 files to import from `config.py` instead of `agent.py`.
+Move `META_DIR` from `agent.py` to `report_store.py`, next to `REPORTS_DIR`.
+This follows the existing codebase pattern where path constants live in the
+module that owns them (`REPORTS_DIR` is already in `report_store.py`, and
+`META_DIR = Path("reports/meta")` is a subdirectory of it). No new file needed.
+
+`report_store.py` is lightweight (only `re`, `datetime`, `pathlib`, `.results`),
+so `mcp_server.py`'s lazy imports still avoid loading the heavy `agent.py`
+orchestrator. Note: `cli.py` gets no import-time benefit because it already
+eagerly imports `agent.py` through `from research_agent import ResearchAgent`.
+
+Also audit docstrings and comments for stale references to META_DIR's old
+location in `agent.py`.
 
 | File | Change |
 |------|--------|
-| `config.py` | **New.** `from pathlib import Path` + `META_DIR = Path("reports/meta")` |
-| `agent.py:47` | Remove `META_DIR` definition, add `from .config import META_DIR` |
-| `mcp_server.py:191, 340` | Change `from research_agent.agent import META_DIR` to `from research_agent.config import META_DIR`. Remove "accepted private import" comment at line 340. |
-| `cli.py:15` | Change `from research_agent.agent import META_DIR` to `from research_agent.config import META_DIR` |
+| `report_store.py:9` | Add `META_DIR = Path("reports/meta")` below `REPORTS_DIR` |
+| `agent.py:47` | Remove `META_DIR` definition, add `from .report_store import META_DIR` |
+| `mcp_server.py:191, 340` | Change `from research_agent.agent import META_DIR` to `from research_agent.report_store import META_DIR`. Remove "accepted private import" comment at line 340. |
+| `cli.py:15` | Change `from research_agent.agent import META_DIR` to `from research_agent.report_store import META_DIR` |
+
+**Why not config.py?** Pattern recognition review found that this codebase
+keeps path constants in the module that owns them (REPORTS_DIR in
+report_store.py, CONTEXTS_DIR in context.py). Creating a new file for a single
+constant breaks this pattern.
+
+**Why not errors.py?** Although it holds ANTHROPIC_TIMEOUT, a filesystem path
+constant is semantically unrelated to errors and exceptions.
 
 ### Commit 2: to_mode_info() on ResearchMode
 
@@ -47,14 +65,16 @@ Add a method to `ResearchMode` that constructs a `ModeInfo`. Simplify
 
 | File | Change |
 |------|--------|
-| `modes.py` | Add `from .results import ModeInfo` at top. Add `to_mode_info()` method that returns `ModeInfo(name=self.name, max_sources=self.max_sources, ...)` with all shared fields. |
+| `modes.py` | Add `from .results import ModeInfo` at top. Add `to_mode_info()` method using **explicit field mapping** (Approach A) -- returns `ModeInfo(name=self.name, max_sources=self.max_sources, ...)` with all shared fields. Explicit mapping ensures a missing required field triggers `TypeError` at construction time, not silent drift. |
+| `results.py` | Add comment at top of file: `# NOTE: modes.py imports from this module. Do not import from modes here.` |
 | `__init__.py:166-183` | Replace 18-line manual `ModeInfo(...)` construction with `m.to_mode_info()` |
-| `tests/test_modes.py` or `tests/test_results.py` | Add test: `to_mode_info()` returns a `ModeInfo` with all fields matching the source `ResearchMode`. Use field-by-field assertion so a new field addition that forgets `to_mode_info` fails immediately. |
+| `tests/test_modes.py` | Add test: `to_mode_info()` returns a `ModeInfo` with all fields matching the source `ResearchMode`. Use `dataclasses.fields(ModeInfo)` to programmatically verify every ModeInfo field appears in the output -- this makes the test self-updating when fields are added to either class. |
 
 ### Commit 3: ANTHROPIC_ERRORS consolidation
 
-Replace grouped `except (APIError, RateLimitError, ...)` with
-`except ANTHROPIC_ERRORS` at 8 call sites. Leave 3 files untouched.
+Adopt the existing `ANTHROPIC_ERRORS` constant (already defined at
+`errors.py:11`) at 8 call sites that currently inline the tuple. Leave 3
+files untouched.
 
 **Replace (8 sites in 8 files):**
 
@@ -95,6 +115,7 @@ from anthropic import RateLimitError
 from research_agent.errors import ANTHROPIC_ERRORS
 
 # relevance.py (needs individual types for line 280-283):
+# Individual imports for per-type catches (line ~280); ANTHROPIC_ERRORS for grouped catch (line ~573)
 from anthropic import AsyncAnthropic, APIConnectionError, APIError, APITimeoutError, RateLimitError
 from research_agent.errors import ANTHROPIC_ERRORS
 ```
@@ -113,8 +134,8 @@ from research_agent.errors import ANTHROPIC_ERRORS
 
 ### Happy Path
 
-- WHEN `from research_agent.config import META_DIR` is executed THE SYSTEM
-  SHALL return `Path("reports/meta")`
+- WHEN `from research_agent.report_store import META_DIR` is executed THE
+  SYSTEM SHALL return `Path("reports/meta")`
 - WHEN `ResearchMode.standard().to_mode_info()` is called THE SYSTEM SHALL
   return a `ModeInfo` with `name="standard"`, `max_sources=10`,
   `novelty_queries=1`, and all other fields matching the source mode
@@ -126,9 +147,11 @@ from research_agent.errors import ANTHROPIC_ERRORS
 ### Error Cases
 
 - WHEN a new field is added to `ModeInfo` but not to `to_mode_info()` THE
-  SYSTEM SHALL fail the field-completeness test
+  SYSTEM SHALL fail the `dataclasses.fields()`-based completeness test
 - WHEN `modes.py` imports from `results.py` THE SYSTEM SHALL not create a
-  circular import (verified by `python -c "from research_agent.modes import ResearchMode"`)
+  circular import (verified by importing from both entry points)
+- WHEN a new field is added to `ModeInfo` but not to `to_mode_info()` THE
+  SYSTEM SHALL raise `TypeError` at construction time (explicit mapping)
 
 ### Verification Commands
 
@@ -139,8 +162,9 @@ python3 -m pytest tests/ -v
 # MCP lint passes
 python3 scripts/lint_mcp_parity.py
 
-# No circular import
-python3 -c "from research_agent.modes import ResearchMode; print('OK')"
+# No circular import (check both directions)
+python3 -c "from research_agent.modes import ResearchMode; print('modes OK')"
+python3 -c "from research_agent.results import ModeInfo; print('results OK')"
 
 # No remaining inline tuples in converted files (should return 0 matches)
 grep -n "except (APIError\|except (RateLimitError" research_agent/context.py research_agent/decompose.py research_agent/iterate.py research_agent/critique.py research_agent/coverage.py research_agent/summarize.py research_agent/search.py
@@ -148,43 +172,82 @@ grep -n "except (APIError\|except (RateLimitError" research_agent/context.py res
 # META_DIR not imported from agent.py anymore (should return 0)
 grep -rn "from research_agent.agent import META_DIR" research_agent/
 
-# ANTHROPIC_ERRORS imported in converted files
+# META_DIR now imported from report_store.py
+grep -rn "from.*report_store import META_DIR" research_agent/
+
+# ANTHROPIC_ERRORS adopted in converted files (expected: 8 files)
 grep -rn "from research_agent.errors import ANTHROPIC_ERRORS" research_agent/ | wc -l
-# Expected: 9 (8 converted files + errors.py definition... actually errors.py defines it, doesn't import it. So 8 files.)
 ```
 
 ## Implementation Order
 
-1. `config.py` + META_DIR (4 files, ~10 lines changed) -- commit
-2. `to_mode_info()` (3 files, ~30 lines changed) -- commit
-3. ANTHROPIC_ERRORS (10 files, ~40 lines changed) -- commit
+1. META_DIR to `report_store.py` (4 files, ~10 lines changed) -- commit
+2. `to_mode_info()` (4 files, ~30 lines changed) -- commit
+3. ANTHROPIC_ERRORS adoption (10 files, ~40 lines changed) -- commit
 
 Each commit is a checkpoint. If any step breaks tests, fix before proceeding.
 
+## Deepening Review (2026-05-03)
+
+Plan deepened with 7 parallel review agents: plan quality gate, Python
+reviewer, architecture strategist, pattern recognition, code simplicity,
+performance oracle, learnings researcher, and security sentinel.
+
+### Key Changes From Review
+
+1. **META_DIR location changed from `config.py` to `report_store.py`.**
+   Pattern recognition found that this codebase keeps path constants in the
+   module that owns them (REPORTS_DIR in report_store.py, CONTEXTS_DIR in
+   context.py). Creating a new file for one constant broke the pattern.
+   Architecture reviewer favored config.py, simplicity reviewer favored
+   errors.py. Chose report_store.py as the best semantic fit -- META_DIR is
+   a subdirectory of REPORTS_DIR. report_store.py is lightweight (re, datetime,
+   pathlib, .results), so mcp_server.py lazy-import benefit is preserved.
+   Performance reviewer confirmed cli.py gets no import-time benefit either way.
+
+2. **to_mode_info() uses explicit field mapping (Approach A), not dict-based.**
+   Python reviewer argued TypeError on missing required field is better than
+   silent drift. Simplicity reviewer preferred dict-based (auto-tracks fields).
+   Chose explicit: it fails loudly and is more readable for this codebase.
+   Added `# Do not import from modes here` guard in results.py per Python
+   reviewer. Test uses `dataclasses.fields()` comparison per patterns reviewer.
+
+3. **Clarified that ANTHROPIC_ERRORS already exists** -- Commit 3 adopts it
+   at 8 call sites, not creates it. Added clarifying comment for relevance.py
+   dual-import. Security reviewer verified all 8 sites are type-equivalent.
+
+### Agents That Found No Issues
+- Security sentinel: zero new attack surface, all exception catches equivalent
+- Performance oracle: all 3 refactors performance-neutral at runtime
+
 ## Feed-Forward
 
-- **Hardest decision:** What to do with `agent.py:1127`'s mixed
-  `(ResearchError, APIError, ...)` catch. Python doesn't allow tuple unpacking
-  in `except` clauses, so `ANTHROPIC_ERRORS` can't be used. Leaving it with a
-  comment is the right call -- forcing a workaround would add complexity for
-  one site.
-- **Rejected alternatives:** Wrapping `(*ANTHROPIC_ERRORS, ResearchError)` in
-  a module-level constant (e.g., `RESEARCH_AND_API_ERRORS`) -- too specific,
-  only used once, YAGNI.
-- **Least confident:** Whether `relevance.py` needs both the `anthropic`
-  imports (for lines 280-283) AND `ANTHROPIC_ERRORS` (for line 573). It does,
-  but the dual-import in that file looks noisy. Reviewer should confirm this
-  is the cleanest approach.
+- **Hardest decision:** Where to put META_DIR. Three agents recommended three
+  different locations. Chose `report_store.py` because it follows the existing
+  codebase pattern (constant lives with its owning module) and META_DIR is
+  semantically a subdirectory of REPORTS_DIR.
+- **Rejected alternatives:** `config.py` (breaks existing pattern, YAGNI for
+  one constant), `errors.py` (semantically unrelated to errors),
+  `ModeInfo.from_mode()` classmethod (less natural read direction),
+  dict-based `to_mode_info()` (silently swallows new fields instead of
+  raising TypeError), `RESEARCH_AND_API_ERRORS` constant (YAGNI, used once).
+- **Least confident:** Whether the `modes.py -> results.py` import edge will
+  cause problems in future cycles. The `# Do not import from modes here`
+  comment in results.py is a guardrail but not enforcement. If a second
+  cross-leaf import appears, reconsider the boundary.
 
 ## Three Questions
 
-1. **Hardest decision in this session?** The `agent.py:1127` mixed-tuple site.
-   Spent time confirming Python syntax doesn't support `except (*tuple, Type)`.
-   Leaving it as-is with a comment is correct.
-2. **What did you reject, and why?** A module-level `RESEARCH_AND_API_ERRORS`
-   constant for the one mixed-catch site. It's used once, defined far from its
-   use, and adds indirection for no real benefit.
-3. **Least confident about going into the next phase?** The `relevance.py`
-   dual-import. It's correct but visually messy -- two import lines for
-   anthropic error types serving different catch blocks. Reviewer should weigh
-   in on whether a comment makes it clear enough.
+1. **Hardest decision in this session?** META_DIR location. Three credible
+   options from three different reviewers. The pattern-matching argument
+   (constant lives with its owning module) won because a hygiene cycle should
+   strengthen existing patterns, not introduce new ones.
+2. **What did you reject, and why?** Dict-based ModeInfo constructor
+   (`dataclasses.asdict` + field filtering). It's clever and auto-tracks
+   fields, but silently swallows new required fields instead of failing with
+   TypeError. For a codebase that has struggled with 6-file sync drift across
+   6 cycles, loud failure is more valuable than convenience.
+3. **Least confident about going into the next phase?** The `modes.py ->
+   results.py` import creates a new dependency edge between two previously
+   independent leaf modules. It's safe today, but narrows future flexibility.
+   If this becomes a recurring pattern, a `converters.py` module may be needed.
