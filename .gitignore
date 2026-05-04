@@ -10,6 +10,9 @@ __pycache__/
 dist/
 build/
 
+# Claude Code
+.claude/agent-memory/
+
 # IDE
 .idea/
 .vscode/
