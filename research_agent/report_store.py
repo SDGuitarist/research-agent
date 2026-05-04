@@ -7,6 +7,7 @@ from pathlib import Path
 from .results import ReportInfo
 
 REPORTS_DIR = Path("reports")
+META_DIR = Path("reports/meta")
 
 
 def _literal_reports_root() -> Path:

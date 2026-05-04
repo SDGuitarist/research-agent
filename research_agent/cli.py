@@ -12,7 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from research_agent import ResearchAgent
-from research_agent.agent import META_DIR
+from research_agent.report_store import META_DIR
 from research_agent.context import (
     CONTEXTS_DIR,
     list_available_contexts,

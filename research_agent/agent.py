@@ -28,6 +28,7 @@ from .query_validation import check_query_vagueness
 from .critique import evaluate_report, save_critique, CritiqueResult
 from .iterate import generate_refined_queries, generate_followup_questions
 from .modes import ResearchMode
+from .report_store import META_DIR
 from .sanitize import sanitize_content
 from .cycle_config import CycleConfig
 
@@ -42,9 +43,6 @@ MAX_CONCURRENT_SUB_QUERIES = 2
 
 # Overall timeout for the iteration phase (seconds)
 ITERATION_TIMEOUT = 180.0
-
-# Default directory for critique metadata files
-META_DIR = Path("reports/meta")
 
 
 class ResearchAgent:

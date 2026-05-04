@@ -188,7 +188,7 @@ def critique_report(filename: str) -> str:
 
     from research_agent import critique_report_file
     from research_agent.critique import save_critique
-    from research_agent.agent import META_DIR
+    from research_agent.report_store import META_DIR
     from research_agent.modes import DEFAULT_MODEL
 
     try:
@@ -337,7 +337,7 @@ def get_critique_history() -> str:
     """
     from fastmcp.exceptions import ToolError
     from research_agent.context import load_critique_history
-    from research_agent.agent import META_DIR  # accepted private import (see plan §4)
+    from research_agent.report_store import META_DIR
 
     try:
         result = load_critique_history(META_DIR)
