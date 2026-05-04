@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 
 import asyncio
 
-# Individual imports for per-type catches (line ~280); ANTHROPIC_ERRORS for grouped catch (line ~573)
 from anthropic import AsyncAnthropic, APIConnectionError, APIError, APITimeoutError, RateLimitError
 
 from .api_helpers import retry_api_call, process_in_batches

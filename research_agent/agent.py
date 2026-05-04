@@ -1122,7 +1122,7 @@ class ResearchAgent:
                     )
                     summaries.extend(new_summaries)
                     logger.info("Total summaries: %d", len(summaries))
-                # ResearchError + ANTHROPIC_ERRORS (can't unpack tuple in except clause)
+                # Python syntax doesn't allow *ANTHROPIC_ERRORS in except clauses
                 except (ResearchError, APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
                     logger.warning("Pass 2 processing failed: %s, continuing with pass 1 results", e)
                     logger.info("Pass 2 failed, continuing with %d summaries", len(summaries))
