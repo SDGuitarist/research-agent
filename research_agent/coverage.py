@@ -3,11 +3,9 @@
 import logging
 from dataclasses import dataclass
 
-from anthropic import (
-    AsyncAnthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError,
-)
+from anthropic import AsyncAnthropic
 
-from .errors import ANTHROPIC_TIMEOUT
+from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT
 from .modes import DEFAULT_MODEL
 from .query_validation import validate_query_list
 from .sanitize import sanitize_content
@@ -264,6 +262,6 @@ async def identify_coverage_gaps(
         text = response.content[0].text.strip()
         return _parse_gap_response(text, tried_queries)
 
-    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
+    except ANTHROPIC_ERRORS as e:
         logger.warning("Gap identification failed: %s", e)
         return _SAFE_DEFAULT

@@ -6,11 +6,11 @@ from collections import Counter
 from pathlib import Path
 
 import yaml
-from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
+from anthropic import Anthropic
 
 from .context_result import ContextProfile, ContextResult, ReportTemplate
 from .critique import DIMENSIONS
-from .errors import ANTHROPIC_TIMEOUT
+from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT
 from .modes import AUTO_DETECT_MODEL, DEFAULT_MODEL
 from .report_store import REPORTS_DIR
 from .sanitize import sanitize_content
@@ -440,7 +440,7 @@ def auto_detect_context(
             messages=[{"role": "user", "content": prompt}],
         )
         answer = response.content[0].text.strip().lower()
-    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
+    except ANTHROPIC_ERRORS as e:
         logger.warning("Auto-detect context failed: %s", e)
         return None
 

@@ -6,9 +6,10 @@ import logging
 import time
 from dataclasses import dataclass
 
-from anthropic import AsyncAnthropic, RateLimitError, APIError, APIConnectionError, APITimeoutError
+from anthropic import AsyncAnthropic
 
 from .api_helpers import retry_api_call, process_in_batches
+from .errors import ANTHROPIC_ERRORS
 from .modes import DEFAULT_MODEL
 from .extract import ExtractedContent, SourceTier
 from .sanitize import sanitize_content
@@ -183,7 +184,7 @@ Provide only a factual summary of the content above:"""
             source_tier=source_tier,
         )
 
-    except (RateLimitError, APIError, APIConnectionError, APITimeoutError):
+    except ANTHROPIC_ERRORS:
         return None
     except (KeyError, IndexError, AttributeError) as e:
         logger.warning("Unexpected response structure for %s: %s: %s", url, type(e).__name__, e)

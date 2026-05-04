@@ -7,10 +7,11 @@ from urllib.parse import urlparse
 
 import asyncio
 
-from anthropic import AsyncAnthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
+# Individual imports for per-type catches (line ~280); ANTHROPIC_ERRORS for grouped catch (line ~573)
+from anthropic import AsyncAnthropic, APIConnectionError, APIError, APITimeoutError, RateLimitError
 
 from .api_helpers import retry_api_call, process_in_batches
-from .errors import GateDecision
+from .errors import ANTHROPIC_ERRORS, GateDecision
 from .summarize import Summary
 from .modes import DEFAULT_MODEL, ResearchMode
 from .sanitize import sanitize_content
@@ -570,7 +571,7 @@ Do NOT pad the response. Keep it concise and honest."""
         # Add a header to make it clear this is not a full report
         return f"# Insufficient Data Found\n\n{result}"
 
-    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
+    except ANTHROPIC_ERRORS as e:
         logger.warning("API error generating insufficient data response: %s", e)
         return _fallback_insufficient_response(query, refined_query, dropped_sources, surviving_sources)
 

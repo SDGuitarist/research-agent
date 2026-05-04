@@ -13,9 +13,9 @@ from pathlib import Path
 
 import yaml
 
-from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
+from anthropic import Anthropic
 
-from .errors import ANTHROPIC_TIMEOUT
+from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT
 from .modes import DEFAULT_MODEL
 from .sanitize import sanitize_content
 from .safe_io import atomic_write
@@ -218,7 +218,7 @@ SUGGESTIONS: [one sentence, max 200 chars]"""
 
         parsed = _parse_critique_response(response.content[0].text)
 
-    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
+    except ANTHROPIC_ERRORS as e:
         logger.warning(f"Critique API call failed: {e}, using defaults")
         return CritiqueResult.fallback()
 
