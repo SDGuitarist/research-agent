@@ -12,9 +12,9 @@ import logging
 import re
 from dataclasses import dataclass
 
-from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
+from anthropic import Anthropic
 
-from .errors import ANTHROPIC_TIMEOUT, IterationError
+from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT, IterationError
 from .modes import DEFAULT_MODEL
 from .query_validation import validate_query_list
 from .sanitize import sanitize_content
@@ -96,7 +96,7 @@ def generate_refined_queries(
                 ),
             }],
         )
-    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
+    except ANTHROPIC_ERRORS as e:
         raise IterationError(f"Refined query generation failed: {e}") from e
 
     if not response.content:
@@ -220,7 +220,7 @@ def generate_followup_questions(
                 ),
             }],
         )
-    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
+    except ANTHROPIC_ERRORS as e:
         raise IterationError(f"Follow-up question generation failed: {e}") from e
 
     if not response.content:

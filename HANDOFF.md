@@ -1,43 +1,51 @@
 # HANDOFF — Research Agent
 
-**Date:** 2026-04-23
-**Branch:** `feat/31-novelty-decomposition-mcp-critique`
-**Phase:** Cycle 31 COMPLETE. Entropy roadmap (C27-C31) fully shipped.
+**Date:** 2026-05-03
+**Branch:** `chore/32-hygiene-bundle`
+**Phase:** Cycle 32 WORK COMPLETE. Awaiting review.
 
 ## Current State
 
-Cycle 31 shipped novelty-biased decomposition (`novelty_queries` field on ResearchMode, conditional system prompt append in decompose.py) and MCP `get_critique_history` tool. Review found 0 P1, 4 P2, 2 P3 — all resolved. The entropy roadmap (5 cycles, 15 items) is now complete. 1118 tests passing, MCP lint 8/8.
+Cycle 32 shipped three mechanical hygiene refactors:
+
+1. **META_DIR to report_store.py** — moved from agent.py to sit next to REPORTS_DIR, following the existing "constant lives with its owning module" pattern. 4 import sites updated. mcp_server.py lazy imports now avoid loading the heavy agent.py orchestrator for path constants.
+
+2. **to_mode_info() on ResearchMode** — explicit field mapping method eliminates 18-line manual ModeInfo construction in list_modes(). TypeError on missing required fields. Guard comment in results.py prevents circular imports. 3 new tests using dataclasses.fields() for auto-detection of field drift.
+
+3. **ANTHROPIC_ERRORS adoption** — replaced inline exception tuples at 10 call sites across 9 files with the shared constant from errors.py. Left skeptic.py, synthesize.py (per-type logging), and agent.py:1125 (mixed tuple, can't unpack in except clause) untouched.
+
+1121 tests passing, MCP lint 8/8.
 
 ## Key Artifacts
 
 | Phase | Location |
 |-------|----------|
-| Brainstorm | `docs/brainstorms/2026-04-22-cycle-31-novelty-decomposition-mcp-tools-brainstorm.md` |
-| Plan | `docs/plans/2026-04-23-feat-novelty-decomposition-mcp-cost-critique-plan.md` |
-| Codex Handoff | `docs/plans/2026-04-23-codex-plan-review-handoff.md` |
-| Solution | `docs/solutions/feature-implementation/novelty-decomposition-mcp-critique-history.md` |
+| Brainstorm | `docs/brainstorms/2026-05-03-cycle-32-hygiene-bundle-brainstorm.md` |
+| Plan | `docs/plans/2026-05-03-cycle-32-hygiene-bundle-plan.md` |
+
+## Commits
+
+| # | Message | Files |
+|---|---------|-------|
+| 1 | `refactor(32-1): move META_DIR from agent.py to report_store.py` | 4 |
+| 2 | `refactor(32-2): add to_mode_info() on ResearchMode, simplify list_modes()` | 4 |
+| 3 | `refactor(32-3): adopt ANTHROPIC_ERRORS at 10 call sites across 9 files` | 10 |
 
 ## Deferred Items
 
-- **ANTHROPIC_ERRORS consumption at 10+ call sites** — mechanical replacement for micro-cycle
-- **A/B live validation of novelty decomposition** — run when API keys renewed
-- **Diversity gate threshold tuning** — monitor SHORT_REPORT frequency after novelty is live
-- **`META_DIR` promotion to public location** — 3 consumers, accepted as existing pattern
-- **`to_mode_info()` method on ResearchMode** — eliminates manual 6-file sync
+- **A/B live validation of novelty decomposition** — blocked on API key renewal
+- **Diversity gate threshold tuning** — needs A/B data first
+- **ModeInfo __post_init__ validation** — patterns reviewer flagged it as the only frozen dataclass without validation. Low priority.
+- **converters.py extraction** — if modes.py -> results.py import edge causes problems in future cycles
 
 ## Three Questions
 
-1. **Hardest pattern to extract?** "MCP parity means side effects too" — the critique_report gap was pre-existing but only visible because get_critique_history created the feedback loop.
-2. **What was left out?** The TOCTOU symlink gap in critique file loading — pre-existing infrastructure concern, not related to C31 features.
-3. **Least confident about?** Whether novelty-framed sub-queries interact badly with the C30 diversity gate in practice. Architectural safety nets are in place but live A/B testing is needed.
+1. **Hardest implementation decision in this session?** The relevance.py dual-import. It needs both individual anthropic imports (for per-type catches at line ~280) AND ANTHROPIC_ERRORS (for the grouped catch at line ~574). Solved with a clarifying comment above the import block.
+2. **What did you consider changing but left alone, and why?** agent.py:1125's mixed (ResearchError, APIError, ...) catch. Python doesn't support tuple unpacking in except clauses. Considered a module-level RESEARCH_AND_API_ERRORS constant but it's YAGNI for one site. Added a comment instead.
+3. **Least confident about going into review?** Whether the modes.py -> results.py import edge will be flagged as a concern. The guard comment in results.py and the dataclasses.fields() test mitigate drift, but the dependency direction (internal config -> public API type) is architecturally unusual.
 
-## Prompt for Next Session
+### Prompt for Next Session
 
 ```
-Read HANDOFF.md for context. This is research-agent, a Python CLI research agent
-that searches the web, fetches pages, and generates structured markdown reports
-with citations using Claude.
-Cycle 31 complete. Entropy roadmap (C27-C31) fully shipped. Branch ready to merge.
-Decide next: merge to main, or plan next cycle.
-Start with /compound-start to load lessons and kick off.
+Read docs/plans/2026-05-03-cycle-32-hygiene-bundle-plan.md. Review branch chore/32-hygiene-bundle (3 commits). Relevant files: report_store.py, modes.py, results.py, api_helpers.py, relevance.py, agent.py.
 ```

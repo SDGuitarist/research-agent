@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from .results import ModeInfo
+
 # Single source of truth for the default Claude model across all modules.
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
@@ -50,6 +52,27 @@ class ResearchMode:
     @property
     def is_deep(self) -> bool:
         return self.name == "deep"
+
+    def to_mode_info(self) -> ModeInfo:
+        """Convert to a ModeInfo for the public API."""
+        return ModeInfo(
+            name=self.name,
+            max_sources=self.max_sources,
+            word_target=self.word_target,
+            cost_estimate=self.cost_estimate,
+            auto_save=self.auto_save,
+            model=self.model,
+            planning_model=self.planning_model,
+            relevance_model=self.relevance_model,
+            planning_temperature=self.planning_temperature,
+            summarize_temperature=self.summarize_temperature,
+            synthesis_temperature=self.synthesis_temperature,
+            relevance_cutoff=self.relevance_cutoff,
+            min_sources_full_report=self.min_sources_full_report,
+            min_sources_short_report=self.min_sources_short_report,
+            min_unique_domains=self.min_unique_domains,
+            novelty_queries=self.novelty_queries,
+        )
 
     def __post_init__(self) -> None:
         """Validate mode configuration."""

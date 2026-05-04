@@ -8,9 +8,10 @@ import time
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
+from anthropic import Anthropic
 from ddgs import DDGS
 
+from .errors import ANTHROPIC_ERRORS
 from .modes import DEFAULT_MODEL
 from ddgs.exceptions import DDGSException, RatelimitException
 from tavily.errors import (
@@ -292,7 +293,7 @@ Generate ONE follow-up search query that fills gaps in the research. Return ONLY
 
         logger.info("Refined query: %s", validated[0])
         return validated[0]
-    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
+    except ANTHROPIC_ERRORS as e:
         logger.warning(f"Query refinement failed: {e}, using original query")
         return original_query
 

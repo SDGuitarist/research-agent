@@ -5,12 +5,9 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
-from anthropic import (
-    APIConnectionError,
-    APIError,
-    APITimeoutError,
-    RateLimitError,
-)
+from anthropic import RateLimitError
+
+from .errors import ANTHROPIC_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +50,7 @@ async def retry_api_call(
     for attempt in range(max_retries + 1):
         try:
             return await api_call()
-        except (RateLimitError, APITimeoutError, APIConnectionError, APIError) as e:
+        except ANTHROPIC_ERRORS as e:
             is_retryable = isinstance(e, retry_on)
 
             # Signal rate limit to batch coordinator

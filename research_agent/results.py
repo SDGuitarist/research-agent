@@ -1,4 +1,5 @@
 """Structured result types for the research agent public API."""
+# NOTE: modes.py imports from this module. Do not import from modes here.
 
 from __future__ import annotations
 

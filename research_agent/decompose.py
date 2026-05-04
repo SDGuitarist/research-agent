@@ -3,9 +3,9 @@
 import logging
 from dataclasses import dataclass
 
-from anthropic import Anthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
+from anthropic import Anthropic
 
-from .errors import ANTHROPIC_TIMEOUT
+from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT
 from .modes import DEFAULT_MODEL
 from .query_validation import validate_query_list
 from .sanitize import sanitize_content, build_context_block
@@ -173,7 +173,7 @@ SUB_QUERIES:
         text = response.content[0].text.strip()
         return _parse_decomposition_response(text, query)
 
-    except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as e:
+    except ANTHROPIC_ERRORS as e:
         logger.warning(f"Query decomposition failed: {e}, using original query")
         return DecompositionResult(sub_queries=(query,), is_complex=False, reasoning="")
 
