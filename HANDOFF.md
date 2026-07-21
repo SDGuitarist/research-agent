@@ -1,8 +1,14 @@
 # HANDOFF — Research Agent
 
 **Date:** 2026-07-21
-**Phase:** Work — **Session 1 (Foundations) COMPLETE**; next is Session 2 (Gaps → DB)
-**Branch:** `feat/headless-service-core` (not pushed) — 2 commits: planning docs + Session 1
+**Phase:** Work — **Session 2 (Gaps → DB) COMPLETE**; next is Session 3 (Reports + critiques → DB)
+**Branch:** `feat/headless-service-core` (not pushed) — Session 2 landed in `47e0bb1`, `eb43f5b`, `a032968`
+
+> ⚠️ **Concurrency note (2026-07-21):** Session 2 was worked by **two sessions in parallel** on
+> this branch (a handoff that ran concurrently instead of sequentially). It resolved cleanly —
+> the commits are non-overlapping and linear (`47e0bb1` production + `a032968` importer/pfe.yaml
+> from one session; `eb43f5b` test migration from the other). **Lesson: run one writer per branch.**
+> Before starting Session 3, confirm no other session/auto-continue is live on this branch.
 
 ## New arc: "Robust internal tool"
 
@@ -29,59 +35,80 @@ Turning the research-agent CLI into a **deployed internal web service** (FastAPI
 - **Session 1 (Foundations): DONE** (commit `3a379c0`). Files: `config.py`, `db.py`, `migrate.py`, `migrations/001_init.sql`, `errors.py` (+`ConfigError`), `tests/conftest.py` (opt-in Postgres fixtures), `tests/test_{config,migrate,db}.py`. Deps added: `psycopg[binary,pool]`, `testcontainers[postgres]` (fastapi/uvicorn already present). DB tests run against a real Postgres via testcontainers (Docker).
 - **Session 1 Code Review (Codex → fixes): DONE.** Applied 3 fixes — thread-safe `open_pool()` (double-checked lock), stricter test-DB disposability guard (checks the *database name*, not a URL substring), and correct pool-reset order (close-then-clear). +7 guard regression tests. **1141 tests pass; MCP lint 8/8.**
 
-## Next: Session 2 — Gaps → DB (prove the state machine first; `verify_first`)
+## Session 2 — Gaps → DB: COMPLETE ✅ (`verify_first` satisfied)
 
-Rewrite `load_schema`/`save_schema`/`log_flip` to Postgres (per-gap rows), keep the pure functions (`mark_verified`/`mark_checked`/`detect_stale`/`select_batch`/`_parse_gap`) untouched, update `agent.py` (drop `schema_path`/`schema_path.parent`), and add `scripts/migrate_gaps.py` (idempotent, timestamp-preserving, post-import equality assertion). Storage functions take an **injected `conn`**.
+- **`47e0bb1`** — gap I/O → Postgres: `schema.load_gaps(conn)`, `state.save_schema(conn, gaps)` (per-gap
+  `ON CONFLICT ... IS DISTINCT FROM` upsert, closes P0-5), `staleness.log_flip(conn, ...)` → `gap_audit`
+  (preserves `event_at`). `agent.py`: `schema_path` gone → `gap_tracking_enabled` flag; gap load/save
+  threaded through the pool and wrapped in `asyncio.to_thread`. **Pure functions unchanged.**
+- **`eb43f5b`** — storage-coupled gap tests ported to the rollback-per-test `db` fixture
+  (`test_state`/`test_staleness`/`test_schema`/`test_agent`); pure-function tests untouched.
+- **`a032968`** — `scripts/migrate_gaps.py` (validate via `load_schema_file` + `detect_cycles` →
+  idempotent, timestamp-preserving upsert → post-import row-count + staleness self-check) + real
+  `gaps/pfe.yaml` + `tests/test_migrate_gaps.py`.
 
-## Three Questions (Work phase — Session 1)
+**Acceptance met:** gap state machine passes against Postgres · `gaps/pfe.yaml` imports, re-run is a
+no-op, staleness verdict identical pre/post · **1139 tests pass** · MCP lint 8/8.
 
-1. **Hardest implementation decision?** Getting the rollback-per-test fixture right: the constraint tests initially left the transaction aborted (`InFailedSqlTransaction`) because `pytest.raises` was *inside* the savepoint. Fix: wrap the savepoint *with* `pytest.raises` so the error rolls the savepoint back and the outer fixture transaction survives. Also chose partial indexes over the composite queue index (per Impl. Notes §1).
-2. **What did you consider changing but left alone?** Ripping out the scattered `os.environ.get`/`load_dotenv` sites to route everything through `config.py` now — left alone to keep Session 1 additive and non-breaking; that migration happens when the CLI/web/worker wire it in (Sessions 5–7). The existing `report_store`/`state` file code is likewise untouched (Sessions 2–3 migrate it).
-3. **Least confident going into Session 2?** Whether the injected-`conn` rewrite of the gap I/O cleanly accommodates `agent.py`'s gap logic once `schema_path` disappears (the flagged blast radius), and whether `migrate.py`'s multi-statement `execute()` stays robust for a future migration containing dollar-quoted function bodies (worked fine for pure DDL).
+**Follow-up (optional, low priority):** the committed `migrate_gaps.py` uses bare `assert` for its
+post-import self-checks (stripped under `python -O`). A hardened version using an explicit
+`MigrationError` + a graceful `main()` for a missing source is saved off-repo in the session
+scratchpad (`migrate_gaps.MY-VERSION.py`, `my-migrate-gaps-divergence.patch`) if you want it.
+
+## Three Questions (Work phase — Session 2)
+
+1. **Hardest implementation decision?** Reconciling a live concurrency collision: mid-session, a second
+   parallel writer committed the importer (`a032968`) on top of this session's test-migration commit,
+   and I'd independently written a diverging `migrate_gaps.py`. The call was to **accept the committed
+   version and stop racing** rather than out-commit it — preserving my alternative off-repo — because
+   two writers on one branch is the actual hazard, not the code quality delta.
+2. **What did you consider changing but left alone?** Pushing my hardened `migrate_gaps.py` (explicit
+   `MigrationError` instead of bare `assert`, graceful missing-source `main()`). Left alone to avoid
+   fighting the concurrent writer; it's saved in the scratchpad as an optional follow-up.
+3. **Least confident going into Session 3?** Whether the gap-tracking guard change in `agent.py`
+   (`gap_tracking_enabled` now defaults True from `cli.py`/`run_research_async`) interacts cleanly once
+   Sessions 3–4 move reports/critiques off files — and whether any CLI/MCP path still assumes a
+   `schema_path`-style file anywhere downstream.
 
 ### Prompt for Next Session (paste into a fresh conversation)
 
 ```
+FIRST: confirm no other session / auto-continue is live on this branch (a parallel writer
+collided during Session 2). Run `git log --oneline -3` and make sure feat/headless-service-core
+is settled before you write anything.
+
 Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — specifically "Implementation
-Phases (Sessions)" → Session 2, the "Call-Site Inventory", "Implementation Notes" (§1 and §5),
-and the "What must NOT change" + "Acceptance Tests (EARS)" sections. Also skim HANDOFF.md.
+Phases (Sessions)" → Session 3, the "Call-Site Inventory", the "Report identity & report_key"
+section, and "What must NOT change" + "Acceptance Tests (EARS)". Also skim HANDOFF.md.
 
-We are on branch feat/headless-service-core (nothing pushed). Session 1 (Foundations) is DONE
-and reviewed — commits 3a379c0 → a13e2cd; 1141 tests pass; MCP lint 8/8. Implement ONLY
-Session 2 (Gaps → DB) — the verify_first session — then commit and stop. Do NOT proceed to S3.
+We are on branch feat/headless-service-core (nothing pushed). Sessions 1–2 are DONE — commits
+3a379c0 → a032968; 1139 tests pass; MCP lint 8/8. The DB foundation (config.py, db.py pool with
+INJECTED conn, migrate.py, migrations/001_init.sql with the reports + critiques tables ALREADY
+EXISTING) and the gap cutover are in place. Storage functions take an INJECTED conn; caller owns
+the transaction (never conn.commit() inside — use `with conn.transaction():`). conftest gives you
+db (rollback-per-test injected conn) and committed_db (TRUNCATE). Test cmd: python3 -m pytest tests/ -q.
 
-Session 1 gives you: config.py (get_settings/require_database_url), db.py (thread-safe psycopg3
-pool: open_pool/get_pool/close_pool; session pooler 5432; dict_row; autocommit; INJECTED conn),
-migrate.py, migrations/001_init.sql (the gaps + gap_audit tables ALREADY EXIST — do not edit 001;
-add 002_*.sql only if truly needed), and conftest fixtures (db = rollback-per-test injected conn,
-committed_db = TRUNCATE for concurrency, database_url = testcontainers; Docker is available).
-Test cmd: python3 -m pytest tests/ -q.
+Implement ONLY Session 3 (Reports + critiques → DB) — then commit and stop. Do NOT proceed to S4.
 
-Session 2 scope:
-1. Rewrite gap I/O to Postgres with an INJECTED conn (caller owns the txn; never conn.commit()
-   inside — use `with conn.transaction():`): schema.load_schema → load_gaps(conn) from the gaps
-   table (keep SchemaResult/Gap/GapStatus types); state.save_schema → per-gap TARGETED upsert
-   (NOT whole-doc rewrite — closes P0-5); staleness.log_flip → INSERT into gap_audit (preserve event_at).
-2. Keep PURE functions byte-for-byte unchanged: mark_verified, mark_checked, detect_stale,
-   select_batch, _parse_gap, and the dataclasses. Only the I/O boundary moves.
-3. Update agent.py: drop self.schema_path + the `schema_path.parent / "gap_audit.log"` derivation
-   (~line 168); gap-tracking guard becomes DB-based; thread a conn into gap load/save (~lines
-   501, 193, 178, 176/185); wrap sync storage calls in asyncio.to_thread (pipeline is inside asyncio.run).
-4. scripts/migrate_gaps.py — gaps-only import from gaps/pfe.yaml: validate via schema.py + cycle
-   detection first; idempotent upsert keyed by gap id; PRESERVE original UTC timestamps (no re-stamp);
-   post-import equality assertion (row count == YAML gap count; a gap's staleness verdict identical pre/post).
-5. Migrate storage-coupled gap tests to the db fixture (test_state save/load, test_staleness log_flip,
-   test_schema load, gap-state assertions in test_agent); pure-function tests stay unchanged; add
-   migrate_gaps tests (idempotent re-run no-op; timestamp preservation; equality assertion).
+Session 3 scope:
+1. report_store.get_reports → DB query (injected conn). save_report(conn, ...) replaces
+   get_auto_save_path + atomic_write; generate report_key = f"{sanitize_filename(query)[:50]}-{uuid8}"
+   as a stored UNIQUE column (never re-derived on read); regenerate + retry on UniqueViolation.
+2. load_critique_history: glob+parse → SQL query (min 3). save_critique → DB insert (injected conn).
+3. Update cli.py (--list, auto-save path, --critique-history) and agent.py:222/445 to the new
+   signatures. Old reports/ + reports/meta/ files become a read-only disk archive (do NOT migrate them).
+4. Migrate storage-coupled tests (test_report_store, test_critique/critique-history, cli assertions)
+   to the db fixture; keep pure/format tests on mocks.
 
-Acceptance: gap state machine passes against Postgres; pfe gaps import + re-run is a no-op with
-unchanged timestamps/state; a known gap's staleness verdict identical pre/post; full suite green;
-MCP lint 8/8 (python3 scripts/lint_mcp_parity.py).
+Acceptance: CLI --list reads report rows from the DB; a CLI run writes ONE report row (report_key
+UNIQUE) and NOT a file under reports/; identical query submitted twice → two rows, distinct
+report_keys; full suite green; MCP lint 8/8 (python3 scripts/lint_mcp_parity.py).
 
-Guardrails: don't touch reports/critiques (S3) or the MCP server (S4); don't edit 001_init.sql
-(add 002 if needed); follow "What must NOT change"; small commits. After committing Session 2,
-stop and say DONE. Do NOT proceed to Session 3.
+Guardrails: don't touch the MCP server report/key cutover (S4) or web/worker (S5–6); reuse
+sanitize_content on every DB write path; don't edit 001_init.sql (add 002_*.sql only if truly
+needed); follow "What must NOT change"; SMALL COMMITS, one writer per branch. After committing
+Session 3, stop and say DONE. Do NOT proceed to Session 4.
 
-Session 1 review residuals (none block S2): disposable-DB guard is case-sensitive/convention-based;
+Session 1 review residuals (still open, none block S3): disposable-DB guard is convention-based;
 open_pool doesn't close a half-open pool on failure (latent until S5–6).
 ```
