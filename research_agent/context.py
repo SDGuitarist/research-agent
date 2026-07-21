@@ -11,7 +11,7 @@ from psycopg import Error as PsycopgError
 
 from .context_result import ContextProfile, ContextResult, ReportTemplate
 from .critique import DIMENSIONS
-from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT
+from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT, StateError
 from .modes import AUTO_DETECT_MODEL, DEFAULT_MODEL
 from .report_store import REPORTS_DIR
 from .sanitize import sanitize_content
@@ -588,8 +588,12 @@ def load_critique_history(conn, limit: int = 10) -> ContextResult:
     least 3 before producing guidance — so a run of recent failures
     correctly yields no guidance even if older passing critiques exist.
 
-    Critique history is an optional prompt enhancement, so a database
-    error degrades to NOT_CONFIGURED (with a warning) instead of raising.
+    Unlike the optional-enhancement callers inside ``ResearchAgent``, this
+    function does NOT swallow database errors: a failed query, broken schema,
+    or lost connection raises ``StateError`` so a direct caller (the CLI
+    ``--critique-history`` path) fails fast with a clear error and a nonzero
+    exit instead of mistaking a broken database for empty history. Callers
+    that treat history as optional catch ``StateError`` and degrade themselves.
 
     Args:
         conn: Injected psycopg connection (caller owns the transaction).
@@ -599,6 +603,9 @@ def load_critique_history(conn, limit: int = 10) -> ContextResult:
         ContextResult:
             - NOT_CONFIGURED if fewer than 3 passing critiques in the window.
             - LOADED with summary text if enough passing history exists.
+
+    Raises:
+        StateError: On database failure (query, schema, or connection).
     """
     source = "critiques"
     try:
@@ -612,8 +619,7 @@ def load_critique_history(conn, limit: int = 10) -> ContextResult:
             (limit,),
         ).fetchall()
     except PsycopgError as exc:
-        logger.warning("Failed to load critique history: %s", exc)
-        return ContextResult.not_configured(source=source)
+        raise StateError(f"Failed to load critique history: {exc}") from exc
 
     passing = []
     for row in rows:

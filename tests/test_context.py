@@ -20,6 +20,7 @@ from research_agent.context import (
 )
 from research_agent.context_result import ContextResult, ContextStatus, ReportTemplate
 from research_agent.critique import CritiqueResult, save_critique
+from research_agent.errors import StateError
 
 
 SAMPLE_CONTEXT = """# Research Context
@@ -1030,13 +1031,16 @@ class TestLoadCritiqueHistoryDb:
         result = load_critique_history(db, limit=5)
         assert result.status == ContextStatus.LOADED
 
-    def test_db_error_degrades_to_not_configured(self, db):
+    def test_db_error_raises_state_error(self, db):
+        """A query/connection failure must raise StateError, not masquerade as
+        empty history — otherwise a broken database looks 'healthy empty' and a
+        direct CLI caller exits 0 (Session 3 review P1)."""
         import psycopg
         from unittest.mock import MagicMock
         broken = MagicMock()
         broken.execute.side_effect = psycopg.OperationalError("connection lost")
-        result = load_critique_history(broken)
-        assert result.status == ContextStatus.NOT_CONFIGURED
+        with pytest.raises(StateError):
+            load_critique_history(broken)
 
 
 class TestSummarizePatterns:

@@ -29,7 +29,7 @@ from .modes import ResearchMode
 from .sanitize import sanitize_content
 from .cycle_config import CycleConfig
 
-from .db import open_pool
+from .db import open_pool, pooled_connection
 from .schema import Gap, GapStatus, SchemaResult, load_gaps
 from .state import mark_verified, mark_checked, save_schema
 from .staleness import detect_stale, select_batch, log_flip
@@ -182,7 +182,7 @@ class ResearchAgent:
         rather than failing the research run.
         """
         try:
-            with open_pool().connection() as conn:
+            with pooled_connection() as conn:
                 return load_critique_history(conn)
         except (ConfigError, StateError) as e:
             logger.warning("Skipping critique history (database unavailable): %s", e)
@@ -255,7 +255,7 @@ class ResearchAgent:
                 model=self.mode.planning_model,
                 temperature=self.mode.planning_temperature,
             )
-            with open_pool().connection() as conn:
+            with pooled_connection() as conn:
                 save_critique(conn, result)
             self._last_critique = result
             logger.info(

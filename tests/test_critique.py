@@ -13,7 +13,9 @@ from research_agent.critique import (
     save_critique_file,
     _parse_critique_response,
 )
-from research_agent.errors import StateError
+from research_agent.errors import ConfigError, StateError
+
+from psycopg_pool import PoolTimeout
 
 
 # --- CritiqueResult gate logic ---
@@ -334,7 +336,7 @@ class TestAgentCritiqueIntegration:
         )
         with patch("research_agent.agent.evaluate_report", return_value=fake_result) as mock_eval, \
              patch("research_agent.agent.save_critique") as mock_save, \
-             patch("research_agent.agent.open_pool") as mock_pool:
+             patch("research_agent.db.open_pool") as mock_pool:
             mock_pool.return_value.connection.return_value = nullcontext(MagicMock())
             agent._run_critique("q", 5, 2, [], "full_report")
             mock_eval.assert_called_once()
@@ -363,7 +365,7 @@ class TestAgentCritiqueIntegration:
             geographic_balance=3, actionability=3, weaknesses="", suggestions="",
         )
         with patch("research_agent.agent.evaluate_report", return_value=fake_result), \
-             patch("research_agent.agent.open_pool",
+             patch("research_agent.db.open_pool",
                    side_effect=StateError("db down")):
             # Should not raise
             agent._run_critique("q", 5, 2, [], "full_report")
@@ -381,13 +383,58 @@ class TestAgentCritiqueIntegration:
             weaknesses="w", suggestions="s",
         )
         with patch("research_agent.agent.evaluate_report", return_value=fake_result), \
-             patch("research_agent.agent.open_pool") as mock_pool:
+             patch("research_agent.db.open_pool") as mock_pool:
             mock_pool.return_value.connection.return_value = nullcontext(db)
             agent._run_critique("q", 5, 2, [], "full_report")
         row = db.execute("SELECT * FROM critiques").fetchone()
         assert row["overall_pass"] is True
         assert row["weaknesses"] == "w"
         assert agent._last_critique is fake_result
+
+    def test_run_critique_pool_timeout_degrades(self):
+        """A PoolTimeout (previously not a ResearchError → leaked and crashed the
+        pipeline) is now normalized to StateError and swallowed (Session 3 P1)."""
+        from research_agent.agent import ResearchAgent
+        from research_agent.modes import ResearchMode
+
+        agent = ResearchAgent(mode=ResearchMode.standard())
+        fake_result = CritiqueResult(
+            source_diversity=3, claim_support=3, coverage=3,
+            geographic_balance=3, actionability=3, weaknesses="", suggestions="",
+        )
+        with patch("research_agent.agent.evaluate_report", return_value=fake_result), \
+             patch("research_agent.db.open_pool", side_effect=PoolTimeout("pool exhausted")):
+            # Must not raise — research continues without a saved critique.
+            agent._run_critique("q", 5, 2, [], "full_report")
+        assert agent._last_critique is None
+
+
+class TestLoadCritiqueHistoryDbDegradation:
+    """_load_critique_history_db is an optional enhancement: every database
+    failure class degrades to no history (warning-logged), never raises
+    (Session 3 review P1)."""
+
+    def _agent(self):
+        from research_agent.agent import ResearchAgent
+        from research_agent.modes import ResearchMode
+        return ResearchAgent(mode=ResearchMode.standard())
+
+    def test_missing_config_degrades_to_none(self):
+        with patch("research_agent.db.open_pool",
+                   side_effect=ConfigError("DATABASE_URL is not set")):
+            assert self._agent()._load_critique_history_db() is None
+
+    def test_pool_timeout_degrades_to_none(self):
+        with patch("research_agent.db.open_pool", side_effect=PoolTimeout("exhausted")):
+            assert self._agent()._load_critique_history_db() is None
+
+    def test_sql_failure_degrades_to_none(self):
+        import psycopg
+        broken = MagicMock()
+        broken.execute.side_effect = psycopg.errors.UndefinedTable("no such table")
+        with patch("research_agent.db.open_pool") as mock_pool:
+            mock_pool.return_value.connection.return_value = nullcontext(broken)
+            assert self._agent()._load_critique_history_db() is None
 
 
 class TestCritiqueContextThreading:

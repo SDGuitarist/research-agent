@@ -77,6 +77,52 @@ def test_open_pool_is_thread_safe(monkeypatch):
     db_module.close_pool()
 
 
+# --- pooled_connection error normalization (no database needed) ------------
+
+def test_pooled_connection_yields_connection():
+    """Happy path: the borrowed connection is handed straight through."""
+    from contextlib import nullcontext
+    from unittest.mock import MagicMock, patch
+
+    from research_agent.db import pooled_connection
+
+    sentinel = object()
+    with patch("research_agent.db.open_pool") as mock_pool:
+        mock_pool.return_value.connection.return_value = nullcontext(sentinel)
+        with pooled_connection() as conn:
+            assert conn is sentinel
+
+
+def test_pooled_connection_normalizes_pool_timeout():
+    """PoolTimeout (a psycopg error, not a ResearchError) becomes StateError so
+    callers that only catch ResearchError don't leak it (Session 3 review P1)."""
+    from unittest.mock import patch
+
+    from psycopg_pool import PoolTimeout
+
+    from research_agent.db import pooled_connection
+    from research_agent.errors import StateError
+
+    with patch("research_agent.db.open_pool", side_effect=PoolTimeout("exhausted")):
+        with pytest.raises(StateError):
+            with pooled_connection():
+                pass
+
+
+def test_pooled_connection_propagates_config_error():
+    """A missing DATABASE_URL stays a ConfigError (already a ResearchError) — it
+    must not be masked as a connection failure."""
+    from unittest.mock import patch
+
+    from research_agent.db import pooled_connection
+    from research_agent.errors import ConfigError
+
+    with patch("research_agent.db.open_pool", side_effect=ConfigError("no url")):
+        with pytest.raises(ConfigError):
+            with pooled_connection():
+                pass
+
+
 def test_db_roundtrip(db):
     assert db.execute("SELECT 1 AS n").fetchone()["n"] == 1
 

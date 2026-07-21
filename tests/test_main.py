@@ -21,7 +21,10 @@ from research_agent.report_store import (
     sanitize_filename,
     save_report,
 )
+from research_agent.errors import ConfigError
 from research_agent.modes import ResearchMode
+
+from psycopg_pool import PoolTimeout
 
 
 class TestSanitizeFilename:
@@ -113,7 +116,7 @@ class TestListReports:
     """Tests for list_reports() against the DB."""
 
     def _run(self, db):
-        with patch("research_agent.cli.open_pool") as mock_pool:
+        with patch("research_agent.db.open_pool") as mock_pool:
             mock_pool.return_value.connection.return_value = nullcontext(db)
             list_reports()
 
@@ -151,7 +154,7 @@ class TestCliAutoSave:
         mock_agent.last_gate_decision = "full_report"
         mock_agent.last_source_count = 5
         with patch("research_agent.cli.ResearchAgent", return_value=mock_agent), \
-             patch("research_agent.cli.open_pool") as mock_pool, \
+             patch("research_agent.db.open_pool") as mock_pool, \
              patch("sys.argv", ["main.py", "--standard", query]):
             mock_pool.return_value.connection.return_value = nullcontext(db)
             main()
@@ -194,12 +197,72 @@ class TestCliAutoSave:
         mock_agent.last_gate_decision = "full_report"
         mock_agent.last_source_count = 5
         with patch("research_agent.cli.ResearchAgent", return_value=mock_agent), \
-             patch("research_agent.cli.open_pool") as mock_pool, \
+             patch("research_agent.db.open_pool") as mock_pool, \
              patch("sys.argv", ["main.py", "--quick", "q query words", "-o", str(out_file)]):
             mock_pool.return_value.connection.return_value = nullcontext(db)
             main()
         assert out_file.read_text() == "# Report\n\nBody."
         assert db.execute("SELECT count(*) AS n FROM reports").fetchone()["n"] == 0
+
+
+class TestCliDatabaseFailFast:
+    """Direct CLI operations must fail fast (nonzero exit, clear message) on every
+    database failure class — never mistake a broken database for empty/healthy
+    state (Session 3 review P1). Covers missing config, pool/connection failure,
+    and SQL failure."""
+
+    def _run_argv(self, argv):
+        with patch("sys.argv", argv):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        return exc.value.code
+
+    # --- --critique-history: the reported regression (broken query looked empty) ---
+
+    def test_critique_history_sql_failure_exits_nonzero(self, capsys):
+        import psycopg
+        broken = MagicMock()
+        broken.execute.side_effect = psycopg.errors.UndefinedTable("no critiques table")
+        with patch("research_agent.db.open_pool") as mock_pool:
+            mock_pool.return_value.connection.return_value = nullcontext(broken)
+            code = self._run_argv(["main.py", "--critique-history"])
+        assert code == 1
+        assert "Error" in capsys.readouterr().err
+
+    def test_critique_history_pool_timeout_exits_nonzero(self, capsys):
+        with patch("research_agent.db.open_pool", side_effect=PoolTimeout("exhausted")):
+            code = self._run_argv(["main.py", "--critique-history"])
+        assert code == 1
+        assert "Error" in capsys.readouterr().err
+
+    def test_critique_history_missing_config_exits_nonzero(self, capsys):
+        with patch("research_agent.db.open_pool",
+                   side_effect=ConfigError("DATABASE_URL is not set")):
+            code = self._run_argv(["main.py", "--critique-history"])
+        assert code == 1
+        assert "DATABASE_URL" in capsys.readouterr().err
+
+    # --- --list and default auto-save also fail fast on an unreachable pool ---
+
+    def test_list_pool_timeout_exits_nonzero(self, capsys):
+        with patch("research_agent.db.open_pool", side_effect=PoolTimeout("exhausted")):
+            code = self._run_argv(["main.py", "--list"])
+        assert code == 1
+        assert "Error" in capsys.readouterr().err
+
+    def test_autosave_pool_timeout_exits_nonzero(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)  # stray writes (research_log.md) land in tmp
+        mock_agent = MagicMock()
+        mock_agent.research.return_value = "# Report\n\nBody."
+        mock_agent.last_critique = None
+        mock_agent.iteration_status = "skipped"
+        mock_agent.last_gate_decision = "full_report"
+        mock_agent.last_source_count = 5
+        with patch("research_agent.cli.ResearchAgent", return_value=mock_agent), \
+             patch("research_agent.db.open_pool", side_effect=PoolTimeout("exhausted")):
+            code = self._run_argv(["main.py", "--standard", "some query here"])
+        assert code == 1
+        assert "Error" in capsys.readouterr().err
 
 
 class TestShowCosts:

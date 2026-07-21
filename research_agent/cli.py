@@ -20,7 +20,7 @@ from research_agent.context import (
     resolve_context_path,
 )
 from research_agent.critique import critique_report_file, save_critique
-from research_agent.db import open_pool
+from research_agent.db import pooled_connection
 from research_agent.errors import ResearchError
 from research_agent.modes import ResearchMode
 from research_agent.report_store import get_reports, save_report
@@ -53,7 +53,7 @@ def append_research_log(query: str, mode: ResearchMode, report: str) -> None:
 
 def list_reports() -> None:
     """Print a table of saved reports sorted newest-first (from the DB)."""
-    with open_pool().connection() as conn:
+    with pooled_connection() as conn:
         reports = get_reports(conn)
     if not reports:
         print("No saved reports.")
@@ -247,7 +247,7 @@ Examples:
     # --critique-history: print aggregated critique patterns and exit
     if args.critique_history:
         try:
-            with open_pool().connection() as conn:
+            with pooled_connection() as conn:
                 result = load_critique_history(conn)
         except ResearchError as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -267,7 +267,7 @@ Examples:
         try:
             client = Anthropic()
             result = critique_report_file(client, args.critique)
-            with open_pool().connection() as conn:
+            with pooled_connection() as conn:
                 critique_id = save_critique(conn, result)
             status = "pass" if result.overall_pass else "FAIL"
             print(f"Self-critique: mean={result.mean_score:.1f}, {status}")
@@ -360,7 +360,7 @@ Examples:
                 else:
                     subprocess.run(["open", "-t", str(args.output)])
         elif mode.auto_save:
-            with open_pool().connection() as conn:
+            with pooled_connection() as conn:
                 report_key = save_report(
                     conn,
                     query=args.query,

@@ -11,11 +11,15 @@ from __future__ import annotations
 
 import atexit
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 
+from psycopg import Connection, Error as PsycopgError
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from .config import require_database_url
+from .errors import StateError
 
 # Small pool: one user, ~5 processes (web, worker, CLI, MCP, reaper) sharing
 # Supabase's connection cap. Sum of max_size across processes must stay under it.
@@ -65,6 +69,31 @@ def get_pool() -> ConnectionPool:
     if _pool is None:
         raise RuntimeError("Connection pool is not open; call open_pool() at startup.")
     return _pool
+
+
+@contextmanager
+def pooled_connection() -> Iterator[Connection]:
+    """Borrow a pooled connection, normalizing pool/connection failures to StateError.
+
+    Opening the pool or checking out a connection can raise
+    ``psycopg_pool.PoolTimeout`` (a ``psycopg.OperationalError`` subclass) when the
+    database is unreachable. That is a psycopg error, not a ``ResearchError``, so a
+    caller that only catches ``ResearchError`` would leak a raw traceback instead of
+    following its declared error handling. Wrapping these boundary failures in
+    ``StateError`` (a ``ResearchError`` subclass) lets every caller's contract apply:
+    direct CLI operations fail fast with a clear message, and the optional-enhancement
+    callers inside ``ResearchAgent`` catch it and degrade.
+
+    A missing ``DATABASE_URL`` still surfaces as ``ConfigError`` (also a
+    ``ResearchError``) from :func:`open_pool` and propagates unchanged. Query-level
+    failures are normalized to ``StateError`` inside the storage functions, so they
+    pass through here untouched.
+    """
+    try:
+        with open_pool().connection() as conn:
+            yield conn
+    except PsycopgError as exc:
+        raise StateError(f"Database connection failed: {exc}") from exc
 
 
 def close_pool() -> None:
