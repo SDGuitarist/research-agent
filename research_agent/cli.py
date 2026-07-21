@@ -21,14 +21,10 @@ from research_agent.context import (
     resolve_context_path,
 )
 from research_agent.critique import critique_report_file, save_critique
+from research_agent.db import open_pool
 from research_agent.errors import ResearchError
 from research_agent.modes import ResearchMode
-from research_agent.report_store import (
-    REPORTS_DIR,
-    get_auto_save_path,
-    get_reports,
-    sanitize_filename,
-)
+from research_agent.report_store import get_reports, save_report
 from research_agent.safe_io import atomic_write
 
 RESEARCH_LOG_PATH = Path("research_log.md")
@@ -57,23 +53,16 @@ def append_research_log(query: str, mode: ResearchMode, report: str) -> None:
 
 
 def list_reports() -> None:
-    """Print a table of saved reports sorted newest-first."""
-    reports = get_reports()
+    """Print a table of saved reports sorted newest-first (from the DB)."""
+    with open_pool().connection() as conn:
+        reports = get_reports(conn)
     if not reports:
-        print("No saved reports." if REPORTS_DIR.is_dir() else "No reports directory found.")
+        print("No saved reports.")
         return
 
-    dated = [r for r in reports if r.date]
-    undated = [r for r in reports if not r.date]
-
     print(f"Saved reports ({len(reports)}):")
-    for r in dated:
-        print(f"  {r.date}  {r.query_name}")
-
-    if undated:
-        print(f"  -- {len(undated)} reports with non-standard names --")
-        for r in undated:
-            print(f"  {r.filename}")
+    for r in reports:
+        print(f"  {r.date}  {r.query_name}  [{r.filename}]")
 
 
 def show_costs() -> None:
@@ -206,7 +195,11 @@ Examples:
 
     # --list: show saved reports and exit (highest priority)
     if args.list:
-        list_reports()
+        try:
+            list_reports()
+        except ResearchError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
         sys.exit(0)
 
     # --list-contexts: show context profiles with field summary and exit
@@ -349,24 +342,32 @@ Examples:
         # Append to research log
         append_research_log(args.query, mode, report)
 
-        # Determine output path
-        output_path = args.output
-        if output_path is None and mode.auto_save:
-            # Deep mode auto-save
-            output_path = get_auto_save_path(args.query)
-
-        # Save to file if we have an output path
-        if output_path:
-            # Create directory if needed
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            atomic_write(output_path, report)
-            print(f"\n\nReport saved to: {output_path}")
+        # Save the report: explicit -o writes a file; standard/deep auto-save
+        # goes to Postgres (reports/ on disk is now a read-only archive).
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(args.output, report)
+            print(f"\n\nReport saved to: {args.output}")
             if args.open:
-                if output_path.suffix != ".md":
+                if args.output.suffix != ".md":
                     print("Warning: --open only supports .md files.",
                           file=sys.stderr)
                 else:
-                    subprocess.run(["open", "-t", str(output_path)])
+                    subprocess.run(["open", "-t", str(args.output)])
+        elif mode.auto_save:
+            with open_pool().connection() as conn:
+                report_key = save_report(
+                    conn,
+                    query=args.query,
+                    mode=mode.name,
+                    content=report,
+                    gate_decision=agent.last_gate_decision or None,
+                    sources_used=agent.last_source_count,
+                )
+            print(f"\n\nReport saved to database: {report_key}")
+            if args.open:
+                print("Warning: --open requires -o now that reports auto-save "
+                      "to the database.", file=sys.stderr)
         elif args.open:
             print("Warning: --open ignored — no file saved. Use -o to specify output path.",
                   file=sys.stderr)

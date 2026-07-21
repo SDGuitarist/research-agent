@@ -59,7 +59,12 @@ class ModeInfo:
 
 @dataclass(frozen=True)
 class ReportInfo:
-    """Metadata for a saved report file."""
+    """Metadata for a saved report.
+
+    For DB-backed reports, filename carries the report_key and query_name
+    the original query text; for legacy disk-archive files, the parsed
+    filename parts.
+    """
     filename: str
     date: str
     query_name: str

@@ -201,7 +201,7 @@ class TestRunResearchErrors:
 
 
 class TestListSavedReports:
-    @patch("research_agent.get_reports")
+    @patch("research_agent.report_store.get_archived_reports")
     async def test_with_reports(self, mock_reports, client):
         """Returns formatted list of reports."""
         from research_agent.results import ReportInfo
@@ -220,7 +220,7 @@ class TestListSavedReports:
         assert "query_2026-02-27_090000.md" in text
         assert "2026-02-28" in text
 
-    @patch("research_agent.get_reports")
+    @patch("research_agent.report_store.get_archived_reports")
     async def test_empty_reports(self, mock_reports, client):
         """No reports returns helpful message."""
         mock_reports.return_value = []

@@ -1,9 +1,10 @@
 """Tests for CLI functions in research_agent.cli."""
 
 import re
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -18,6 +19,7 @@ from research_agent.report_store import (
     _OLD_FORMAT,
     get_auto_save_path,
     sanitize_filename,
+    save_report,
 )
 from research_agent.modes import ResearchMode
 
@@ -108,65 +110,96 @@ class TestFilenameRegexPatterns:
 
 
 class TestListReports:
-    """Tests for list_reports()."""
+    """Tests for list_reports() against the DB."""
 
-    def test_missing_directory(self, tmp_path, capsys):
-        nonexistent = tmp_path / "nonexistent"
-        with patch("research_agent.report_store.REPORTS_DIR", nonexistent), \
-             patch("research_agent.cli.REPORTS_DIR", nonexistent):
+    def _run(self, db):
+        with patch("research_agent.cli.open_pool") as mock_pool:
+            mock_pool.return_value.connection.return_value = nullcontext(db)
             list_reports()
-        assert "No reports directory found" in capsys.readouterr().out
 
-    def test_empty_directory(self, tmp_path, capsys):
-        reports = tmp_path / "reports"
-        reports.mkdir()
-        with patch("research_agent.report_store.REPORTS_DIR", reports), \
-             patch("research_agent.cli.REPORTS_DIR", reports):
-            list_reports()
+    def test_empty_db(self, db, capsys):
+        self._run(db)
         assert "No saved reports" in capsys.readouterr().out
 
-    def test_lists_old_format_reports(self, tmp_path, capsys):
-        reports = tmp_path / "reports"
-        reports.mkdir()
-        (reports / "2026-02-03_183703_graphql_vs_rest.md").write_text("test")
-        with patch("research_agent.report_store.REPORTS_DIR", reports):
-            list_reports()
+    def test_lists_reports_from_db(self, db, capsys):
+        save_report(db, query="graphql vs rest", mode="standard", content="# R")
+        self._run(db)
         output = capsys.readouterr().out
         assert "Saved reports (1):" in output
-        assert "2026-02-03" in output
-        assert "graphql_vs_rest" in output
+        assert "graphql vs rest" in output
+        assert re.search(r"graphql_vs_rest-[0-9a-f]{8}", output)
 
-    def test_lists_new_format_reports(self, tmp_path, capsys):
-        reports = tmp_path / "reports"
-        reports.mkdir()
-        (reports / "graphql_vs_rest_2026-02-03_183703056652.md").write_text("test")
-        with patch("research_agent.report_store.REPORTS_DIR", reports):
-            list_reports()
-        output = capsys.readouterr().out
-        assert "Saved reports (1):" in output
-        assert "2026-02-03" in output
-        assert "graphql_vs_rest" in output
-
-    def test_non_standard_files_listed_separately(self, tmp_path, capsys):
-        reports = tmp_path / "reports"
-        reports.mkdir()
-        (reports / "codebase_review.md").write_text("test")
-        (reports / "2026-02-03_183703_query.md").write_text("test")
-        with patch("research_agent.report_store.REPORTS_DIR", reports):
-            list_reports()
+    def test_lists_two_rows_for_repeated_query(self, db, capsys):
+        save_report(db, query="same query", mode="standard", content="a")
+        save_report(db, query="same query", mode="standard", content="b")
+        self._run(db)
         output = capsys.readouterr().out
         assert "Saved reports (2):" in output
-        assert "non-standard names" in output
-        assert "codebase_review.md" in output
+        keys = re.findall(r"same_query-[0-9a-f]{8}", output)
+        assert len(set(keys)) == 2
 
-    def test_ignores_non_md_files(self, tmp_path, capsys):
-        reports = tmp_path / "reports"
-        reports.mkdir()
-        (reports / ".DS_Store").write_text("junk")
-        with patch("research_agent.report_store.REPORTS_DIR", reports), \
-             patch("research_agent.cli.REPORTS_DIR", reports):
-            list_reports()
-        assert "No saved reports" in capsys.readouterr().out
+
+class TestCliAutoSave:
+    """CLI research runs persist reports to Postgres, never files."""
+
+    def _run_cli(self, db, tmp_path, monkeypatch, query="pacific flow competitors"):
+        monkeypatch.chdir(tmp_path)  # stray file writes land in tmp, not the repo
+        mock_agent = MagicMock()
+        mock_agent.research.return_value = "# Report\n\nBody."
+        mock_agent.last_critique = None
+        mock_agent.iteration_status = "skipped"
+        mock_agent.last_gate_decision = "full_report"
+        mock_agent.last_source_count = 5
+        with patch("research_agent.cli.ResearchAgent", return_value=mock_agent), \
+             patch("research_agent.cli.open_pool") as mock_pool, \
+             patch("sys.argv", ["main.py", "--standard", query]):
+            mock_pool.return_value.connection.return_value = nullcontext(db)
+            main()
+
+    def test_standard_run_writes_one_db_row_and_no_file(
+        self, db, tmp_path, monkeypatch, capsys
+    ):
+        self._run_cli(db, tmp_path, monkeypatch)
+        rows = db.execute(
+            "SELECT report_key, query, mode, content, gate_decision, sources_used "
+            "FROM reports"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0]["query"] == "pacific flow competitors"
+        assert rows[0]["mode"] == "standard"
+        assert rows[0]["content"] == "# Report\n\nBody."
+        assert rows[0]["gate_decision"] == "full_report"
+        assert rows[0]["sources_used"] == 5
+        assert not (tmp_path / "reports").exists()
+        assert rows[0]["report_key"] in capsys.readouterr().out
+
+    def test_same_query_twice_writes_two_rows_distinct_keys(
+        self, db, tmp_path, monkeypatch
+    ):
+        self._run_cli(db, tmp_path, monkeypatch)
+        self._run_cli(db, tmp_path, monkeypatch)
+        rows = db.execute("SELECT report_key FROM reports").fetchall()
+        assert len(rows) == 2
+        assert rows[0]["report_key"] != rows[1]["report_key"]
+
+    def test_explicit_output_flag_still_writes_a_file(
+        self, db, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        out_file = tmp_path / "out.md"
+        mock_agent = MagicMock()
+        mock_agent.research.return_value = "# Report\n\nBody."
+        mock_agent.last_critique = None
+        mock_agent.iteration_status = "skipped"
+        mock_agent.last_gate_decision = "full_report"
+        mock_agent.last_source_count = 5
+        with patch("research_agent.cli.ResearchAgent", return_value=mock_agent), \
+             patch("research_agent.cli.open_pool") as mock_pool, \
+             patch("sys.argv", ["main.py", "--quick", "q query words", "-o", str(out_file)]):
+            mock_pool.return_value.connection.return_value = nullcontext(db)
+            main()
+        assert out_file.read_text() == "# Report\n\nBody."
+        assert db.execute("SELECT count(*) AS n FROM reports").fetchone()["n"] == 0
 
 
 class TestShowCosts:

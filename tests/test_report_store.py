@@ -1,21 +1,26 @@
 """Tests for report_store functions not covered by test_main.py.
 
 test_main.py already covers sanitize_filename (7 tests) and
-get_auto_save_path (5 tests). This file tests only the remaining
-functions: _resolves_within_reports_root and get_reports.
+get_auto_save_path (5 tests). This file tests the remaining functions:
+_resolves_within_reports_root, the DB-backed save_report/get_reports
+(against real Postgres via the `db` fixture), and the legacy
+get_archived_reports disk reader.
 """
 
-import os
-import pytest
+import re
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
+from research_agent.errors import StateError
 from research_agent.report_store import (
     _resolves_within_reports_root,
+    get_archived_reports,
     get_reports,
-    REPORTS_DIR,
+    save_report,
 )
-from research_agent.results import ReportInfo
 
 
 class TestResolvesWithinReportsRoot:
@@ -71,14 +76,109 @@ class TestResolvesWithinReportsRoot:
             assert _resolves_within_reports_root(target) is True
 
 
-class TestGetReports:
-    """Tests for get_reports()."""
+class TestSaveReport:
+    """Tests for save_report() against real Postgres."""
+
+    def test_persists_row_and_returns_key(self, db):
+        key = save_report(
+            db, query="python async best practices", mode="standard",
+            content="# Report\n\nBody.", gate_decision="full_report",
+            sources_used=5,
+        )
+        row = db.execute(
+            "SELECT * FROM reports WHERE report_key = %s", (key,)
+        ).fetchone()
+        assert row["query"] == "python async best practices"
+        assert row["mode"] == "standard"
+        assert row["content"] == "# Report\n\nBody."
+        assert row["gate_decision"] == "full_report"
+        assert row["sources_used"] == 5
+        assert row["job_id"] is None
+        assert row["created_at"] is not None
+
+    def test_key_format_is_slug_dash_uuid8(self, db):
+        key = save_report(db, query="GraphQL vs REST?", mode="quick", content="x")
+        assert re.fullmatch(r"graphql_vs_rest-[0-9a-f]{8}", key)
+        # The MCP path-safety character rule carries over to keys.
+        assert re.fullmatch(r"[a-zA-Z0-9_\-]+", key)
+
+    def test_same_query_twice_gives_two_rows_distinct_keys(self, db):
+        key1 = save_report(db, query="same query", mode="standard", content="a")
+        key2 = save_report(db, query="same query", mode="standard", content="b")
+        assert key1 != key2
+        count = db.execute(
+            "SELECT count(*) AS n FROM reports WHERE query = 'same query'"
+        ).fetchone()["n"]
+        assert count == 2
+
+    @staticmethod
+    def _uuids_sharing_prefix(count):
+        """Distinct uuids whose first 8 hex chars (the key suffix) all match."""
+        prefix = uuid.uuid4().hex[:8]
+        return [uuid.UUID(prefix + f"{i:024x}") for i in range(count)]
+
+    def test_key_collision_regenerates_and_retries(self, db):
+        """A report_key UniqueViolation gets a fresh uuid and retries."""
+        u1, u2 = self._uuids_sharing_prefix(2)
+        other = uuid.uuid4()
+        with patch("research_agent.report_store.uuid.uuid4",
+                   side_effect=[u1, u2, other]):
+            key1 = save_report(db, query="collide", mode="quick", content="a")
+            key2 = save_report(db, query="collide", mode="quick", content="b")
+        assert key1 == f"collide-{u1.hex[:8]}"
+        assert key2 == f"collide-{other.hex[:8]}"
+
+    def test_exhausted_collision_retries_raise_state_error(self, db):
+        colliders = self._uuids_sharing_prefix(4)
+        with patch("research_agent.report_store.uuid.uuid4",
+                   side_effect=colliders):
+            save_report(db, query="collide", mode="quick", content="a")
+            with pytest.raises(StateError, match="collided"):
+                save_report(db, query="collide", mode="quick", content="b")
+
+    def test_job_id_conflict_is_not_retried(self, db):
+        """UNIQUE(job_id) breach raises StateError instead of retrying."""
+        job_id = db.execute(
+            "INSERT INTO jobs (query, mode) VALUES ('q', 'quick') RETURNING id"
+        ).fetchone()["id"]
+        save_report(db, query="q", mode="quick", content="a", job_id=job_id)
+        with pytest.raises(StateError, match="Failed to save report"):
+            save_report(db, query="q", mode="quick", content="b", job_id=job_id)
+
+
+class TestGetReportsDb:
+    """Tests for the DB-backed get_reports()."""
+
+    def test_empty_table_returns_empty(self, db):
+        assert get_reports(db) == []
+
+    def test_maps_columns_to_report_info(self, db):
+        key = save_report(db, query="my query", mode="standard", content="x")
+        result = get_reports(db)
+        assert len(result) == 1
+        assert result[0].filename == key
+        assert result[0].query_name == "my query"
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", result[0].date)
+
+    def test_sorted_newest_first(self, db):
+        old_key = save_report(db, query="old", mode="quick", content="x")
+        new_key = save_report(db, query="new", mode="quick", content="y")
+        db.execute(
+            "UPDATE reports SET created_at = created_at - interval '2 days' "
+            "WHERE report_key = %s", (old_key,)
+        )
+        result = get_reports(db)
+        assert [r.filename for r in result] == [new_key, old_key]
+
+
+class TestGetArchivedReports:
+    """Tests for the legacy get_archived_reports() disk reader."""
 
     def test_nonexistent_directory_returns_empty(self, tmp_path):
         """Non-existent reports directory should return empty list."""
         fake_dir = tmp_path / "reports"
         with patch("research_agent.report_store.REPORTS_DIR", fake_dir):
-            assert get_reports() == []
+            assert get_archived_reports() == []
 
     def test_empty_directory_returns_empty(self, tmp_path):
         """Empty reports directory should return empty list."""
@@ -86,7 +186,7 @@ class TestGetReports:
         reports.mkdir()
         with patch("research_agent.report_store.REPORTS_DIR", reports), \
              patch("research_agent.report_store.Path.cwd", return_value=tmp_path):
-            assert get_reports() == []
+            assert get_archived_reports() == []
 
     def test_new_format_files_sorted_newest_first(self, tmp_path):
         """Files matching new format should be parsed and sorted newest-first."""
@@ -96,7 +196,7 @@ class TestGetReports:
         (reports / "tacos_2026-06-15_120000000000.md").write_text("new")
         with patch("research_agent.report_store.REPORTS_DIR", reports), \
              patch("research_agent.report_store.Path.cwd", return_value=tmp_path):
-            result = get_reports()
+            result = get_archived_reports()
             assert len(result) == 2
             assert result[0].date == "2026-06-15"
             assert result[1].date == "2026-01-01"
@@ -109,7 +209,7 @@ class TestGetReports:
         (reports / "2026-03-01_183703056652_my_query.md").write_text("content")
         with patch("research_agent.report_store.REPORTS_DIR", reports), \
              patch("research_agent.report_store.Path.cwd", return_value=tmp_path):
-            result = get_reports()
+            result = get_archived_reports()
             assert len(result) == 1
             assert result[0].date == "2026-03-01"
             assert result[0].query_name == "my_query"
@@ -121,7 +221,7 @@ class TestGetReports:
         (reports / "random_notes.md").write_text("content")
         with patch("research_agent.report_store.REPORTS_DIR", reports), \
              patch("research_agent.report_store.Path.cwd", return_value=tmp_path):
-            result = get_reports()
+            result = get_archived_reports()
             assert len(result) == 1
             assert result[0].date == ""
             assert result[0].query_name == "random_notes.md"

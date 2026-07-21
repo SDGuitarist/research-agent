@@ -1,9 +1,14 @@
 """Report storage utilities shared by CLI and MCP server."""
 
 import re
+import uuid
 from datetime import datetime
 from pathlib import Path
 
+from psycopg import Error as PsycopgError
+from psycopg.errors import UniqueViolation
+
+from .errors import StateError
 from .results import ReportInfo
 
 REPORTS_DIR = Path("reports")
@@ -63,6 +68,91 @@ def get_auto_save_path(query: str) -> Path:
     return path
 
 
+# Retry budget for the astronomically-rare report_key hex-suffix collision.
+_MAX_KEY_ATTEMPTS = 3
+
+
+def save_report(
+    conn,
+    *,
+    query: str,
+    mode: str,
+    content: str,
+    gate_decision: str | None = None,
+    sources_used: int | None = None,
+    job_id: uuid.UUID | None = None,
+) -> str:
+    """Insert a report row using an injected connection; return its report_key.
+
+    The caller owns the outer transaction — the nested transaction here is a
+    savepoint when one already exists; never conn.commit() inside.
+
+    report_key = f"{slug}-{uuid8}" is generated once at insert time and stored
+    in a UNIQUE column; consumers must never re-derive it. An 8-hex collision
+    surfaces as UniqueViolation on report_key — regenerate the suffix and
+    retry. A job_id conflict is a real invariant breach (one report per job)
+    and is not retried.
+
+    Raises:
+        StateError: On any database failure other than a retryable
+            report_key collision.
+    """
+    for _ in range(_MAX_KEY_ATTEMPTS):
+        report_id = uuid.uuid4()
+        report_key = f"{sanitize_filename(query)}-{report_id.hex[:8]}"
+        try:
+            with conn.transaction():
+                conn.execute(
+                    """INSERT INTO reports
+                           (id, job_id, report_key, query, mode, content,
+                            gate_decision, sources_used)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (report_id, job_id, report_key, query, mode, content,
+                     gate_decision, sources_used),
+                )
+            return report_key
+        except UniqueViolation as exc:
+            if "report_key" not in (exc.diag.constraint_name or ""):
+                raise StateError(f"Failed to save report: {exc}") from exc
+            continue
+        except PsycopgError as exc:
+            raise StateError(f"Failed to save report: {exc}") from exc
+    raise StateError(
+        f"Failed to save report: report_key collided {_MAX_KEY_ATTEMPTS} times"
+    )
+
+
+def get_reports(conn) -> list[ReportInfo]:
+    """Return metadata for all saved reports, sorted newest-first.
+
+    Reads the reports table with an injected connection. ``filename``
+    carries the report_key (the canonical lookup handle) and
+    ``query_name`` the original query text.
+
+    Raises:
+        StateError: On database failure.
+    """
+    try:
+        rows = conn.execute(
+            """SELECT report_key, query, created_at
+               FROM reports ORDER BY created_at DESC, id DESC"""
+        ).fetchall()
+    except PsycopgError as exc:
+        raise StateError(f"Failed to list reports: {exc}") from exc
+    return [
+        ReportInfo(
+            filename=row["report_key"],
+            date=row["created_at"].strftime("%Y-%m-%d"),
+            query_name=row["query"],
+        )
+        for row in rows
+    ]
+
+
+# --- Legacy disk archive (pre-Postgres) -----------------------------------
+# Old reports/ files are a read-only archive. The MCP server still lists
+# them until Session 4 cuts it over to the DB; deleted then.
+
 # Regex patterns for extracting date from report filenames
 # Old format: 2026-02-03_183703056652_query_name.md (timestamp first)
 _OLD_FORMAT = re.compile(r"^(\d{4}-\d{2}-\d{2})_\d{6,}_(.+)\.md$")
@@ -70,8 +160,8 @@ _OLD_FORMAT = re.compile(r"^(\d{4}-\d{2}-\d{2})_\d{6,}_(.+)\.md$")
 _NEW_FORMAT = re.compile(r"^(.+)_(\d{4}-\d{2}-\d{2})_\d{6,}\.md$")
 
 
-def get_reports() -> list[ReportInfo]:
-    """Return metadata for all saved reports, sorted newest-first.
+def get_archived_reports() -> list[ReportInfo]:
+    """Return metadata for legacy report files on disk, sorted newest-first.
 
     Returns:
         List of ReportInfo objects. Empty list if no reports directory

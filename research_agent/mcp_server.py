@@ -143,9 +143,11 @@ def list_saved_reports() -> str:
 
     Returns a formatted list of reports available for retrieval via get_report.
     """
-    from research_agent import get_reports
+    # Session 3 interim: MCP still lists the read-only reports/ disk archive.
+    # Session 4 cuts this tool over to the DB (report_key-based).
+    from research_agent.report_store import get_archived_reports
 
-    reports = get_reports()
+    reports = get_archived_reports()
     if not reports:
         return "No saved reports found. Run research in standard or deep mode to auto-save."
     lines = []
