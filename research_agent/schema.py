@@ -1,4 +1,4 @@
-"""Gap data model and YAML parser for research schema."""
+"""Gap data model plus Postgres and migration-file loaders."""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -108,7 +108,7 @@ def _parse_gap(raw: dict, index: int) -> Gap:
     )
 
 
-def load_schema(path: Path | str) -> SchemaResult:
+def load_schema_file(path: Path | str) -> SchemaResult:
     """Load a gap schema from a YAML file.
 
     Args:
@@ -153,3 +153,62 @@ def load_schema(path: Path | str) -> SchemaResult:
 
     gaps = tuple(_parse_gap(g, i) for i, g in enumerate(raw_gaps))
     return SchemaResult(gaps=gaps, source=source)
+
+
+def load_gaps(conn) -> SchemaResult:
+    """Load all gap state from Postgres using an injected connection."""
+    rows = conn.execute(
+        """SELECT id, category, status, priority, last_verified, last_checked,
+                  ttl_days, blocks, blocked_by, findings
+           FROM gaps
+           ORDER BY id"""
+    ).fetchall()
+
+    gaps = tuple(
+        Gap(
+            id=row["id"],
+            category=row["category"],
+            status=GapStatus(row["status"]),
+            priority=row["priority"],
+            last_verified=(
+                row["last_verified"].isoformat() if row["last_verified"] else None
+            ),
+            last_checked=(
+                row["last_checked"].isoformat() if row["last_checked"] else None
+            ),
+            ttl_days=row["ttl_days"],
+            blocks=tuple(row["blocks"]),
+            blocked_by=tuple(row["blocked_by"]),
+            findings=row["findings"],
+        )
+        for row in rows
+    )
+    return SchemaResult(gaps=gaps, source="gaps")
+
+
+def detect_cycles(gaps: tuple[Gap, ...]) -> list[tuple[str, ...]]:
+    """Return dependency cycles from the directed ``blocks`` graph."""
+    graph = {gap.id: list(gap.blocks) for gap in gaps}
+    white, gray, black = 0, 1, 2
+    color = {gap_id: white for gap_id in graph}
+    path: list[str] = []
+    cycles: list[tuple[str, ...]] = []
+
+    def visit(node: str) -> None:
+        color[node] = gray
+        path.append(node)
+        for neighbor in graph.get(node, []):
+            if neighbor not in color:
+                continue
+            if color[neighbor] == gray:
+                start = path.index(neighbor)
+                cycles.append(tuple(path[start:]) + (neighbor,))
+            elif color[neighbor] == white:
+                visit(neighbor)
+        path.pop()
+        color[node] = black
+
+    for node in graph:
+        if color[node] == white:
+            visit(node)
+    return cycles

@@ -332,6 +332,7 @@ Examples:
             skip_iteration=args.no_iteration,
             context_path=context_path,
             no_context=no_context,
+            gap_tracking_enabled=True,
         )
 
         report = agent.research(args.query)

@@ -3,7 +3,8 @@
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+
+from psycopg import Error as PsycopgError
 
 from .errors import StateError
 from .schema import Gap, GapStatus
@@ -79,23 +80,17 @@ def select_batch(
 
 
 def log_flip(
-    log_path: Path | str,
+    conn,
     gap_id: str,
     old_status: GapStatus,
     new_status: GapStatus,
     reason: str,
     now: datetime | None = None,
 ) -> None:
-    """Append a status flip event to the audit log.
-
-    Each entry is a single line of structured text:
-    [ISO_TIMESTAMP] gap_id: old_status -> new_status (reason)
-
-    The log file is append-only. If it doesn't exist, it is created.
-    Parent directories are created if needed.
+    """Insert a status flip event using an injected connection.
 
     Args:
-        log_path: Path to the audit log file.
+        conn: Injected Postgres connection; the caller owns the transaction.
         gap_id: ID of the gap that changed.
         old_status: Previous status.
         new_status: New status.
@@ -103,18 +98,18 @@ def log_flip(
         now: Override timestamp for testing. Defaults to UTC now.
 
     Raises:
-        StateError: If the write fails.
+        StateError: If the insert fails.
     """
     if now is None:
         now = datetime.now(timezone.utc)
 
-    timestamp = now.isoformat()
-    line = f"[{timestamp}] {gap_id}: {old_status.value} -> {new_status.value} ({reason})\n"
-
-    path = Path(log_path)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as f:
-            f.write(line)
-    except OSError as exc:
-        raise StateError(f"Failed to write audit log: {exc}") from exc
+        with conn.transaction():
+            conn.execute(
+                """INSERT INTO gap_audit
+                       (gap_id, old_status, new_status, reason, event_at)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (gap_id, old_status.value, new_status.value, reason, now),
+            )
+    except PsycopgError as exc:
+        raise StateError(f"Failed to write gap audit: {exc}") from exc

@@ -1,69 +1,59 @@
-"""State persistence for gap schema — atomic YAML writes and single-gap updates."""
+"""State persistence for targeted Postgres gap updates."""
 
 from dataclasses import replace
 from datetime import datetime, timezone
-from pathlib import Path
 
-import yaml
+from psycopg import Error as PsycopgError
 
-from .safe_io import atomic_write
+from .errors import StateError
 from .schema import Gap, GapStatus
 
 
-# Fields that are always included in YAML output (required by _parse_gap)
-_REQUIRED_FIELDS = {"id", "category"}
+def save_schema(conn, gaps: tuple[Gap, ...]) -> int:
+    """Upsert only the supplied gap rows using an injected connection.
 
-# Default values — fields matching these are omitted from YAML to keep it clean
-_DEFAULTS: dict[str, object] = {
-    "status": GapStatus.UNKNOWN,
-    "priority": 3,
-    "last_verified": None,
-    "last_checked": None,
-    "ttl_days": None,
-    "blocks": (),
-    "blocked_by": (),
-    "findings": "",
-}
-
-
-def _gap_to_dict(gap: Gap) -> dict:
-    """Convert a Gap to a YAML-serializable dict.
-
-    Converts GapStatus enum to its string value, tuples to lists,
-    and omits fields that are at their default values to keep YAML clean.
+    The caller owns the outer transaction. The nested transaction here is a
+    savepoint when one already exists, which keeps rollback-per-test isolation.
+    Returns the number of rows whose stored values actually changed.
     """
-    result: dict[str, object] = {}
-
-    result["id"] = gap.id
-    result["category"] = gap.category
-
-    for field_name, default_val in _DEFAULTS.items():
-        value = getattr(gap, field_name)
-        if value == default_val:
-            continue
-        if isinstance(value, GapStatus):
-            result[field_name] = value.value
-        elif isinstance(value, tuple):
-            result[field_name] = list(value)
-        else:
-            result[field_name] = value
-
-    return result
-
-
-def save_schema(path: Path | str, gaps: tuple[Gap, ...]) -> None:
-    """Write gaps to a YAML schema file atomically.
-
-    Args:
-        path: Target file path.
-        gaps: Gap objects to serialize.
-
-    Raises:
-        StateError: If the write fails (via atomic_write).
-    """
-    data = {"gaps": [_gap_to_dict(g) for g in gaps]}
-    content = yaml.dump(data, default_flow_style=False, sort_keys=False)
-    atomic_write(path, content)
+    changed = 0
+    try:
+        with conn.transaction():
+            for gap in gaps:
+                cursor = conn.execute(
+                """INSERT INTO gaps (
+                       id, category, status, priority, last_verified, last_checked,
+                       ttl_days, blocks, blocked_by, findings
+                   ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (id) DO UPDATE SET
+                       category = EXCLUDED.category,
+                       status = EXCLUDED.status,
+                       priority = EXCLUDED.priority,
+                       last_verified = EXCLUDED.last_verified,
+                       last_checked = EXCLUDED.last_checked,
+                       ttl_days = EXCLUDED.ttl_days,
+                       blocks = EXCLUDED.blocks,
+                       blocked_by = EXCLUDED.blocked_by,
+                       findings = EXCLUDED.findings,
+                       updated_at = now()
+                   WHERE (gaps.category, gaps.status, gaps.priority,
+                          gaps.last_verified, gaps.last_checked, gaps.ttl_days,
+                          gaps.blocks, gaps.blocked_by, gaps.findings)
+                         IS DISTINCT FROM
+                         (EXCLUDED.category, EXCLUDED.status, EXCLUDED.priority,
+                          EXCLUDED.last_verified, EXCLUDED.last_checked,
+                          EXCLUDED.ttl_days, EXCLUDED.blocks, EXCLUDED.blocked_by,
+                          EXCLUDED.findings)""",
+                    (
+                        gap.id, gap.category, gap.status.value, gap.priority,
+                        gap.last_verified, gap.last_checked, gap.ttl_days,
+                        list(gap.blocks), list(gap.blocked_by), gap.findings,
+                    ),
+                )
+                changed += cursor.rowcount
+    except PsycopgError as exc:
+        raise StateError(f"Failed to save gap state: {exc}") from exc
+    return changed
 
 
 def mark_checked(gap: Gap, now: datetime | None = None) -> Gap:

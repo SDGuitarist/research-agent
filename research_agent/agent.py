@@ -32,7 +32,8 @@ from .report_store import META_DIR
 from .sanitize import sanitize_content
 from .cycle_config import CycleConfig
 
-from .schema import Gap, GapStatus, SchemaResult, load_schema
+from .db import open_pool
+from .schema import Gap, GapStatus, SchemaResult, load_gaps
 from .state import mark_verified, mark_checked, save_schema
 from .staleness import detect_stale, select_batch, log_flip
 
@@ -64,7 +65,7 @@ class ResearchAgent:
         max_sources: int | None = None,
         mode: ResearchMode | None = None,
         cycle_config: CycleConfig | None = None,
-        schema_path: Path | str | None = None,
+        gap_tracking_enabled: bool = False,
         skip_critique: bool = False,
         skip_iteration: bool = False,
         context_path: Path | None = None,
@@ -81,7 +82,7 @@ class ResearchAgent:
         self._skip_iteration = skip_iteration
         self.context_path = context_path
         self.no_context = no_context
-        self.schema_path = Path(schema_path) if schema_path else None
+        self.gap_tracking_enabled = gap_tracking_enabled
         self._current_schema_result: SchemaResult | None = None
         self._current_research_batch: tuple[Gap, ...] | None = None
         self._run_context: ContextResult = ContextResult.not_configured(source="init")
@@ -152,8 +153,13 @@ class ResearchAgent:
             f"Run with `--force` to research anyway, or wait for gaps to become stale."
         )
 
+    def _load_gap_state(self) -> SchemaResult:
+        """Borrow a pooled connection and load the current gap rows."""
+        with open_pool().connection() as conn:
+            return load_gaps(conn)
+
     def _update_gap_states(self, decision: str) -> None:
-        """Update gap schema after research completes.
+        """Persist targeted gap updates after research completes.
 
         - full_report / short_report -> mark_verified() for researched gaps
         - no_new_findings -> mark_checked() (searched but found nothing)
@@ -164,34 +170,34 @@ class ResearchAgent:
             return
 
         batch_ids = {g.id for g in self._current_research_batch}
-        updated_gaps: list[Gap] = []
-        audit_log_path = self.schema_path.parent / "gap_audit.log"
+        updated_gaps: list[tuple[Gap, Gap]] = []
 
         for gap in schema_result.gaps:
             if gap.id not in batch_ids:
-                updated_gaps.append(gap)
                 continue
 
             if decision in (GateDecision.FULL_REPORT, GateDecision.SHORT_REPORT):
                 new_gap = mark_verified(gap)
-                if gap.status != new_gap.status:
-                    log_flip(
-                        audit_log_path, gap.id,
-                        gap.status, new_gap.status,
-                        reason=f"Research completed: {decision}",
-                    )
-                updated_gaps.append(new_gap)
+                updated_gaps.append((gap, new_gap))
             elif decision == GateDecision.NO_NEW_FINDINGS:
                 new_gap = mark_checked(gap)
-                updated_gaps.append(new_gap)
+                updated_gaps.append((gap, new_gap))
                 logger.info("Gap '%s' checked (no new findings)", gap.id)
-            else:
-                # insufficient_data -- don't update state
-                updated_gaps.append(gap)
+
+        if not updated_gaps:
+            return
 
         try:
-            save_schema(self.schema_path, tuple(updated_gaps))
-            logger.info("Updated %d gap states in %s", len(batch_ids), self.schema_path)
+            with open_pool().connection() as conn:
+                with conn.transaction():
+                    for old_gap, new_gap in updated_gaps:
+                        if old_gap.status != new_gap.status:
+                            log_flip(
+                                conn, old_gap.id, old_gap.status, new_gap.status,
+                                reason=f"Research completed: {decision}",
+                            )
+                    save_schema(conn, tuple(new for _, new in updated_gaps))
+            logger.info("Updated %d gap states in Postgres", len(updated_gaps))
         except StateError as e:
             logger.warning("Failed to save gap state: %s", e)
 
@@ -485,20 +491,9 @@ class ResearchAgent:
             else:
                 logger.info("Simple query — skipping decomposition")
 
-        # Pre-research gap check (if schema configured)
-        # Gap schema fallback: if no --schema was passed, check profile
-        if not self.schema_path and self._run_context.profile and self._run_context.profile.gap_schema:
-            gap_rel = self._run_context.profile.gap_schema
-            project_root = Path.cwd()
-            gap_path = (project_root / gap_rel).resolve()
-            if gap_path.is_relative_to(project_root.resolve()) and gap_path.is_file():
-                self.schema_path = gap_path
-                logger.info("Using gap_schema from profile: %s", gap_path)
-            else:
-                logger.warning("gap_schema file not found or outside project: %s", gap_rel)
-
-        if self.schema_path:
-            schema_result = load_schema(self.schema_path)
+        # Pre-research gap check: the database table is the source of truth.
+        if self.gap_tracking_enabled:
+            schema_result = await asyncio.to_thread(self._load_gap_state)
             if schema_result.is_loaded:
                 stale = detect_stale(
                     schema_result.gaps,
@@ -838,8 +833,8 @@ class ResearchAgent:
         if evaluation.decision in (GateDecision.INSUFFICIENT_DATA, GateDecision.NO_NEW_FINDINGS):
             self._last_source_count = 0
             self._last_gate_decision = evaluation.decision
-            if evaluation.decision == GateDecision.NO_NEW_FINDINGS and self.schema_path and self._current_research_batch:
-                self._update_gap_states(evaluation.decision)
+            if evaluation.decision == GateDecision.NO_NEW_FINDINGS and self.gap_tracking_enabled and self._current_research_batch:
+                await asyncio.to_thread(self._update_gap_states, evaluation.decision)
             self._next_step("Generating insufficient data response...")
             return await generate_insufficient_data_response(
                 query=query,
@@ -879,8 +874,8 @@ class ResearchAgent:
                 synthesis_tone=profile.synthesis_tone if profile else "",
                 temperature=self.mode.synthesis_temperature,
             )
-            if self.schema_path and self._current_research_batch:
-                self._update_gap_states(evaluation.decision)
+            if self.gap_tracking_enabled and self._current_research_batch:
+                await asyncio.to_thread(self._update_gap_states, evaluation.decision)
             return report
 
         # Standard/deep mode: draft -> skeptic -> final synthesis
@@ -969,8 +964,8 @@ class ResearchAgent:
             skeptic_findings=findings,
             gate_decision=evaluation.decision,
         )
-        if self.schema_path and self._current_research_batch:
-            self._update_gap_states(evaluation.decision)
+        if self.gap_tracking_enabled and self._current_research_batch:
+            await asyncio.to_thread(self._update_gap_states, evaluation.decision)
         return result
 
     async def _research_with_refinement(

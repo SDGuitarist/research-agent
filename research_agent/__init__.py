@@ -138,6 +138,7 @@ async def run_research_async(
         mode=research_mode, context_path=context_path, no_context=no_context,
         skip_critique=skip_critique, skip_iteration=skip_iteration,
         max_sources=max_sources,
+        gap_tracking_enabled=True,
     )
     report = await agent.research_async(query)
 
