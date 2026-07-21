@@ -14,7 +14,7 @@ from research_agent.fetch import FetchedPage
 from research_agent.extract import ExtractedContent
 from research_agent.summarize import Summary
 from research_agent.relevance import RelevanceEvaluation, SourceScore
-from research_agent.context_result import ContextResult
+from research_agent.context_result import ContextProfile, ContextResult
 from research_agent.schema import Gap, GapStatus, SchemaResult, load_gaps
 from research_agent.state import save_schema
 from research_agent.cycle_config import CycleConfig
@@ -1277,7 +1277,7 @@ class TestResearchAgentGapCheck:
         from research_agent.cycle_config import CycleConfig
         assert agent.cycle_config.max_gaps_per_run == CycleConfig().max_gaps_per_run
         assert agent.cycle_config.default_ttl_days == CycleConfig().default_ttl_days
-        assert agent.gap_tracking_enabled is False
+        assert agent.gap_tracking_enabled is None  # auto: follow the context profile
 
     def test_init_custom_cycle_config(self):
         """Custom CycleConfig is stored on instance."""
@@ -1583,6 +1583,145 @@ class TestResearchAgentGapCheck:
 
             assert result == "Report"
             mock_search.assert_called()
+
+
+class TestGapTrackingBoundary:
+    """Gap tracking activates per-context (profile.gap_schema), not globally.
+
+    Auto mode (the default) restores the pre-Postgres profile-driven
+    behavior; an explicit True/False override forces it either way.
+    """
+
+    def _agent(self, **kwargs):
+        with patch("research_agent.agent.Anthropic"), \
+             patch("research_agent.agent.AsyncAnthropic"):
+            return ResearchAgent(api_key="test-key", **kwargs)
+
+    def _gap_context(self):
+        return ContextResult.loaded(
+            "PFE context", source="contexts/pfe.md",
+            profile=ContextProfile(gap_schema="gaps/pfe.yaml"),
+        )
+
+    def test_auto_activates_for_gap_enabled_context(self):
+        """Direct construction + a context whose profile declares gap_schema."""
+        agent = self._agent()
+        agent._run_context = self._gap_context()
+        assert agent._gap_tracking_active() is True
+
+    def test_auto_inactive_for_context_without_gap_schema(self):
+        """Direct construction + a loaded context with no gap_schema."""
+        agent = self._agent()
+        agent._run_context = ContextResult.loaded(
+            "Other context", source="contexts/other.md", profile=ContextProfile(),
+        )
+        assert agent._gap_tracking_active() is False
+
+    def test_auto_inactive_with_no_context(self):
+        """context='none' / no matching context → tracking stays off."""
+        agent = self._agent()
+        agent._run_context = ContextResult.not_configured()
+        assert agent._gap_tracking_active() is False
+
+    def test_override_true_forces_on_without_context(self):
+        agent = self._agent(gap_tracking_enabled=True)
+        agent._run_context = ContextResult.not_configured()
+        assert agent._gap_tracking_active() is True
+
+    def test_override_false_forces_off_despite_gap_context(self):
+        agent = self._agent(gap_tracking_enabled=False)
+        agent._run_context = self._gap_context()
+        assert agent._gap_tracking_active() is False
+
+    def _pipeline_mocks(self, load_full_context_result):
+        return [
+            patch("research_agent.agent.search"),
+            patch("research_agent.agent.refine_query"),
+            patch("research_agent.agent.fetch_urls"),
+            patch("research_agent.agent.extract_all"),
+            patch("research_agent.agent.summarize_all"),
+            patch("research_agent.agent.evaluate_sources", new_callable=AsyncMock),
+            patch("research_agent.agent.load_full_context",
+                  return_value=load_full_context_result),
+            patch("research_agent.agent.synthesize_report"),
+            patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock),
+        ]
+
+    def _wire_pipeline(self, mocks):
+        (mock_search, mock_refine, mock_fetch, mock_extract,
+         mock_summarize, mock_evaluate, _, mock_synth, _) = mocks
+        mock_search.return_value = [
+            SearchResult(title="R", url="https://ex1.com", snippet="S")
+        ]
+        mock_refine.return_value = "test query"
+        mock_fetch.return_value = [
+            FetchedPage(url="https://ex1.com", html="<p>" + "x" * 200 + "</p>", status_code=200)
+        ]
+        mock_extract.return_value = [
+            ExtractedContent(url="https://ex1.com", title="T", text="C " * 100)
+        ]
+        mock_summarize.return_value = [
+            Summary(url="https://ex1.com", title="T", summary="S")
+        ]
+        mock_evaluate.return_value = RelevanceEvaluation(
+            decision="full_report", decision_rationale="ok",
+            surviving_sources=(Summary(url="https://ex1.com", title="T", summary="S"),),
+            dropped_sources=(), total_scored=1, total_survived=1, refined_query=None,
+        )
+        mock_synth.return_value = "Report"
+
+    @pytest.mark.asyncio
+    async def test_unrelated_query_never_reads_gap_rows(self):
+        """A run without a gap-tracking context must never touch the gaps
+        table — global gap rows cannot short-circuit unrelated queries."""
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            mocks = [
+                stack.enter_context(p)
+                for p in self._pipeline_mocks(ContextResult.not_configured())
+            ]
+            self._wire_pipeline(mocks)
+            mock_load = stack.enter_context(
+                patch.object(ResearchAgent, "_load_gap_state")
+            )
+
+            agent = ResearchAgent(
+                api_key="test-key", mode=ResearchMode.quick(), no_context=True,
+            )
+            result = await agent.research_async("test query")
+
+        assert result == "Report"
+        mock_load.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_gap_context_reads_gap_rows(self):
+        """A run whose context declares gap_schema loads gap state (CLI and
+        the public API construct without an override, so this auto path is
+        exactly what they get with the PFE context)."""
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            mocks = [
+                stack.enter_context(p)
+                for p in self._pipeline_mocks(self._gap_context())
+            ]
+            self._wire_pipeline(mocks)
+            mock_load = stack.enter_context(
+                patch.object(
+                    ResearchAgent, "_load_gap_state",
+                    return_value=SchemaResult(gaps=(), source="gaps"),
+                )
+            )
+
+            agent = ResearchAgent(
+                api_key="test-key", mode=ResearchMode.quick(),
+                context_path=Path("contexts/pfe.md"),
+            )
+            result = await agent.research_async("test query")
+
+        assert result == "Report"
+        mock_load.assert_called_once()
 
 
 class TestResearchAgentPostResearch:

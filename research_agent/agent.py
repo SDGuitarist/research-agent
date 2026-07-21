@@ -65,7 +65,7 @@ class ResearchAgent:
         max_sources: int | None = None,
         mode: ResearchMode | None = None,
         cycle_config: CycleConfig | None = None,
-        gap_tracking_enabled: bool = False,
+        gap_tracking_enabled: bool | None = None,
         skip_critique: bool = False,
         skip_iteration: bool = False,
         context_path: Path | None = None,
@@ -82,6 +82,9 @@ class ResearchAgent:
         self._skip_iteration = skip_iteration
         self.context_path = context_path
         self.no_context = no_context
+        # None = auto: follow the effective context's profile (gap_schema
+        # declared → tracking on). True/False = explicit override for callers
+        # that must force it (e.g. future service entry points).
         self.gap_tracking_enabled = gap_tracking_enabled
         self._current_schema_result: SchemaResult | None = None
         self._current_research_batch: tuple[Gap, ...] | None = None
@@ -152,6 +155,22 @@ class ResearchAgent:
             f"freshness windows. No new research needed at this time.\n\n"
             f"Run with `--force` to research anyway, or wait for gaps to become stale."
         )
+
+    def _gap_tracking_active(self) -> bool:
+        """Whether gap tracking applies to the current run.
+
+        Auto mode (gap_tracking_enabled is None) preserves the pre-Postgres
+        profile-driven behavior: tracking is on only when the effective
+        context's profile declares a gap_schema. The field is now a pure
+        opt-in flag — the gaps table, not the YAML path, is the store — so
+        an unrelated query (no context, or a context without gap_schema)
+        can never be short-circuited by global gap rows. An explicit
+        True/False overrides the profile in both directions.
+        """
+        if self.gap_tracking_enabled is not None:
+            return self.gap_tracking_enabled
+        profile = self._run_context.profile
+        return bool(profile and profile.gap_schema)
 
     def _load_gap_state(self) -> SchemaResult:
         """Borrow a pooled connection and load the current gap rows."""
@@ -491,8 +510,9 @@ class ResearchAgent:
             else:
                 logger.info("Simple query — skipping decomposition")
 
-        # Pre-research gap check: the database table is the source of truth.
-        if self.gap_tracking_enabled:
+        # Pre-research gap check: active only for gap-tracking contexts
+        # (or an explicit override); the database table is the store.
+        if self._gap_tracking_active():
             schema_result = await asyncio.to_thread(self._load_gap_state)
             if schema_result.is_loaded:
                 stale = detect_stale(
@@ -833,7 +853,7 @@ class ResearchAgent:
         if evaluation.decision in (GateDecision.INSUFFICIENT_DATA, GateDecision.NO_NEW_FINDINGS):
             self._last_source_count = 0
             self._last_gate_decision = evaluation.decision
-            if evaluation.decision == GateDecision.NO_NEW_FINDINGS and self.gap_tracking_enabled and self._current_research_batch:
+            if evaluation.decision == GateDecision.NO_NEW_FINDINGS and self._gap_tracking_active() and self._current_research_batch:
                 await asyncio.to_thread(self._update_gap_states, evaluation.decision)
             self._next_step("Generating insufficient data response...")
             return await generate_insufficient_data_response(
@@ -874,7 +894,7 @@ class ResearchAgent:
                 synthesis_tone=profile.synthesis_tone if profile else "",
                 temperature=self.mode.synthesis_temperature,
             )
-            if self.gap_tracking_enabled and self._current_research_batch:
+            if self._gap_tracking_active() and self._current_research_batch:
                 await asyncio.to_thread(self._update_gap_states, evaluation.decision)
             return report
 
@@ -964,7 +984,7 @@ class ResearchAgent:
             skeptic_findings=findings,
             gate_decision=evaluation.decision,
         )
-        if self.gap_tracking_enabled and self._current_research_batch:
+        if self._gap_tracking_active() and self._current_research_batch:
             await asyncio.to_thread(self._update_gap_states, evaluation.decision)
         return result
 

@@ -178,6 +178,20 @@ class TestRunResearchHappyPath:
 
     @patch.dict("os.environ", ENV_BOTH, clear=True)
     @patch("research_agent.ResearchAgent")
+    def test_gap_tracking_not_forced(self, mock_agent_cls):
+        """The public API leaves gap tracking in auto mode (profile-driven);
+        it must not force-enable it for every query (S2 review fix 1)."""
+        agent_instance = mock_agent_cls.return_value
+        agent_instance.research_async = AsyncMock(return_value="# Report")
+        agent_instance.last_source_count = 5
+        agent_instance.last_gate_decision = "full_report"
+
+        run_research("test query", mode="quick")
+
+        assert "gap_tracking_enabled" not in mock_agent_cls.call_args.kwargs
+
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.ResearchAgent")
     def test_default_mode_is_standard(self, mock_agent_cls):
         agent_instance = mock_agent_cls.return_value
         agent_instance.research_async = AsyncMock(return_value="# Report")
