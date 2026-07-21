@@ -148,13 +148,13 @@ erDiagram
 
 ### Schema constraint checklist (do NOT skip — ref `docs/solutions/database-issues/schema-constraint-gaps-supabase.md`)
 
-- [ ] `jobs.status` and `gaps.status` → `CHECK (status IN (...))` (ERD text ≠ enum constraint)
-- [ ] `reports.job_id` → `UNIQUE` (enforces one report per job — spec-flow P0-3)
-- [ ] `reports.report_key` → `UNIQUE NOT NULL`
-- [ ] Queue index: `CREATE INDEX ON jobs (status, created_at)` for the claim query
-- [ ] `gaps.priority` sibling-parity with the dataclass default (3); timestamps are `timestamptz` (P1-5)
-- [ ] `gap_audit` is INSERT-only by contract; `event_at` distinct from `inserted_at` (P1-3)
-- [ ] All timestamps stored UTC `timestamptz`
+- [x] `jobs.status` and `gaps.status` → `CHECK (status IN (...))` (ERD text ≠ enum constraint) — *Session 1*
+- [x] `reports.job_id` → `UNIQUE` (enforces one report per job — spec-flow P0-3) — *Session 1*
+- [x] `reports.report_key` → `UNIQUE NOT NULL` — *Session 1*
+- [x] Queue index (implemented as partial indexes `(created_at) WHERE status='queued'` + `(heartbeat_at) WHERE status='running'`, per Impl. Notes §1) — *Session 1*
+- [x] `gaps.priority` sibling-parity with the dataclass default (3); timestamps are `timestamptz` (P1-5) — *Session 1*
+- [x] `gap_audit` is INSERT-only by contract; `event_at` distinct from `inserted_at` (P1-3) — *Session 1 (schema; contract enforced in code later)*
+- [x] All timestamps stored UTC `timestamptz` — *Session 1*
 
 ### Report identity & `report_key` (Codex P2 fix — collision-proof, job-scoped)
 

@@ -291,3 +291,97 @@ def mock_evaluate_insufficient(sample_summaries):
             refined_query=None,
         )
     return _create_result
+
+
+# --- Postgres fixtures (Session 1: files→Postgres foundation) --------------
+# OPT-IN: only tests that request `db` / `db_pool` / `committed_db` touch
+# Postgres, so the rest of the suite runs with no database. Never SQLite —
+# the job queue needs SELECT ... FOR UPDATE SKIP LOCKED.
+
+import os
+import psycopg
+from psycopg.rows import dict_row
+
+# TRUNCATE order (children before parents) for the committed/concurrency path.
+_CONCURRENCY_TABLES = ("gap_audit", "reports", "jobs", "gaps", "critiques")
+
+
+@pytest.fixture(scope="session")
+def database_url():
+    """A disposable Postgres URL: TEST_DATABASE_URL if set, else an ephemeral
+    testcontainers Postgres (requires Docker)."""
+    url = os.environ.get("TEST_DATABASE_URL")
+    if url:
+        assert (
+            any(tok in url for tok in ("test", "localhost", "127.0.0.1"))
+            and "prod" not in url
+        ), "TEST_DATABASE_URL must point at a disposable test database"
+        yield url
+        return
+    pytest.importorskip("testcontainers")
+    from testcontainers.postgres import PostgresContainer
+
+    with PostgresContainer("postgres:16-alpine") as pg:
+        # driver=None → a raw psycopg3 URL, not the SQLAlchemy '+psycopg2' form.
+        yield pg.get_connection_url(driver=None)
+
+
+@pytest.fixture(scope="session")
+def _db_setup(database_url):
+    """Apply migrations once per session against a clean schema."""
+    from research_agent.migrate import run_migrations
+
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        conn.execute("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;")
+    run_migrations(database_url)
+    yield
+
+
+@pytest.fixture(scope="session")
+def db_pool(_db_setup, database_url):
+    """One connection pool for the whole session (connections are reused)."""
+    from psycopg_pool import ConnectionPool
+
+    with ConnectionPool(
+        database_url,
+        min_size=1,
+        max_size=4,
+        kwargs={"row_factory": dict_row},  # autocommit defaults False → rollback works
+        open=True,
+    ) as pool:
+        yield pool
+
+
+@pytest.fixture
+def db(db_pool):
+    """Fast, isolated connection: opens a transaction and always rolls back, so
+    tests never see each other's writes. Code under test must accept this
+    `conn` and must NOT call conn.commit()."""
+    with db_pool.connection() as conn:
+        with conn.transaction():
+            yield conn
+            raise psycopg.Rollback
+
+
+@pytest.fixture
+def committed_db(db_pool):
+    """For tests that need committed rows visible across connections (the
+    SKIP LOCKED claim). Tests open their own connections and commit; the queue
+    tables are truncated afterward."""
+    yield db_pool
+    with db_pool.connection() as conn:
+        conn.execute(
+            f"TRUNCATE {', '.join(_CONCURRENCY_TABLES)} RESTART IDENTITY CASCADE"
+        )
+
+
+@pytest.fixture(autouse=True)
+def _reset_db_pool():
+    """Reset the app's module-global pool between tests (pre + post), mirroring
+    the existing _reset_tavily_cache pattern, so a test that opens the runtime
+    pool can't leak it into a neighbour."""
+    import research_agent.db as db_module
+
+    db_module._pool = None
+    yield
+    db_module.close_pool()

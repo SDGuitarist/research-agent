@@ -69,3 +69,8 @@ class StateError(ResearchError):
     pass
 
 
+class ConfigError(ResearchError):
+    """Required configuration (e.g. DATABASE_URL) is missing or invalid."""
+    pass
+
+
