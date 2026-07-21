@@ -1043,6 +1043,91 @@ class TestLoadCritiqueHistoryDb:
             load_critique_history(broken)
 
 
+def _insert_critique_row(
+    db,
+    *,
+    overall_pass=True,
+    mean_score=4.0,
+    source_diversity=4,
+    claim_support=4,
+    coverage=4,
+    geographic_balance=4,
+    actionability=4,
+    weaknesses="",
+    suggestions="",
+):
+    """Insert a critiques row with exact column values (bypasses save_critique's
+    write-time sanitize), so a test can plant rows the DB schema accepts but the
+    legacy file reader would reject (out-of-range scores, over-length text)."""
+    db.execute(
+        """INSERT INTO critiques
+               (overall_pass, mean_score, source_diversity, claim_support,
+                coverage, geographic_balance, actionability, weaknesses, suggestions)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (overall_pass, mean_score, source_diversity, claim_support, coverage,
+         geographic_balance, actionability, weaknesses, suggestions),
+    )
+
+
+class TestLoadCritiqueHistoryDbValidationParity:
+    """DB history must apply the same row-level invariants the file reader did
+    before the >=3-passing gate (Session 3 review P2)."""
+
+    def test_out_of_range_score_row_does_not_count(self, db):
+        # Two clean passing rows + one passing row with an out-of-range score.
+        for _ in range(2):
+            _insert_critique_row(db)
+        _insert_critique_row(db, source_diversity=9)  # invalid: > 5
+        result = load_critique_history(db, limit=10)
+        # Only 2 valid passing rows survive → below the 3-passing threshold.
+        assert result.status == ContextStatus.NOT_CONFIGURED
+
+    def test_over_length_weaknesses_row_does_not_count(self, db):
+        for _ in range(2):
+            _insert_critique_row(db)
+        _insert_critique_row(db, weaknesses="x" * 201)  # invalid: > 200 chars
+        result = load_critique_history(db, limit=10)
+        assert result.status == ContextStatus.NOT_CONFIGURED
+
+    def test_over_length_suggestions_row_does_not_count(self, db):
+        # suggestions isn't used in the summary, but the file reader rejected
+        # over-length suggestions too — keep exact parity.
+        for _ in range(2):
+            _insert_critique_row(db)
+        _insert_critique_row(db, suggestions="y" * 201)  # invalid: > 200 chars
+        result = load_critique_history(db, limit=10)
+        assert result.status == ContextStatus.NOT_CONFIGURED
+
+    def test_null_dimension_row_does_not_count(self, db):
+        for _ in range(2):
+            _insert_critique_row(db)
+        _insert_critique_row(db, actionability=None)  # invalid: missing dimension
+        result = load_critique_history(db, limit=10)
+        assert result.status == ContextStatus.NOT_CONFIGURED
+
+    def test_invalid_row_in_window_blocks_older_valid_rows(self, db):
+        """Invalid rows inside the newest LIMIT window do not count and cannot be
+        replaced by valid rows outside the window (newest-LIMIT-then-filter)."""
+        # Older, valid, passing rows — outside the newest-3 window.
+        for _ in range(3):
+            _insert_critique_row(db)
+        # Newest 3 rows: 2 valid + 1 out-of-range → only 2 valid passing in window.
+        for _ in range(2):
+            _insert_critique_row(db)
+        _insert_critique_row(db, claim_support=0)  # invalid: < 1
+        result = load_critique_history(db, limit=3)
+        assert result.status == ContextStatus.NOT_CONFIGURED
+
+    def test_three_valid_passing_still_load(self, db):
+        """Sanity: with the invalid row replaced by a valid one, guidance loads —
+        the validation gate isn't rejecting well-formed rows."""
+        for _ in range(2):
+            _insert_critique_row(db, weaknesses="Limited US sources")
+        _insert_critique_row(db, source_diversity=5, weaknesses="Limited US sources")
+        result = load_critique_history(db, limit=10)
+        assert result.status == ContextStatus.LOADED
+
+
 class TestSummarizePatterns:
     def test_below_threshold_returns_empty(self):
         critiques = [

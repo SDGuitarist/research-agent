@@ -583,10 +583,14 @@ def _summarize_patterns(passing_critiques: list[dict]) -> str:
 def load_critique_history(conn, limit: int = 10) -> ContextResult:
     """Load recent critiques from the DB and return summarized patterns.
 
-    Mirrors the legacy file semantics: look at the newest ``limit``
-    critiques (passing or not), keep the passing ones, and require at
-    least 3 before producing guidance — so a run of recent failures
-    correctly yields no guidance even if older passing critiques exist.
+    Mirrors the legacy file semantics exactly: take the newest ``limit``
+    critiques (passing or not), reject rows that fail schema validation
+    (out-of-range or non-integer scores, missing dimensions, over-length or
+    non-string free text) — the same rules the file reader applied via
+    ``_validate_critique_yaml`` — keep the passing ones, and require at least
+    3 before producing guidance. A run of recent failures therefore yields no
+    guidance even if older passing critiques exist outside the window, and an
+    invalid row inside the window cannot count toward the threshold.
 
     Unlike the optional-enhancement callers inside ``ResearchAgent``, this
     function does NOT swallow database errors: a failed query, broken schema,
@@ -601,7 +605,7 @@ def load_critique_history(conn, limit: int = 10) -> ContextResult:
 
     Returns:
         ContextResult:
-            - NOT_CONFIGURED if fewer than 3 passing critiques in the window.
+            - NOT_CONFIGURED if fewer than 3 valid passing critiques in the window.
             - LOADED with summary text if enough passing history exists.
 
     Raises:
@@ -612,7 +616,7 @@ def load_critique_history(conn, limit: int = 10) -> ContextResult:
         rows = conn.execute(
             """SELECT source_diversity, claim_support, coverage,
                       geographic_balance, actionability, weaknesses,
-                      overall_pass
+                      suggestions, overall_pass
                FROM critiques
                ORDER BY created_at DESC, id DESC
                LIMIT %s""",
@@ -621,13 +625,15 @@ def load_critique_history(conn, limit: int = 10) -> ContextResult:
     except PsycopgError as exc:
         raise StateError(f"Failed to load critique history: {exc}") from exc
 
-    passing = []
-    for row in rows:
-        if row["overall_pass"] is not True:
-            continue
-        if any(row[dim] is None for dim in DIMENSIONS):
-            continue
-        passing.append({**row, "weaknesses": row["weaknesses"] or ""})
+    # Validate each row with the legacy file reader's predicate so DB and file
+    # history apply identical invariants before the >=3-passing gate. Validation
+    # runs on the newest-LIMIT window, so an invalid row inside it cannot be
+    # replaced by an older valid row outside it.
+    passing = [
+        {**row, "weaknesses": row["weaknesses"] or ""}
+        for row in rows
+        if _validate_critique_yaml(row) and row["overall_pass"] is True
+    ]
 
     if len(passing) < _MIN_CRITIQUES_FOR_GUIDANCE:
         return ContextResult.not_configured(source=source)
