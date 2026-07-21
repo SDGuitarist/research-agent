@@ -1,0 +1,20 @@
+gaps:
+  - id: "competitor-pricing"
+    category: "market-intelligence"
+    status: "verified"
+    priority: 5
+    last_verified: "2026-07-01T12:00:00+00:00"
+    last_checked: "2026-07-01T12:00:00+00:00"
+    ttl_days: 14
+    blocks: ["market-position"]
+  - id: "market-position"
+    category: "market-intelligence"
+    status: "unknown"
+    priority: 4
+    ttl_days: 30
+    blocked_by: ["competitor-pricing"]
+  - id: "venue-partnerships"
+    category: "business-development"
+    status: "unknown"
+    priority: 3
+    ttl_days: 30
