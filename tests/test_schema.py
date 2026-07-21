@@ -9,7 +9,9 @@ from research_agent.schema import (
     Gap,
     GapStatus,
     SchemaResult,
-    load_schema,
+    detect_cycles,
+    load_gaps,
+    load_schema_file,
 )
 
 
@@ -79,7 +81,7 @@ class TestGap:
         assert gap1 == gap2
 
 
-class TestLoadSchema:
+class TestLoadSchemaFile:
     def test_parse_valid_schema(self, tmp_path):
         schema_file = tmp_path / "gaps.yaml"
         schema_file.write_text(
@@ -97,7 +99,7 @@ class TestLoadSchema:
             '    last_verified: "2026-01-15"\n'
             "    ttl_days: 90\n"
         )
-        result = load_schema(schema_file)
+        result = load_schema_file(schema_file)
         assert result.is_loaded
         assert len(result.gaps) == 2
         assert result.gaps[0].id == "pricing"
@@ -108,7 +110,7 @@ class TestLoadSchema:
         assert result.gaps[1].last_verified == "2026-01-15"
 
     def test_parse_missing_file(self, tmp_path):
-        result = load_schema(tmp_path / "nonexistent.yaml")
+        result = load_schema_file(tmp_path / "nonexistent.yaml")
         assert result.is_not_configured
         assert result.source == ""
         assert result.gaps == ()
@@ -116,7 +118,7 @@ class TestLoadSchema:
     def test_parse_empty_file(self, tmp_path):
         schema_file = tmp_path / "gaps.yaml"
         schema_file.write_text("")
-        result = load_schema(schema_file)
+        result = load_schema_file(schema_file)
         assert result.is_empty
         assert result.source == str(schema_file)
         assert result.gaps == ()
@@ -124,7 +126,7 @@ class TestLoadSchema:
     def test_parse_empty_gaps_list(self, tmp_path):
         schema_file = tmp_path / "gaps.yaml"
         schema_file.write_text("gaps: []\n")
-        result = load_schema(schema_file)
+        result = load_schema_file(schema_file)
         assert result.is_empty
         assert result.source == str(schema_file)
 
@@ -132,13 +134,13 @@ class TestLoadSchema:
         schema_file = tmp_path / "gaps.yaml"
         schema_file.write_text("gaps:\n  - id: [unterminated\n")
         with pytest.raises(SchemaError, match="Invalid YAML"):
-            load_schema(schema_file)
+            load_schema_file(schema_file)
 
     def test_parse_wrong_structure(self, tmp_path):
         schema_file = tmp_path / "gaps.yaml"
         schema_file.write_text('gaps: "not a list"\n')
         with pytest.raises(SchemaError, match="must be a list"):
-            load_schema(schema_file)
+            load_schema_file(schema_file)
 
     def test_parse_unknown_status(self, tmp_path):
         schema_file = tmp_path / "gaps.yaml"
@@ -149,19 +151,19 @@ class TestLoadSchema:
             '    status: "foobar"\n'
         )
         with pytest.raises(SchemaError, match="unknown status 'foobar'"):
-            load_schema(schema_file)
+            load_schema_file(schema_file)
 
     def test_parse_missing_required_id(self, tmp_path):
         schema_file = tmp_path / "gaps.yaml"
         schema_file.write_text("gaps:\n  - category: 'y'\n")
         with pytest.raises(SchemaError, match="missing required field 'id'"):
-            load_schema(schema_file)
+            load_schema_file(schema_file)
 
     def test_parse_missing_required_category(self, tmp_path):
         schema_file = tmp_path / "gaps.yaml"
         schema_file.write_text("gaps:\n  - id: 'x'\n")
         with pytest.raises(SchemaError, match="missing required field 'category'"):
-            load_schema(schema_file)
+            load_schema_file(schema_file)
 
     def test_parse_bool_rejected_as_priority(self, tmp_path):
         schema_file = tmp_path / "gaps.yaml"
@@ -172,7 +174,7 @@ class TestLoadSchema:
             "    priority: true\n"
         )
         with pytest.raises(SchemaError, match="non-integer priority"):
-            load_schema(schema_file)
+            load_schema_file(schema_file)
 
     def test_parse_defaults_applied(self, tmp_path):
         schema_file = tmp_path / "gaps.yaml"
@@ -181,7 +183,7 @@ class TestLoadSchema:
             '  - id: "minimal"\n'
             '    category: "test"\n'
         )
-        result = load_schema(schema_file)
+        result = load_schema_file(schema_file)
         gap = result.gaps[0]
         assert gap.status is GapStatus.UNKNOWN
         assert gap.priority == 3
@@ -198,11 +200,62 @@ class TestLoadSchema:
             '  - id: "x"\n'
             '    category: "y"\n'
         )
-        result = load_schema(schema_file)
+        result = load_schema_file(schema_file)
         assert bool(result) is True
 
     def test_schema_result_bool_false_when_empty(self, tmp_path):
         schema_file = tmp_path / "gaps.yaml"
         schema_file.write_text("gaps: []\n")
-        result = load_schema(schema_file)
+        result = load_schema_file(schema_file)
         assert bool(result) is False
+
+
+class TestLoadGaps:
+    def test_loads_postgres_rows_as_gap_types(self, db):
+        db.execute(
+            """INSERT INTO gaps (
+                   id, category, status, priority, last_verified, last_checked,
+                   ttl_days, blocks, blocked_by, findings
+               ) VALUES (
+                   'pricing', 'market', 'verified', 5,
+                   '2026-01-01T00:00:00+00:00', '2026-01-02T00:00:00+00:00',
+                   14, ARRAY['positioning'], ARRAY['team'], 'Confirmed'
+               )"""
+        )
+
+        result = load_gaps(db)
+
+        assert result.source == "gaps"
+        assert result.gaps == (
+            Gap(
+                id="pricing", category="market", status=GapStatus.VERIFIED,
+                priority=5, last_verified="2026-01-01T00:00:00+00:00",
+                last_checked="2026-01-02T00:00:00+00:00", ttl_days=14,
+                blocks=("positioning",), blocked_by=("team",),
+                findings="Confirmed",
+            ),
+        )
+
+    def test_empty_table_is_configured_but_not_loaded(self, db):
+        result = load_gaps(db)
+
+        assert result.is_empty
+        assert not result.is_not_configured
+
+
+class TestDetectCycles:
+    def test_detects_dependency_cycle(self):
+        gaps = (
+            Gap(id="a", category="test", blocks=("b",)),
+            Gap(id="b", category="test", blocks=("a",)),
+        )
+
+        assert detect_cycles(gaps) == [("a", "b", "a")]
+
+    def test_acyclic_dependencies_are_valid(self):
+        gaps = (
+            Gap(id="a", category="test", blocks=("b",)),
+            Gap(id="b", category="test"),
+        )
+
+        assert detect_cycles(gaps) == []

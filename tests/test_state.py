@@ -1,73 +1,16 @@
-"""Tests for state persistence — state writer + timestamp management."""
+"""Tests for Postgres gap persistence and timestamp management."""
 
 from datetime import datetime, timezone
-from unittest.mock import patch
-
-from research_agent.schema import Gap, GapStatus, load_schema
+from research_agent.schema import Gap, GapStatus, load_gaps
 from research_agent.state import (
-    _gap_to_dict,
     mark_checked,
     mark_verified,
     save_schema,
 )
 
 
-class TestGapToDict:
-    def test_gap_to_dict_converts_enum(self):
-        gap = Gap(
-            id="pricing",
-            category="market",
-            status=GapStatus.VERIFIED,
-            last_verified="2026-01-01T00:00:00+00:00",
-        )
-        result = _gap_to_dict(gap)
-        assert result["status"] == "verified"
-
-    def test_gap_to_dict_omits_defaults(self):
-        gap = Gap(id="pricing", category="market")
-        result = _gap_to_dict(gap)
-        assert "findings" not in result
-        assert "blocks" not in result
-        assert "blocked_by" not in result
-        assert "status" not in result  # unknown is default
-        assert "priority" not in result  # 3 is default
-        assert "last_verified" not in result
-        assert "last_checked" not in result
-        assert "ttl_days" not in result
-
-    def test_gap_to_dict_converts_tuples(self):
-        gap = Gap(
-            id="pricing",
-            category="market",
-            blocks=("competitor", "revenue"),
-        )
-        result = _gap_to_dict(gap)
-        assert result["blocks"] == ["competitor", "revenue"]
-        assert isinstance(result["blocks"], list)
-
-    def test_gap_to_dict_includes_required_fields(self):
-        gap = Gap(id="pricing", category="market")
-        result = _gap_to_dict(gap)
-        assert result["id"] == "pricing"
-        assert result["category"] == "market"
-
-    def test_gap_to_dict_includes_non_default_fields(self):
-        gap = Gap(
-            id="pricing",
-            category="market",
-            priority=5,
-            ttl_days=14,
-            findings="Some findings",
-        )
-        result = _gap_to_dict(gap)
-        assert result["priority"] == 5
-        assert result["ttl_days"] == 14
-        assert result["findings"] == "Some findings"
-
-
 class TestSaveSchema:
-    def test_save_load_roundtrip(self, tmp_path):
-        path = tmp_path / "schema.yaml"
+    def test_save_load_roundtrip(self, db):
         gaps = (
             Gap(id="pricing", category="market", priority=5),
             Gap(
@@ -78,30 +21,18 @@ class TestSaveSchema:
                 blocks=("pricing",),
             ),
         )
-        save_schema(path, gaps)
-        result = load_schema(path)
+        assert save_schema(db, gaps) == 2
+        result = load_gaps(db)
         assert result.is_loaded
         assert len(result.gaps) == 2
-        assert result.gaps[0] == gaps[0]
-        assert result.gaps[1] == gaps[1]
+        assert result.gaps == tuple(sorted(gaps, key=lambda gap: gap.id))
 
-    def test_save_uses_atomic_write(self, tmp_path):
-        path = tmp_path / "schema.yaml"
-        gaps = (Gap(id="pricing", category="market"),)
-        with patch("research_agent.state.atomic_write") as mock_write:
-            save_schema(path, gaps)
-            mock_write.assert_called_once()
-            call_args = mock_write.call_args
-            assert call_args[0][0] == path
-
-    def test_save_empty_gaps(self, tmp_path):
-        path = tmp_path / "schema.yaml"
-        save_schema(path, ())
-        result = load_schema(path)
+    def test_save_empty_gaps(self, db):
+        assert save_schema(db, ()) == 0
+        result = load_gaps(db)
         assert not result.is_loaded
 
-    def test_save_roundtrip_with_all_fields(self, tmp_path):
-        path = tmp_path / "schema.yaml"
+    def test_save_roundtrip_with_all_fields(self, db):
         gaps = (
             Gap(
                 id="full",
@@ -117,10 +48,33 @@ class TestSaveSchema:
             ),
             Gap(id="other", category="tech", blocks=("full",), blocked_by=("full",)),
         )
-        save_schema(path, gaps)
-        result = load_schema(path)
+        save_schema(db, gaps)
+        result = load_gaps(db)
         assert result.gaps[0] == gaps[0]
         assert result.gaps[1] == gaps[1]
+
+    def test_upsert_only_changes_supplied_gap(self, db):
+        original = (
+            Gap(id="a", category="market"),
+            Gap(id="b", category="market", findings="keep me"),
+        )
+        save_schema(db, original)
+
+        changed = save_schema(
+            db, (Gap(id="a", category="market", findings="updated"),)
+        )
+
+        assert changed == 1
+        assert load_gaps(db).gaps == (
+            Gap(id="a", category="market", findings="updated"),
+            original[1],
+        )
+
+    def test_identical_upsert_is_no_op(self, db):
+        gap = Gap(id="pricing", category="market")
+        save_schema(db, (gap,))
+
+        assert save_schema(db, (gap,)) == 0
 
 
 class TestMarkChecked:

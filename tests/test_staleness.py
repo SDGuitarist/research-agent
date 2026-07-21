@@ -1,12 +1,8 @@
 """Tests for staleness detection, batch limiting, and audit logging."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
-
-import pytest
-
-from research_agent.errors import StateError
 from research_agent.schema import Gap, GapStatus
+from research_agent.state import save_schema
 from research_agent.staleness import detect_stale, log_flip, select_batch
 
 # Fixed reference time for all tests
@@ -144,55 +140,19 @@ class TestSelectBatch:
 
 
 class TestLogFlip:
-    def test_log_flip_creates_file(self, tmp_path):
-        log_file = tmp_path / "audit.log"
-        log_flip(log_file, "pricing", GapStatus.VERIFIED, GapStatus.STALE, "TTL expired", now=_NOW)
-        assert log_file.exists()
-        assert "pricing" in log_file.read_text()
-
-    def test_log_flip_appends(self, tmp_path):
-        log_file = tmp_path / "audit.log"
-        log_flip(log_file, "first", GapStatus.VERIFIED, GapStatus.STALE, "reason1", now=_NOW)
-        log_flip(log_file, "second", GapStatus.UNKNOWN, GapStatus.VERIFIED, "reason2", now=_NOW)
-        lines = log_file.read_text().strip().split("\n")
-        assert len(lines) == 2
-        assert "first" in lines[0]
-        assert "second" in lines[1]
-
-    def test_log_flip_format(self, tmp_path):
-        log_file = tmp_path / "audit.log"
-        log_flip(log_file, "pricing", GapStatus.VERIFIED, GapStatus.STALE, "TTL expired: 45 > 30", now=_NOW)
-        line = log_file.read_text().strip()
-        expected = f"[{_NOW.isoformat()}] pricing: verified -> stale (TTL expired: 45 > 30)"
-        assert line == expected
-
-    def test_log_flip_creates_parent_dirs(self, tmp_path):
-        log_file = tmp_path / "nested" / "deep" / "audit.log"
-        log_flip(log_file, "gap1", GapStatus.VERIFIED, GapStatus.STALE, "expired", now=_NOW)
-        assert log_file.exists()
-
-    def test_log_flip_uses_utc(self, tmp_path):
-        log_file = tmp_path / "audit.log"
-        log_flip(log_file, "gap1", GapStatus.VERIFIED, GapStatus.STALE, "expired")
-        line = log_file.read_text()
-        # UTC timestamps contain +00:00
-        assert "+00:00" in line
-
-    def test_log_flip_custom_timestamp(self, tmp_path):
-        log_file = tmp_path / "audit.log"
-        custom = datetime(2025, 6, 15, 8, 30, 0, tzinfo=timezone.utc)
-        log_flip(log_file, "gap1", GapStatus.VERIFIED, GapStatus.STALE, "expired", now=custom)
-        line = log_file.read_text()
-        assert custom.isoformat() in line
-
-    def test_log_flip_records_reason(self, tmp_path):
-        log_file = tmp_path / "audit.log"
+    def test_log_flip_inserts_audit_row_and_preserves_event_time(self, db):
+        save_schema(db, (Gap(id="gap1", category="market"),))
         reason = "TTL expired: 45 days > 30 day limit"
-        log_flip(log_file, "gap1", GapStatus.VERIFIED, GapStatus.STALE, reason, now=_NOW)
-        assert reason in log_file.read_text()
+        log_flip(
+            db, "gap1", GapStatus.VERIFIED, GapStatus.STALE, reason, now=_NOW
+        )
 
-    def test_log_flip_write_error_raises(self, tmp_path):
-        bad_path = tmp_path / "audit.log"
-        with patch("pathlib.Path.open", side_effect=OSError("disk full")):
-            with pytest.raises(StateError, match="Failed to write audit log"):
-                log_flip(bad_path, "gap1", GapStatus.VERIFIED, GapStatus.STALE, "reason", now=_NOW)
+        row = db.execute(
+            """SELECT gap_id, old_status, new_status, reason, event_at
+               FROM gap_audit"""
+        ).fetchone()
+        assert row["gap_id"] == "gap1"
+        assert row["old_status"] == "verified"
+        assert row["new_status"] == "stale"
+        assert row["reason"] == reason
+        assert row["event_at"] == _NOW
