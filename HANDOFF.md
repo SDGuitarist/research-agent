@@ -1,8 +1,8 @@
 # HANDOFF — Research Agent
 
 **Date:** 2026-07-21
-**Phase:** Work — **Session 4 COMPLETE**; next is independent Codex review before Session 5
-**Branch:** `feat/headless-service-core` (not pushed) — Session 4 in `dc0e495`; S3 review fixes in `a3e04af` and `30594e3`; Session 3 in `1d9856e` and `83b1d2f`
+**Phase:** Work — **Session 4 COMPLETE + reviewed clean (Claude Code)**; next is Session 5 (FastAPI web service)
+**Branch:** `feat/headless-service-core` (pushed) — Session 4 in `dc0e495`; S3 review fixes in `a3e04af` and `30594e3`; Session 3 in `1d9856e` and `83b1d2f`
 **Tests:** 1168 pass · MCP lint 8/8 + Postgres storage parity for CLI/MCP
 
 > ⚠️ **Concurrency note (2026-07-21):** Session 2 was worked by **two sessions in parallel** on
@@ -74,6 +74,25 @@ translate to `ToolError`; **1168 tests pass** against real Postgres; parity lint
 - **Least confident:** the phase-aware parity lint proves required storage functions are
   imported and called, but it cannot prove semantic argument parity. Session 5 must activate
   the web checks and its integration tests must verify verbatim-at-rest/render-safe behavior.
+
+### Session 4 Review (Claude Code, independent) — CLEAN ✅
+
+Second-agent review of `dc0e495` against `a18107f`: **no P0/P1/P2 findings**, no edits made.
+Independently re-ran the suite (**1168 pass**) and `lint_mcp_parity.py` (8/8 + cli/mcp storage
+parity). Verified: `_validate_report_key` (empty/null-byte/>255/charset → rejects `../`, `\`,
+spaces); caller-owned transactions with **no `conn.commit()`** and the connection **released
+before every Anthropic call** (load → release → API → fresh borrow to save); `asyncio.to_thread`
+only around sync DB work; safe `StateError`/`ConfigError` → `ToolError` mapping incl. not-found;
+autosave field parity with the CLI (`gate_decision=result.status` is the gate decision);
+`critique_report_file` delegates to `critique_report_text` verbatim (CLI `--critique` unchanged);
+zero dangling refs to the deleted shims; all 8 tool names intact; S3 P1/P2 fixes still in place;
+no scope drift into S5/6 (the `web` lint entry is inert until `web.py` exists).
+
+Accepted risks (non-blocking): (1) `run_research` autosave failure discards the just-generated
+report — consistent with CLI fail-fast, revisit UX in S5; (2) the parity lint proves import+call,
+not argument semantics — S5 web integration tests must assert verbatim-at-rest/render-safe;
+(3) pre-existing (not S4): `report_store.get_auto_save_path` is now dead production code
+(tests-only) since S3 moved auto-save to the DB — candidate for a future cleanup.
 
 ## Session 2 — Gaps → DB: COMPLETE ✅ (`verify_first` satisfied)
 
