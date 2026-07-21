@@ -1698,7 +1698,9 @@ class TestResearchAgentPostResearch:
             "reason": "Research completed: full_report",
         }
 
-    def test_post_research_save_failure_logged(self, db, caplog):
+    def test_post_research_save_failure_rolls_back_atomically(self, db, caplog):
+        """log_flip succeeds, then save_schema fails → the whole transaction
+        rolls back: no audit row persists and the gap row is unchanged."""
         gap = Gap(id="gap-1", category="test")
         save_schema(db, (gap,))
         agent = self._make_agent()
@@ -1709,7 +1711,15 @@ class TestResearchAgentPostResearch:
             mock_pool.return_value.connection.return_value = nullcontext(db)
             agent._update_gap_states("full_report")
 
+        # Graceful degradation: warning logged, no exception escaped.
         assert "Failed to save gap state: db down" in caplog.text
+        # The real log_flip inserted an audit row before save_schema raised;
+        # the transaction must have rolled it back.
+        assert db.execute(
+            "SELECT count(*) AS count FROM gap_audit"
+        ).fetchone()["count"] == 0
+        # And the gap row is byte-for-byte what save_schema originally stored.
+        assert load_gaps(db).gaps == (gap,)
 
 
 class TestCoverageGapRetry:
