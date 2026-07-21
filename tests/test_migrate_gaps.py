@@ -50,6 +50,15 @@ def test_import_is_idempotent_and_preserves_timestamps(db, gap_yaml):
     assert after == before
 
 
+def test_default_pfe_yaml_imports_and_reruns_as_no_op(db):
+    first_changed = migrate_gaps(db)
+    imported_count = db.execute("SELECT count(*) AS count FROM gaps").fetchone()["count"]
+
+    assert first_changed == imported_count
+    assert imported_count > 0
+    assert migrate_gaps(db) == 0
+
+
 def test_import_preserves_staleness_verdict(db, gap_yaml):
     now = datetime(2026, 2, 15, tzinfo=timezone.utc)
     source_gap = load_schema_file(gap_yaml).gaps[0]
