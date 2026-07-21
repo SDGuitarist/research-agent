@@ -1,53 +1,49 @@
 # HANDOFF — Research Agent
 
-**Date:** 2026-05-03
-**Branch:** `chore/32-hygiene-bundle` (merged to main)
-**Phase:** Cycle 32 COMPLETE. Project PARKED -- resume when Tavily API key is renewed.
+**Date:** 2026-07-21
+**Phase:** Plan Review (external Codex review pending)
+**Branch:** `main` (no feature branch yet — Work hasn't started)
 
-## Current State
+## New arc: "Robust internal tool"
 
-Cycle 32 shipped three mechanical hygiene refactors:
+Turning the research-agent CLI into a **deployed internal web service** (FastAPI + Postgres-queue worker on Supabase/Railway). Chosen shape: **robust internal tool first** (not SaaS, not an embedded feature). This is **Phase A** (backend); Phase B = quality UI; Phase C = observability/cost-caps. Supersedes the Cycle 32 "parked" state — this new work is buildable/testable against mocked search while the Tavily key stays parked.
 
-1. **META_DIR to report_store.py** — moved from agent.py to sit next to REPORTS_DIR, following the existing "constant lives with its owning module" pattern. 4 import sites updated. mcp_server.py lazy imports now avoid loading the heavy agent.py orchestrator for path constants.
+## What was done this session
 
-2. **to_mode_info() on ResearchMode** — explicit field mapping method eliminates 18-line manual ModeInfo construction in list_modes(). TypeError on missing required fields. Guard comment in results.py prevents circular imports. 3 new tests using dataclasses.fields() for auto-detection of field drift.
+- **Brainstorm** → [docs/brainstorms/2026-07-21-headless-service-core-brainstorm.md](docs/brainstorms/2026-07-21-headless-service-core-brainstorm.md) (reviewed + refined; added Definition of Done + watch-items).
+- **Plan** → [docs/plans/2026-07-21-feat-headless-service-core-plan.md](docs/plans/2026-07-21-feat-headless-service-core-plan.md) (comprehensive; **deepened** with 5 parallel research agents → concrete snippets + doc URLs).
+- **Codex plan-review handoff** → [docs/plans/2026-07-21-codex-plan-review-handoff.md](docs/plans/2026-07-21-codex-plan-review-handoff.md) (on clipboard, ready to paste into Codex).
 
-3. **ANTHROPIC_ERRORS adoption** — replaced inline exception tuples at 10 call sites across 9 files with the shared constant from errors.py. Left skeptic.py, synthesize.py (per-type logging), and agent.py:1125 (mixed tuple, can't unpack in except clause) untouched.
+## Key decisions (locked in the plan)
 
-1121 tests passing, MCP lint 8/8.
+- Postgres-table queue + separate worker (2 Railway services, no Redis).
+- Full storage cutover to Postgres/Supabase — **state only** (reports, gaps, gap_audit, critiques); `contexts/*.md` stay files. Migrate **gaps only**; old reports = disk archive.
+- **Session pooler (5432)**; **sync psycopg3** storage with an **injected `conn`**; sync worker loop → `asyncio.run(research_async())` per job; async FastAPI with plain `def` routes.
+- Mock seam: tests stub both search + Claude; **DoD smoke = mock search + live Claude** (~85% conf).
+- **Minimal reaper** + heartbeat-decoupled lease + `claim_id`/`UNIQUE(job_id)` guards in Phase A (~80% conf).
+- 7 sessions, **gaps-first** (Cycle 17 lesson). `verify_first: true`.
 
-## Key Artifacts
+## Next phase: Plan Review (Codex)
 
-| Phase | Location |
-|-------|----------|
-| Brainstorm | `docs/brainstorms/2026-05-03-cycle-32-hygiene-bundle-brainstorm.md` |
-| Plan | `docs/plans/2026-05-03-cycle-32-hygiene-bundle-plan.md` |
-| Review | `docs/reviews/2026-05-03-cycle-32-review-summary.md` |
-| Solution | `docs/solutions/architecture/constant-consolidation-and-dataclass-conversion.md` |
+1. Paste the clipboard handoff into Codex (fresh context).
+2. Bring Codex's P0/P1/P2 findings back here.
+3. Fold the valid ones into the plan (note any rejected + why).
+4. Then `/workflows:work` **Session 1 (Foundations)**.
 
-## Commits
+## Three Questions (Plan phase)
 
-| # | Message | Files |
-|---|---------|-------|
-| 1 | `refactor(32-1): move META_DIR from agent.py to report_store.py` | 4 |
-| 2 | `refactor(32-2): add to_mode_info() on ResearchMode, simplify list_modes()` | 4 |
-| 3 | `refactor(32-3): adopt ANTHROPIC_ERRORS at 10 call sites across 9 files` | 10 |
-
-## Deferred Items
-
-- **A/B live validation of novelty decomposition** — blocked on API key renewal
-- **Diversity gate threshold tuning** — needs A/B data first
-- **ModeInfo __post_init__ validation** — patterns reviewer flagged it as the only frozen dataclass without validation. Low priority.
-- **converters.py extraction** — if modes.py -> results.py import edge causes problems in future cycles
-
-## Three Questions
-
-1. **Hardest implementation decision in this session?** The relevance.py dual-import. It needs both individual anthropic imports (for per-type catches at line ~280) AND ANTHROPIC_ERRORS (for the grouped catch at line ~574). Solved with a clarifying comment above the import block.
-2. **What did you consider changing but left alone, and why?** agent.py:1125's mixed (ResearchError, APIError, ...) catch. Python doesn't support tuple unpacking in except clauses. Considered a module-level RESEARCH_AND_API_ERRORS constant but it's YAGNI for one site. Added a comment instead.
-3. **Least confident about going into review?** Whether the modes.py -> results.py import edge will be flagged as a concern. The guard comment in results.py and the dataclasses.fields() test mitigate drift, but the dependency direction (internal config -> public API type) is architecturally unusual.
+Full answers in the plan's "Three Questions (Plan phase)" section. **Least confident going into work:** Session 2's blast radius on `agent.py`'s gap logic once `schema_path` disappears — hence `verify_first: true` and gaps-first sequencing. The other flagged uncertainty is decision #3 (sync-storage model, ~75%) — explicitly handed to Codex to challenge.
 
 ### Prompt for Next Session
 
 ```
-Read docs/plans/2026-05-03-cycle-32-hygiene-bundle-plan.md. Review branch chore/32-hygiene-bundle (3 commits). Relevant files: report_store.py, modes.py, results.py, api_helpers.py, relevance.py, agent.py.
+Read docs/plans/2026-07-21-feat-headless-service-core-plan.md and
+docs/plans/2026-07-21-codex-plan-review-handoff.md. I ran the Codex plan review —
+here are its findings:
+
+[PASTE CODEX FINDINGS]
+
+Fold the valid ones into the plan (note any you reject and why), then let's start
+/workflows:work Session 1 (Foundations: deps + config.py + db.py + migrate.py +
+migrations/001_init.sql + pytest DB fixtures).
 ```
