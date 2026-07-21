@@ -39,14 +39,49 @@ Rewrite `load_schema`/`save_schema`/`log_flip` to Postgres (per-gap rows), keep 
 2. **What did you consider changing but left alone?** Ripping out the scattered `os.environ.get`/`load_dotenv` sites to route everything through `config.py` now — left alone to keep Session 1 additive and non-breaking; that migration happens when the CLI/web/worker wire it in (Sessions 5–7). The existing `report_store`/`state` file code is likewise untouched (Sessions 2–3 migrate it).
 3. **Least confident going into Session 2?** Whether the injected-`conn` rewrite of the gap I/O cleanly accommodates `agent.py`'s gap logic once `schema_path` disappears (the flagged blast radius), and whether `migrate.py`'s multi-statement `execute()` stays robust for a future migration containing dollar-quoted function bodies (worked fine for pure DDL).
 
-### Prompt for Next Session
+### Prompt for Next Session (paste into a fresh conversation)
 
 ```
-Read docs/plans/2026-07-21-feat-headless-service-core-plan.md (Session 2 + "Call-Site
-Inventory" + Impl. Notes §5). Implement ONLY Session 2 (Gaps → DB): rewrite load_schema/
-save_schema/log_flip to Postgres per-gap rows with an injected conn, keep the pure gap
-functions untouched, update agent.py to drop schema_path, add scripts/migrate_gaps.py
-(idempotent + timestamp-preserving + equality assertion), migrate the gap storage tests to
-the db fixtures. Do ONLY Session 2 — commit and stop. Prove the gap state machine against
-Postgres before wiring anything else. After committing, stop and say DONE.
+Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — specifically "Implementation
+Phases (Sessions)" → Session 2, the "Call-Site Inventory", "Implementation Notes" (§1 and §5),
+and the "What must NOT change" + "Acceptance Tests (EARS)" sections. Also skim HANDOFF.md.
+
+We are on branch feat/headless-service-core (nothing pushed). Session 1 (Foundations) is DONE
+and reviewed — commits 3a379c0 → a13e2cd; 1141 tests pass; MCP lint 8/8. Implement ONLY
+Session 2 (Gaps → DB) — the verify_first session — then commit and stop. Do NOT proceed to S3.
+
+Session 1 gives you: config.py (get_settings/require_database_url), db.py (thread-safe psycopg3
+pool: open_pool/get_pool/close_pool; session pooler 5432; dict_row; autocommit; INJECTED conn),
+migrate.py, migrations/001_init.sql (the gaps + gap_audit tables ALREADY EXIST — do not edit 001;
+add 002_*.sql only if truly needed), and conftest fixtures (db = rollback-per-test injected conn,
+committed_db = TRUNCATE for concurrency, database_url = testcontainers; Docker is available).
+Test cmd: python3 -m pytest tests/ -q.
+
+Session 2 scope:
+1. Rewrite gap I/O to Postgres with an INJECTED conn (caller owns the txn; never conn.commit()
+   inside — use `with conn.transaction():`): schema.load_schema → load_gaps(conn) from the gaps
+   table (keep SchemaResult/Gap/GapStatus types); state.save_schema → per-gap TARGETED upsert
+   (NOT whole-doc rewrite — closes P0-5); staleness.log_flip → INSERT into gap_audit (preserve event_at).
+2. Keep PURE functions byte-for-byte unchanged: mark_verified, mark_checked, detect_stale,
+   select_batch, _parse_gap, and the dataclasses. Only the I/O boundary moves.
+3. Update agent.py: drop self.schema_path + the `schema_path.parent / "gap_audit.log"` derivation
+   (~line 168); gap-tracking guard becomes DB-based; thread a conn into gap load/save (~lines
+   501, 193, 178, 176/185); wrap sync storage calls in asyncio.to_thread (pipeline is inside asyncio.run).
+4. scripts/migrate_gaps.py — gaps-only import from gaps/pfe.yaml: validate via schema.py + cycle
+   detection first; idempotent upsert keyed by gap id; PRESERVE original UTC timestamps (no re-stamp);
+   post-import equality assertion (row count == YAML gap count; a gap's staleness verdict identical pre/post).
+5. Migrate storage-coupled gap tests to the db fixture (test_state save/load, test_staleness log_flip,
+   test_schema load, gap-state assertions in test_agent); pure-function tests stay unchanged; add
+   migrate_gaps tests (idempotent re-run no-op; timestamp preservation; equality assertion).
+
+Acceptance: gap state machine passes against Postgres; pfe gaps import + re-run is a no-op with
+unchanged timestamps/state; a known gap's staleness verdict identical pre/post; full suite green;
+MCP lint 8/8 (python3 scripts/lint_mcp_parity.py).
+
+Guardrails: don't touch reports/critiques (S3) or the MCP server (S4); don't edit 001_init.sql
+(add 002 if needed); follow "What must NOT change"; small commits. After committing Session 2,
+stop and say DONE. Do NOT proceed to Session 3.
+
+Session 1 review residuals (none block S2): disposable-DB guard is case-sensitive/convention-based;
+open_pool doesn't close a half-open pool on failure (latent until S5–6).
 ```
