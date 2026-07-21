@@ -194,8 +194,16 @@ Create `config.py` with a `Settings` object read once per entry point (replaces 
 - The gap **state machine logic** — `mark_verified`/`mark_checked`/`detect_stale`/`select_batch`/`_parse_gap` stay byte-for-byte identical.
 - The MCP tool contract (8 tools) — identifiers stay strings; only the backend changes. MCP parity maintained.
 - The CLI flags/UX.
-- The three-layer defenses — `sanitize_content`, SSRF, XML boundaries — run on **every** DB write path, not just the web one (spec-flow P1-7).
+- The three-layer defenses — `sanitize_content`, SSRF, XML boundaries — run on **every** DB write path, not just the web one (spec-flow P1-7). **Intentional exception (resolved in S3 review):** `reports.query` and `reports.content` are stored **verbatim** at rest. `sanitize_content` is a *prompt-boundary* escaper (it XML-escapes `<`/`>`/`&` so untrusted text can't break out of a prompt block), **not** a general web/JSON-render sanitizer; escaping report Markdown on write would corrupt round-trips and break "same reports for the same inputs". Parameterized SQL is the correct injection defense for storage. Critique free-text (`weaknesses`/`suggestions`) *is* `sanitize_content`-ed on write only because that field is later concatenated into a prompt and the escape is idempotent with the read-side pass. The render-time escaping obligation for verbatim `query`/`content` moves to the consumer boundary — see the Session 5 requirement below.
 - Scope discipline: no auth, multi-user, billing, or UI (those are later phases).
+
+### Session 5 requirement (carried from the S3 review) — render-boundary escaping
+
+Because `reports.query` and `reports.content` (and any raw query echoed in job/error payloads) are stored **verbatim**, the web/JSON layer added in Session 5 is the boundary responsible for escaping/sanitizing untrusted text before it reaches a browser or is embedded in HTML:
+
+- **Requirement:** WHEN the web service returns a stored `query`, report `content`, or job `error` THE SYSTEM SHALL emit it as data that a consumer cannot execute — JSON responses rely on `Content-Type: application/json` (no HTML interpolation), and any server-rendered HTML/Markdown MUST HTML-escape `query`/`error` and render report Markdown through a sanitizing renderer (no raw HTML passthrough).
+- **Acceptance test (S5):** submit a query containing `<script>alert(1)</script>` and `&`/`<`/`>`; assert the stored row is byte-identical to the input (verbatim at rest), and that `GET /reports/{key}` / `GET /jobs/{id}` return it escaped/non-executable (JSON-encoded, or HTML-escaped if any HTML view exists) — never as live markup.
+- **Not implemented here:** this is a Session 5 (FastAPI web) obligation; Session 3 only guarantees verbatim-at-rest + parameterized SQL.
 
 ## Implementation Notes (deepened research)
 

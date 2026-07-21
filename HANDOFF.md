@@ -1,9 +1,9 @@
 # HANDOFF — Research Agent
 
 **Date:** 2026-07-21
-**Phase:** Work — **Session 3 COMPLETE (Reports + critiques → DB)**; next is the Codex code review of Session 3, then Session 4 (MCP parity cutover)
-**Branch:** `feat/headless-service-core` (not pushed) — Session 3 in `1d9856e` (reports), `83b1d2f` (critiques); Session 2 in `47e0bb1`, `eb43f5b`, `a032968`, `579db8f` + fixes `c4370b4`, `a4dbe39`, `5eb7fbc`
-**Tests:** 1170 pass · MCP lint 8/8
+**Phase:** Work — **Session 3 COMPLETE + review fixes applied (P1, P2)**; next is Session 4 (MCP parity cutover)
+**Branch:** `feat/headless-service-core` (not pushed) — S3 review fixes in `a3e04af` (P1 error boundary), `30594e3` (P2 validation parity); Session 3 in `1d9856e` (reports), `83b1d2f` (critiques); Session 2 in `47e0bb1`, `eb43f5b`, `a032968`, `579db8f` + fixes `c4370b4`, `a4dbe39`, `5eb7fbc`
+**Tests:** 1188 pass · MCP lint 8/8
 
 > ⚠️ **Concurrency note (2026-07-21):** Session 2 was worked by **two sessions in parallel** on
 > this branch (a handoff that ran concurrently instead of sequentially). It resolved cleanly —
@@ -118,6 +118,82 @@ dataclasses byte-for-byte identical (`git diff` empty on state/staleness/schema)
 **Acceptance met:** CLI `--list` reads DB rows · a CLI run writes ONE report row and no file ·
 identical query twice → two rows, distinct keys · 1170 tests pass · MCP lint 8/8.
 
+## Session 3 Review Fixes — applied ✅ (P1, P2)
+
+Two findings from the Session 3 review, fixed against diff base `713d2a5`. No S4+ scope
+touched: `mcp_server.py` byte-identical, gap paths (S2) unchanged, all 8 MCP tools still
+file-based via the interim shims.
+
+- **`a3e04af` (P1 — DB error boundary).** `load_critique_history` swallowed every psycopg
+  error into `NOT_CONFIGURED`, so CLI `--critique-history` read a broken query/schema/
+  connection as *healthy empty* and exited 0. And pool-boundary failures
+  (`psycopg_pool.PoolTimeout`, a `psycopg.OperationalError` subclass — **not** a
+  `ResearchError`) leaked raw out of `--list`, `--critique-history`, CLI auto-save,
+  `_load_critique_history_db`, and `_run_critique`.
+  - New `db.pooled_connection()` — the single pool-boundary that wraps
+    PoolTimeout/connection failures in `StateError`; `ConfigError` (missing `DATABASE_URL`)
+    still propagates unchanged (both ⊂ `ResearchError`).
+  - `load_critique_history` now **raises** `StateError` on DB failure; `NOT_CONFIGURED`
+    means only "healthy: fewer than 3 passing critiques".
+  - CLI critique/report/list paths + agent critique paths borrow via `pooled_connection()`.
+    **Context split preserved:** direct CLI ops fail fast (nonzero exit, clear error);
+    `ResearchAgent` critique history/persistence stay optional and degrade with a warning.
+  - Tests: `pooled_connection` normalization + ConfigError passthrough; CLI fail-fast on
+    missing-config / pool-timeout / SQL failure; agent degradation on all three.
+
+- **`30594e3` (P2 — critique-history validation parity).** The DB loader only rejected
+  failing rows or NULL dimensions; the legacy file reader also rejected non-integer/
+  out-of-range scores and non-string/over-200-char weaknesses/suggestions before the
+  ≥3-passing gate. `load_critique_history` now validates each selected row with the file
+  reader's own predicate (`_validate_critique_yaml`) — `suggestions` added to the SELECT
+  for full parity — **on the newest-LIMIT window** (kept newest-LIMIT-first-then-filter),
+  so an invalid row inside the window can't be replaced by an older valid row outside it.
+  Real-Postgres tests: out-of-range score / over-length weaknesses / over-length
+  suggestions / NULL dimension inside the window don't count; 3 valid passing still load.
+
+- **P2 feed-forward (plan updated).** The plan's blanket "sanitize on every DB write path"
+  wording now documents the **intentional exception**: `reports.query`/`content` are stored
+  **verbatim** (parameterized SQL is the injection defense; `sanitize_content` is a
+  prompt-boundary escaper, not a web/JSON-render sanitizer). An explicit **Session 5
+  requirement + acceptance test** was added: the web/JSON layer must escape/sanitize
+  untrusted `query`/`content`/`error` at the render boundary. Not implemented here.
+
+**Self-review (second pass, against S3 scope / txn ownership / CLI error paths / MCP
+byte-parity / plan):** clean. `pooled_connection` never opens a transaction or commits —
+storage functions still own `with conn.transaction()`; caller-owns-txn intact. Only 8
+files changed (4 modules + 4 test files). **1188 tests pass · MCP lint 8/8.**
+
+**Residual risk (accepted):** `pooled_connection` wraps the whole borrow (including
+connection *return*), so the astronomically-rare "operation committed, then the pool
+connection-return fails" path surfaces as a `StateError` after a successful write — a
+false error, not corruption (a CLI re-run mints a distinct `report_key`). This is a strict
+improvement over the pre-fix raw leak, and correctly treats a connection-return failure as
+a connection failure per the fix's contract.
+
+## Three Questions (Fix session — Session 3 review fixes)
+
+1. **Hardest fix in this batch?** Deciding *where* to normalize pool errors. `PoolTimeout`
+   is actually a `psycopg.Error` subclass, so it's tempting to lean on the storage
+   functions' existing `except PsycopgError` — but those never see it, because the timeout
+   fires at pool checkout, *outside* the storage call. The right boundary is a single
+   `pooled_connection()` context manager at the borrow site, wrapping checkout/open failures
+   in `StateError` while letting `ConfigError` and the storage functions' own `StateError`
+   pass through untouched. This keeps the CLI-fails-fast / agent-degrades split working with
+   each caller's *existing* `except` clauses — no per-site error handling.
+2. **What did you consider fixing differently, and why didn't you?** For P2, enforcing the
+   invariants with a DB `CHECK` constraint (write/schema side) instead of read-side
+   validation. Rejected: a constraint can't reject rows already in the table, and the review
+   explicitly wanted "invalid rows *inside the newest window* don't count" — a read-time
+   property. Reusing the file reader's exact predicate (`_validate_critique_yaml`) also
+   guarantees parity by construction rather than by a hand-copied second rule set. Also
+   considered routing the gap paths through `pooled_connection` for uniformity — left alone
+   (S2 scope; the gap path intentionally lets PoolTimeout propagate).
+3. **Least confident going into the next phase (Session 4)?** That `pooled_connection` is
+   the seam Session 4's MCP cutover will also want. S4 moves MCP off the file shims onto the
+   DB storage functions; those calls should borrow through `pooled_connection()` too, and
+   MCP's `ToolError` translation must map `StateError`/`ConfigError` the way the CLI maps
+   them to exit codes — a parity point the extended parity lint should assert.
+
 ## Three Questions (Work phase — Session 3)
 
 1. **Hardest implementation decision?** The MCP-server interim: S3 changes the signatures of
@@ -166,50 +242,29 @@ identical query twice → two rows, distinct keys · 1170 tests pass · MCP lint
   unavailable (warning-logged, pipeline continues) — right locally, but a deploy misconfig loses
   critique data quietly.
 
-### Prompt for Next Session (Codex — review Session 3)
+### Prompt for Next Session (Session 4 — MCP parity cutover)
 
-```
-Review Session 3 (Reports + critiques → Postgres) on branch feat/headless-service-core:
-commits 1d9856e and 83b1d2f (diff base: 713d2a5). Plan:
-docs/plans/2026-07-21-feat-headless-service-core-plan.md — sections "Report identity &
-report_key", "Call-Site Inventory", "What must NOT change", EARS. Context: storage functions
-take an INJECTED conn (caller owns the transaction; nested `with conn.transaction():` =
-savepoint; never conn.commit() inside). Tests: python3 -m pytest tests/ -q (1170 pass,
-real Postgres via testcontainers); MCP lint: python3 scripts/lint_mcp_parity.py.
-
-Scrutinize specifically:
-1. save_report's UniqueViolation handling — the constraint_name check ("report_key" in name)
-   that separates retryable key collisions from job_id invariant breaches; the 3-attempt cap;
-   savepoint rollback semantics under the rollback-per-test fixture.
-2. Sanitization decision (FLAGGED): reports.query/content are stored VERBATIM (parameterized
-   SQL; sanitize_content stays at prompt-consumption boundaries, per S2 precedent) while
-   critique weaknesses/suggestions ARE sanitized on write (idempotent with the read-side
-   sanitize). Is the verbatim choice defensible for every future consumer (S5 web UI renders
-   these fields)?
-3. load_critique_history(conn) window semantics — newest LIMIT rows then filter passing —
-   exact parity with the legacy file reader? Any drift in the ≥3-passing gate?
-4. Degradation contract: _load_critique_history_db and _run_critique swallow
-   ConfigError/StateError (warning only). Acceptable for an optional enhancement, or should
-   a worker/deploy context escalate?
-5. MCP interim shims (4 lines in mcp_server.py): list_saved_reports→get_archived_reports,
-   critique_report→save_critique_file, get_critique_history→load_critique_history_files —
-   confirm MCP behavior is byte-identical and nothing else drifted into the S4 scope.
-6. CLI: --list/--critique-history fail-fast paths; auto-save block ordering (-o vs DB vs
-   --open warnings); StateError ⊂ ResearchError error flow.
-Return P0/P1/P2 findings.
-```
-
-### Prompt for the Session After Review (Claude Code — apply fixes, then Session 4)
+> Optional first: a fresh-context Codex re-review of the two fix commits `a3e04af`
+> (P1) and `30594e3` (P2), diff base `713d2a5`, focusing on the `pooled_connection`
+> boundary, the CLI-fails-fast / agent-degrades split, and DB↔file critique-history
+> parity. If clean, proceed to Session 4.
 
 ```
 FIRST: confirm no other session / auto-continue is live on this branch — run
-`git log --oneline -3` and `git status --short`. Expect HEAD 83b1d2f (or the HANDOFF-update
+`git log --oneline -3` and `git status --short`. Expect HEAD 30594e3 (or a HANDOFF/docs
 commit directly on top of it) and a clean worktree before writing anything.
 
-Read HANDOFF.md (Session 3 section + Three Questions) and the Codex review findings. Apply the
-review fixes for Session 3 in small commits, re-run python3 -m pytest tests/ -q and
-python3 scripts/lint_mcp_parity.py, update HANDOFF, and STOP. Do NOT start Session 4 in the
-same session as the fixes.
+Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — "Session 4 — MCP parity
+cutover", "Call-Site Inventory", "What must NOT change", EARS — and HANDOFF.md (Session 3
+section + Session 3 Review Fixes). Implement Session 4: cut get_report/critique_report/
+generate_followups/list_saved_reports/get_critique_history in mcp_server.py over to the DB
+(report_key, not filenames); _validate_report_filename → key validation; delete the interim
+file shims (get_archived_reports / save_critique_file / load_critique_history_files) and their
+legacy tests. Borrow DB connections through db.pooled_connection() and map StateError/
+ConfigError to MCP ToolError the way the CLI maps them to exit codes. Extend
+scripts/lint_mcp_parity.py to assert storage-op parity across CLI/MCP/web. Re-run
+python3 -m pytest tests/ -q and python3 scripts/lint_mcp_parity.py. Do only Session 4 — commit
+and stop.
 ```
 
 Session 1 review residuals (still open, none block S4): disposable-DB guard is convention-based;
