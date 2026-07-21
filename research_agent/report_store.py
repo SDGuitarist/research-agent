@@ -12,7 +12,6 @@ from .errors import StateError
 from .results import ReportInfo
 
 REPORTS_DIR = Path("reports")
-META_DIR = Path("reports/meta")
 
 
 def _literal_reports_root() -> Path:
@@ -149,48 +148,19 @@ def get_reports(conn) -> list[ReportInfo]:
     ]
 
 
-# --- Legacy disk archive (pre-Postgres) -----------------------------------
-# Old reports/ files are a read-only archive. The MCP server still lists
-# them until Session 4 cuts it over to the DB; deleted then.
+def get_report(conn, report_key: str) -> str | None:
+    """Return a report's verbatim content by canonical key, or ``None``.
 
-# Regex patterns for extracting date from report filenames
-# Old format: 2026-02-03_183703056652_query_name.md (timestamp first)
-_OLD_FORMAT = re.compile(r"^(\d{4}-\d{2}-\d{2})_\d{6,}_(.+)\.md$")
-# New format: query_name_2026-02-03_183703056652.md (query first)
-_NEW_FORMAT = re.compile(r"^(.+)_(\d{4}-\d{2}-\d{2})_\d{6,}\.md$")
+    The injected connection and its transaction belong to the caller.
 
-
-def get_archived_reports() -> list[ReportInfo]:
-    """Return metadata for legacy report files on disk, sorted newest-first.
-
-    Returns:
-        List of ReportInfo objects. Empty list if no reports directory
-        or no report files exist.
+    Raises:
+        StateError: On database failure.
     """
-    if not REPORTS_DIR.is_dir():
-        return []
-    if not _resolves_within_reports_root(REPORTS_DIR):
-        return []
-
-    md_files = sorted(REPORTS_DIR.glob("*.md"))
-    if not md_files:
-        return []
-
-    results: list[ReportInfo] = []
-    for f in md_files:
-        if not _resolves_within_reports_root(f):
-            continue
-        name = f.name
-        old_match = _OLD_FORMAT.match(name)
-        new_match = _NEW_FORMAT.match(name)
-
-        if old_match:
-            results.append(ReportInfo(filename=name, date=old_match.group(1), query_name=old_match.group(2)))
-        elif new_match:
-            results.append(ReportInfo(filename=name, date=new_match.group(2), query_name=new_match.group(1)))
-        else:
-            results.append(ReportInfo(filename=name, date="", query_name=name))
-
-    # Sort by date newest-first (undated files sort to beginning)
-    results.sort(key=lambda r: r.date, reverse=True)
-    return results
+    try:
+        row = conn.execute(
+            "SELECT content FROM reports WHERE report_key = %s",
+            (report_key,),
+        ).fetchone()
+    except PsycopgError as exc:
+        raise StateError(f"Failed to retrieve report: {exc}") from exc
+    return None if row is None else row["content"]

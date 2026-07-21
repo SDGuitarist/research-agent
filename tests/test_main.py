@@ -15,8 +15,6 @@ from research_agent.cli import (
 )
 from research_agent.report_store import (
     REPORTS_DIR,
-    _NEW_FORMAT,
-    _OLD_FORMAT,
     get_auto_save_path,
     sanitize_filename,
     save_report,
@@ -88,28 +86,6 @@ class TestGetAutoSavePath:
         with patch("research_agent.report_store.REPORTS_DIR", reports_link):
             with pytest.raises(OSError, match="literal repo-local reports/ directory"):
                 get_auto_save_path("anything")
-
-
-class TestFilenameRegexPatterns:
-    """Tests for the filename regex patterns used by --list."""
-
-    def test_old_format_matches_timestamp_first(self):
-        match = _OLD_FORMAT.match("2026-02-03_183703056652_graphql_vs_rest.md")
-        assert match is not None
-        assert match.group(1) == "2026-02-03"
-        assert match.group(2) == "graphql_vs_rest"
-
-    def test_new_format_matches_query_first(self):
-        match = _NEW_FORMAT.match("graphql_vs_rest_2026-02-03_183703056652.md")
-        assert match is not None
-        assert match.group(1) == "graphql_vs_rest"
-        assert match.group(2) == "2026-02-03"
-
-    def test_old_format_no_match_on_non_standard(self):
-        assert _OLD_FORMAT.match("codebase_review.md") is None
-
-    def test_new_format_no_match_on_non_standard(self):
-        assert _NEW_FORMAT.match("codebase_review.md") is None
 
 
 class TestListReports:

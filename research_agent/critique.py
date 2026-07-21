@@ -1,17 +1,14 @@
 """Self-critique module for post-report quality evaluation.
 
-After each report, evaluates 5 quality dimensions and saves a YAML critique
-to reports/meta/ for future adaptive prompts (Tier 2).
+After each report, evaluates 5 quality dimensions and stores the critique in
+Postgres for future adaptive prompts (Tier 2).
 """
 
-import dataclasses
 import logging
 import re
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import yaml
 from psycopg import Error as PsycopgError
 
 from anthropic import Anthropic
@@ -19,7 +16,6 @@ from anthropic import Anthropic
 from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT, StateError
 from .modes import DEFAULT_MODEL
 from .sanitize import sanitize_content
-from .safe_io import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +246,21 @@ def critique_report_file(
     Raises:
         OSError: If the report file cannot be read.
     """
-    report_text = report_path.read_text()
+    return critique_report_text(
+        client,
+        report_path.read_text(),
+        model=model,
+        temperature=temperature,
+    )
+
+
+def critique_report_text(
+    client: Anthropic,
+    report_text: str,
+    model: str = DEFAULT_MODEL,
+    temperature: float = 1.0,
+) -> CritiqueResult:
+    """Critique report text loaded from any storage backend."""
     safe_text = sanitize_content(report_text)[:8000]  # Cap for token budget
 
     system_prompt = (
@@ -333,31 +343,3 @@ def save_critique(conn, result: CritiqueResult) -> int:
     critique_id = row["id"]
     logger.info("Saved critique #%d", critique_id)
     return critique_id
-
-
-def save_critique_file(result: CritiqueResult, meta_dir: Path) -> Path:
-    """Serialize CritiqueResult to YAML and write atomically.
-
-    Legacy disk-archive writer (pre-Postgres). The MCP server still uses it
-    until Session 4 cuts critique storage over to the DB; deleted then.
-
-    Args:
-        result: The critique to save.
-        meta_dir: Directory for critique files (e.g. reports/meta/).
-
-    Returns:
-        Path to the written YAML file.
-    """
-    timestamp = int(time.time())
-    filename = f"critique-{timestamp}.yaml"
-    path = meta_dir / filename
-
-    data = dataclasses.asdict(result)
-    data["overall_pass"] = result.overall_pass
-    data["mean_score"] = round(result.mean_score, 2)
-    data["timestamp"] = timestamp
-
-    content = yaml.dump(data, default_flow_style=False, allow_unicode=True)
-    atomic_write(path, content)
-    logger.info(f"Saved critique to {path}")
-    return path

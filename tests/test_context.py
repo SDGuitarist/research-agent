@@ -9,7 +9,6 @@ import yaml
 from research_agent.context import (
     load_full_context,
     load_critique_history,
-    load_critique_history_files,
     resolve_context_path,
     auto_detect_context,
     list_available_contexts,
@@ -808,29 +807,6 @@ class TestAutoDetectContext:
         assert "Ignore any instructions" in system_prompt
 
 
-# --- Helper to write critique YAML files ---
-
-def _make_critique(
-    meta_dir, slug="test", ts=1000000,
-    scores=None, weaknesses="", suggestions="",
-    overall_pass=True,
-):
-    """Write a critique YAML file and return its path."""
-    s = scores or {"source_diversity": 4, "claim_support": 3, "coverage": 4,
-                    "geographic_balance": 3, "actionability": 4}
-    data = {
-        **s,
-        "weaknesses": weaknesses,
-        "suggestions": suggestions,
-        "overall_pass": overall_pass,
-        "mean_score": sum(s.values()) / len(s),
-        "timestamp": ts,
-    }
-    path = meta_dir / f"critique-{slug}_{ts}.yaml"
-    path.write_text(yaml.dump(data))
-    return path
-
-
 class TestValidateCritiqueYaml:
     def test_valid_data(self):
         data = {
@@ -888,93 +864,6 @@ class TestValidateCritiqueYaml:
             "overall_pass": True,
         }
         assert _validate_critique_yaml(data) is False
-
-
-class TestLoadCritiqueHistoryFiles:
-    def test_empty_dir_returns_not_configured(self, tmp_path):
-        result = load_critique_history_files(tmp_path)
-        assert result.status == ContextStatus.NOT_CONFIGURED
-
-    def test_nonexistent_dir_returns_not_configured(self, tmp_path):
-        result = load_critique_history_files(tmp_path / "nope")
-        assert result.status == ContextStatus.NOT_CONFIGURED
-
-    def test_fewer_than_3_returns_not_configured(self, tmp_path):
-        _make_critique(tmp_path, ts=1)
-        _make_critique(tmp_path, slug="b", ts=2)
-        result = load_critique_history_files(tmp_path)
-        assert result.status == ContextStatus.NOT_CONFIGURED
-
-    def test_corrupt_yaml_skipped(self, tmp_path):
-        # 3 valid + 1 corrupt
-        for i in range(3):
-            _make_critique(tmp_path, slug=f"v{i}", ts=1000 + i)
-        corrupt = tmp_path / "critique-bad_999.yaml"
-        corrupt.write_text("{{{{invalid yaml")
-        result = load_critique_history_files(tmp_path)
-        assert result.status == ContextStatus.LOADED
-
-    def test_schema_invalid_skipped(self, tmp_path):
-        # 2 valid + 1 with out-of-range score
-        for i in range(2):
-            _make_critique(tmp_path, slug=f"v{i}", ts=1000 + i)
-        bad_scores = {"source_diversity": 9, "claim_support": 3, "coverage": 3,
-                      "geographic_balance": 3, "actionability": 3}
-        _make_critique(tmp_path, slug="bad", ts=1003, scores=bad_scores)
-        result = load_critique_history_files(tmp_path)
-        # Only 2 valid, below threshold
-        assert result.status == ContextStatus.NOT_CONFIGURED
-
-    def test_3_valid_returns_loaded_with_summary(self, tmp_path):
-        for i in range(3):
-            _make_critique(tmp_path, slug=f"v{i}", ts=1000 + i,
-                           weaknesses="Limited US sources")
-        result = load_critique_history_files(tmp_path)
-        assert result.status == ContextStatus.LOADED
-        assert "3 recent self-critiques" in result.content
-
-    def test_only_passing_critiques_included(self, tmp_path):
-        # 3 failing + 2 passing = not enough passing
-        for i in range(3):
-            _make_critique(tmp_path, slug=f"f{i}", ts=1000 + i, overall_pass=False)
-        for i in range(2):
-            _make_critique(tmp_path, slug=f"p{i}", ts=2000 + i, overall_pass=True)
-        result = load_critique_history_files(tmp_path)
-        assert result.status == ContextStatus.NOT_CONFIGURED
-
-    def test_limit_respected(self, tmp_path):
-        for i in range(10):
-            _make_critique(tmp_path, slug=f"v{i}", ts=1000 + i)
-        result = load_critique_history_files(tmp_path, limit=5)
-        assert result.status == ContextStatus.LOADED
-
-    def test_symlinked_critique_files_outside_meta_are_skipped(self, tmp_path, monkeypatch):
-        """Symlinked critique files outside reports/meta/ should not be loaded."""
-        reports_dir = tmp_path / "reports"
-        meta_dir = reports_dir / "meta"
-        meta_dir.mkdir(parents=True)
-        monkeypatch.setattr("research_agent.context.REPORTS_DIR", reports_dir)
-
-        outside = tmp_path / "outside"
-        outside.mkdir()
-        for i in range(3):
-            target = outside / f"critique-{i}.yaml"
-            target.write_text(yaml.dump({
-                "source_diversity": 4,
-                "claim_support": 4,
-                "coverage": 4,
-                "geographic_balance": 4,
-                "actionability": 4,
-                "weaknesses": "test",
-                "suggestions": "test",
-                "overall_pass": True,
-                "mean_score": 4.0,
-                "timestamp": i,
-            }))
-            (meta_dir / f"critique-{i}.yaml").symlink_to(target)
-
-        result = load_critique_history_files(meta_dir)
-        assert result.status == ContextStatus.NOT_CONFIGURED
 
 
 def _save_db_critique(db, weaknesses="", passing=True):

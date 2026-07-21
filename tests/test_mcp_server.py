@@ -1,7 +1,8 @@
-"""Tests for the MCP server: all 7 tools, transports, and error paths."""
+"""Tests for the MCP server: all 8 tools, transports, and error paths."""
 
 import subprocess
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -22,6 +23,16 @@ async def client():
     """In-memory MCP client — no subprocess, no network."""
     async with Client(mcp) as c:
         yield c
+
+
+@pytest.fixture
+def pooled_db(db):
+    """Route MCP pooled borrows to the rollback-isolated Postgres fixture."""
+    with patch(
+        "research_agent.db.pooled_connection",
+        side_effect=lambda: nullcontext(db),
+    ):
+        yield db
 
 
 # Shared mock env (both API keys present)
@@ -62,8 +73,8 @@ class TestRunResearch:
 
     @patch.dict("os.environ", ENV_BOTH, clear=True)
     @patch("research_agent.run_research_async")
-    async def test_auto_saves_standard_mode(self, mock_run, client, tmp_path):
-        """Standard mode auto-saves and includes filename in metadata."""
+    async def test_auto_saves_standard_mode(self, mock_run, client, pooled_db):
+        """Standard mode auto-saves to Postgres and returns its report key."""
         from research_agent.results import ResearchResult
 
         mock_run.return_value = ResearchResult(
@@ -75,16 +86,16 @@ class TestRunResearch:
             critique=None,
         )
 
-        save_path = tmp_path / "test_query_2026-02-28.md"
-        with patch("research_agent.report_store.get_auto_save_path", return_value=save_path), \
-             patch("research_agent.safe_io.atomic_write") as mock_write:
-            result = await client.call_tool(
-                "run_research", {"query": "test query", "mode": "standard"}
-            )
+        result = await client.call_tool(
+            "run_research", {"query": "test query", "mode": "standard"}
+        )
 
-        mock_write.assert_called_once_with(save_path, "# Saved Report")
+        row = pooled_db.execute(
+            "SELECT report_key, content FROM reports"
+        ).fetchone()
+        assert row["content"] == "# Saved Report"
         text = result.data
-        assert "Saved: test_query_2026-02-28.md" in text
+        assert f"Saved: {row['report_key']}" in text
 
     @patch.dict("os.environ", ENV_BOTH, clear=True)
     @patch("research_agent.run_research_async")
@@ -194,6 +205,25 @@ class TestRunResearchErrors:
         assert "/opt/" not in str(exc_info.value)
         assert "<path>" in str(exc_info.value)
 
+    @patch.dict("os.environ", ENV_BOTH, clear=True)
+    @patch("research_agent.run_research_async")
+    async def test_auto_save_state_error_becomes_tool_error(self, mock_run, client):
+        from research_agent.errors import StateError
+        from research_agent.results import ResearchResult
+
+        mock_run.return_value = ResearchResult(
+            report="# Report", query="test", mode="standard",
+            sources_used=4, status="full_report",
+        )
+        with patch(
+            "research_agent.mcp_server._save_report_db",
+            side_effect=StateError("connection lost"),
+        ):
+            with pytest.raises(ToolError, match="Save report failed"):
+                await client.call_tool(
+                    "run_research", {"query": "test", "mode": "standard"}
+                )
+
 
 # ---------------------------------------------------------------------------
 # list_saved_reports
@@ -201,33 +231,39 @@ class TestRunResearchErrors:
 
 
 class TestListSavedReports:
-    @patch("research_agent.report_store.get_archived_reports")
-    async def test_with_reports(self, mock_reports, client):
-        """Returns formatted list of reports."""
-        from research_agent.results import ReportInfo
+    async def test_with_reports(self, client, pooled_db):
+        """Returns formatted report keys from Postgres."""
+        from research_agent.report_store import save_report
 
-        mock_reports.return_value = [
-            ReportInfo(filename="test_2026-02-28_120000.md",
-                       date="2026-02-28", query_name="test"),
-            ReportInfo(filename="query_2026-02-27_090000.md",
-                       date="2026-02-27", query_name="query"),
-        ]
+        key1 = save_report(
+            pooled_db, query="test", mode="standard", content="# One"
+        )
+        key2 = save_report(
+            pooled_db, query="query", mode="standard", content="# Two"
+        )
 
         result = await client.call_tool("list_saved_reports", {})
 
         text = result.data
-        assert "test_2026-02-28_120000.md" in text
-        assert "query_2026-02-27_090000.md" in text
-        assert "2026-02-28" in text
+        assert key1 in text
+        assert key2 in text
+        assert "test" in text
 
-    @patch("research_agent.report_store.get_archived_reports")
-    async def test_empty_reports(self, mock_reports, client):
+    async def test_empty_reports(self, client, pooled_db):
         """No reports returns helpful message."""
-        mock_reports.return_value = []
-
         result = await client.call_tool("list_saved_reports", {})
 
         assert "No saved reports found" in result.data
+
+    async def test_config_error_becomes_tool_error(self, client):
+        from research_agent.errors import ConfigError
+
+        with patch(
+            "research_agent.db.pooled_connection",
+            side_effect=ConfigError("DATABASE_URL is required"),
+        ):
+            with pytest.raises(ToolError, match="DATABASE_URL"):
+                await client.call_tool("list_saved_reports", {})
 
 
 # ---------------------------------------------------------------------------
@@ -236,93 +272,59 @@ class TestListSavedReports:
 
 
 class TestGetReport:
-    async def test_valid_filename(self, client, tmp_path):
-        """Returns file content for a valid report."""
-        reports_dir = tmp_path / "reports"
-        reports_dir.mkdir()
-        report_file = reports_dir / "test_report.md"
-        report_file.write_text("# My Report\n\nContent here.")
+    async def test_valid_report_key(self, client, pooled_db):
+        """Returns DB content for a valid report key."""
+        from research_agent.report_store import save_report
 
-        with patch("research_agent.report_store.REPORTS_DIR", reports_dir):
-            result = await client.call_tool(
-                "get_report", {"filename": "test_report.md"}
-            )
+        key = save_report(
+            pooled_db, query="my report", mode="standard",
+            content="# My Report\n\nContent here.",
+        )
+        result = await client.call_tool("get_report", {"report_key": key})
 
         assert "# My Report" in result.data
 
     async def test_path_traversal_rejected(self, client):
         """Path traversal attempt returns ToolError."""
-        with pytest.raises(ToolError, match="Invalid filename"):
+        with pytest.raises(ToolError, match="Invalid report key"):
             await client.call_tool(
-                "get_report", {"filename": "../../.env"}
-            )
-
-    async def test_non_md_file_rejected(self, client):
-        """Non-.md file returns ToolError."""
-        with pytest.raises(ToolError, match="Only .md"):
-            await client.call_tool(
-                "get_report", {"filename": "secrets.txt"}
+                "get_report", {"report_key": "../../.env"}
             )
 
     async def test_null_byte_rejected(self, client):
-        """Null byte in filename returns ToolError."""
+        """Null byte in report key returns ToolError."""
         with pytest.raises(ToolError, match="null byte"):
             await client.call_tool(
-                "get_report", {"filename": "report\x00.md"}
+                "get_report", {"report_key": "report\x00key"}
             )
 
-    async def test_nonexistent_file(self, client, tmp_path):
-        """Nonexistent report returns ToolError."""
-        reports_dir = tmp_path / "reports"
-        reports_dir.mkdir()
-
-        with patch("research_agent.report_store.REPORTS_DIR", reports_dir):
-            with pytest.raises(ToolError, match="Report not found"):
-                await client.call_tool(
-                    "get_report", {"filename": "nonexistent.md"}
-                )
-
-    async def test_dotfile_rejected(self, client):
-        """Dotfiles are rejected."""
-        with pytest.raises(ToolError, match="Invalid filename"):
+    async def test_nonexistent_report(self, client, pooled_db):
+        """Unknown report key returns ToolError."""
+        with pytest.raises(ToolError, match="Report not found"):
             await client.call_tool(
-                "get_report", {"filename": ".hidden.md"}
+                "get_report", {"report_key": "nonexistent-deadbeef"}
             )
 
     async def test_backslash_rejected(self, client):
         """Backslash path traversal rejected."""
-        with pytest.raises(ToolError, match="Invalid filename"):
+        with pytest.raises(ToolError, match="Invalid report key"):
             await client.call_tool(
-                "get_report", {"filename": "..\\..\\etc\\passwd.md"}
+                "get_report", {"report_key": "..\\..\\etc\\passwd"}
             )
 
     async def test_special_chars_rejected(self, client):
-        """Filenames with special characters rejected."""
-        with pytest.raises(ToolError, match="Invalid filename"):
+        """Report keys with special characters are rejected."""
+        with pytest.raises(ToolError, match="Invalid report key"):
             await client.call_tool(
-                "get_report", {"filename": "report name.md"}
+                "get_report", {"report_key": "report name"}
             )
 
-    async def test_long_filename_rejected(self, client):
-        """Filename over 255 chars returns ToolError."""
-        with pytest.raises(ToolError, match="Filename too long"):
+    async def test_long_report_key_rejected(self, client):
+        """Report key over 255 chars returns ToolError."""
+        with pytest.raises(ToolError, match="Report key too long"):
             await client.call_tool(
-                "get_report", {"filename": "a" * 253 + ".md"}
+                "get_report", {"report_key": "a" * 256}
             )
-
-    async def test_symlinked_reports_root_rejected(self, client, tmp_path):
-        """Report retrieval should not follow a symlinked reports/ root outside repo-local reports/."""
-        external = tmp_path / "external"
-        external.mkdir()
-        (external / "test_report.md").write_text("# Outside")
-        reports_link = tmp_path / "reports"
-        reports_link.symlink_to(external, target_is_directory=True)
-
-        with patch("research_agent.report_store.REPORTS_DIR", reports_link):
-            with pytest.raises(ToolError, match="outside the literal reports/ directory"):
-                await client.call_tool(
-                    "get_report", {"filename": "test_report.md"}
-                )
 
 
 # ---------------------------------------------------------------------------
@@ -387,39 +389,43 @@ class TestListContexts:
 
 
 class TestCritiqueReport:
-    async def test_invalid_filename_rejected(self, client):
-        """Invalid filename returns ToolError."""
-        with pytest.raises(ToolError, match="Invalid filename"):
+    async def test_invalid_report_key_rejected(self, client):
+        """Invalid report key returns ToolError."""
+        with pytest.raises(ToolError, match="Invalid report key"):
             await client.call_tool(
-                "critique_report", {"filename": "../../.env"}
+                "critique_report", {"report_key": "../../.env"}
             )
 
-    @patch("research_agent.critique_report_file")
-    async def test_returns_scores(self, mock_critique, client, tmp_path):
-        """Successful critique returns formatted scores."""
+    @patch("research_agent.critique.critique_report_text")
+    async def test_returns_scores_and_saves_db_critique(
+        self, mock_critique, client, pooled_db
+    ):
+        """Successful critique reads and writes through Postgres."""
         from research_agent.critique import CritiqueResult
-
-        reports_dir = tmp_path / "reports"
-        reports_dir.mkdir()
-        report_file = reports_dir / "test_report.md"
-        report_file.write_text("# Test Report\n\nBody here.")
+        from research_agent.report_store import save_report
 
         mock_critique.return_value = CritiqueResult(
             source_diversity=4, claim_support=3, coverage=4,
             geographic_balance=2, actionability=4,
             weaknesses="Limited scope", suggestions="Broaden sources",
         )
-
-        with patch("research_agent.report_store.REPORTS_DIR", reports_dir):
-            result = await client.call_tool(
-                "critique_report", {"filename": "test_report.md"}
-            )
+        key = save_report(
+            pooled_db, query="test report", mode="standard",
+            content="# Test Report\n\nBody here.",
+        )
+        result = await client.call_tool(
+            "critique_report", {"report_key": key}
+        )
 
         text = result.data
         assert "PASS" in text
         assert "Source Diversity: 4" in text
         assert "Claim Support: 3" in text
         assert "Limited scope" in text
+        assert mock_critique.call_args.args[1] == "# Test Report\n\nBody here."
+        assert pooled_db.execute(
+            "SELECT count(*) AS n FROM critiques"
+        ).fetchone()["n"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -428,42 +434,40 @@ class TestCritiqueReport:
 
 
 class TestGenerateFollowups:
-    async def test_invalid_filename_rejected(self, client):
-        """Invalid filename returns ToolError."""
-        with pytest.raises(ToolError, match="Invalid filename"):
+    async def test_invalid_report_key_rejected(self, client):
+        """Invalid report key returns ToolError."""
+        with pytest.raises(ToolError, match="Invalid report key"):
             await client.call_tool(
                 "generate_followups",
-                {"query": "test query", "report_filename": "../../.env"},
+                {"query": "test query", "report_key": "../../.env"},
             )
 
-    async def test_empty_query_rejected(self, client, tmp_path):
+    async def test_empty_query_rejected(self, client):
         """Empty query returns ToolError."""
         with pytest.raises(ToolError, match="non-empty string"):
             await client.call_tool(
                 "generate_followups",
-                {"query": "", "report_filename": "test.md"},
+                {"query": "", "report_key": "test-deadbeef"},
             )
 
     @patch("research_agent.iterate.generate_followup_questions")
-    async def test_returns_numbered_questions(self, mock_gen, client, tmp_path):
-        """Successful generation returns formatted numbered list."""
+    async def test_returns_numbered_questions(self, mock_gen, client, pooled_db):
+        """Successful generation reads the report from Postgres."""
         from research_agent.iterate import QueryGenerationResult
-
-        reports_dir = tmp_path / "reports"
-        reports_dir.mkdir()
-        report_file = reports_dir / "test_report.md"
-        report_file.write_text("# Test Report\n\nBody here.")
+        from research_agent.report_store import save_report
 
         mock_gen.return_value = QueryGenerationResult(
             items=("What are the costs?", "How does it compare?"),
             rationale="Missing pricing and comparison data",
         )
-
-        with patch("research_agent.report_store.REPORTS_DIR", reports_dir):
-            result = await client.call_tool(
-                "generate_followups",
-                {"query": "test query", "report_filename": "test_report.md"},
-            )
+        key = save_report(
+            pooled_db, query="test query", mode="standard",
+            content="# Test Report\n\nBody here.",
+        )
+        result = await client.call_tool(
+            "generate_followups",
+            {"query": "test query", "report_key": key},
+        )
 
         text = result.data
         assert "1. What are the costs?" in text
@@ -477,8 +481,10 @@ class TestGenerateFollowups:
 
 
 class TestGetCritiqueHistory:
-    @patch("research_agent.context.load_critique_history_files")
-    async def test_returns_summary_when_history_available(self, mock_load, client):
+    @patch("research_agent.context.load_critique_history")
+    async def test_returns_summary_when_history_available(
+        self, mock_load, client, pooled_db
+    ):
         """Should return critique summary text when enough passing critiques exist."""
         from research_agent.context_result import ContextResult
         mock_load.return_value = ContextResult.loaded(
@@ -492,8 +498,10 @@ class TestGetCritiqueHistory:
         assert "Weakest dimensions" in text
         assert "source_diversity" in text
 
-    @patch("research_agent.context.load_critique_history_files")
-    async def test_no_history_message_mentions_passing_threshold(self, mock_load, client):
+    @patch("research_agent.context.load_critique_history")
+    async def test_no_history_message_mentions_passing_threshold(
+        self, mock_load, client, pooled_db
+    ):
         """Should return user-friendly message mentioning passing critiques when none available."""
         from research_agent.context_result import ContextResult
         mock_load.return_value = ContextResult.not_configured(source="reports/meta")
@@ -504,8 +512,10 @@ class TestGetCritiqueHistory:
         assert "3 passing" in text
         assert "overall_pass: true" in text
 
-    @patch("research_agent.context.load_critique_history_files")
-    async def test_three_failing_critiques_still_no_history(self, mock_load, client):
+    @patch("research_agent.context.load_critique_history")
+    async def test_three_failing_critiques_still_no_history(
+        self, mock_load, client, pooled_db
+    ):
         """3 failing critiques should not produce history — threshold is passing critiques."""
         from research_agent.context_result import ContextResult
         # load_critique_history filters to passing only, returns not_configured if < 3
@@ -514,8 +524,10 @@ class TestGetCritiqueHistory:
         result = await client.call_tool("get_critique_history", {})
         assert "No critique history available" in result.data
 
-    @patch("research_agent.context.load_critique_history_files")
-    async def test_empty_context_result_returns_no_history(self, mock_load, client):
+    @patch("research_agent.context.load_critique_history")
+    async def test_empty_context_result_returns_no_history(
+        self, mock_load, client, pooled_db
+    ):
         """ContextResult.empty() should fall through to no-history message."""
         from research_agent.context_result import ContextResult
         mock_load.return_value = ContextResult.empty(source="reports/meta")
@@ -523,13 +535,14 @@ class TestGetCritiqueHistory:
         result = await client.call_tool("get_critique_history", {})
         assert "No critique history available" in result.data
 
-    @patch("research_agent.context.load_critique_history_files")
-    async def test_unexpected_exception_returns_tool_error(self, mock_load, client):
-        """Unexpected exceptions should be caught and returned as ToolError."""
-        from fastmcp.exceptions import ToolError
-        mock_load.side_effect = OSError("Permission denied")
+    @patch("research_agent.context.load_critique_history")
+    async def test_state_error_returns_tool_error(self, mock_load, client, pooled_db):
+        """Expected DB failures are translated to ToolError."""
+        from research_agent.errors import StateError
 
-        with pytest.raises(ToolError, match="Failed to load critique history"):
+        mock_load.side_effect = StateError("connection lost")
+
+        with pytest.raises(ToolError, match="Load critique history failed"):
             await client.call_tool("get_critique_history", {})
 
 
@@ -583,7 +596,7 @@ class TestRunResearchParams:
 
     @patch.dict("os.environ", ENV_BOTH, clear=True)
     @patch("research_agent.run_research_async")
-    async def test_max_sources_passed_through(self, mock_run, client):
+    async def test_max_sources_passed_through(self, mock_run, client, pooled_db):
         """max_sources parameter is forwarded to run_research_async."""
         from research_agent.results import ResearchResult
 
@@ -659,7 +672,7 @@ class TestRunResearchParams:
 
     @patch.dict("os.environ", ENV_BOTH, clear=True)
     @patch("research_agent.run_research_async")
-    async def test_iteration_status_in_header(self, mock_run, client):
+    async def test_iteration_status_in_header(self, mock_run, client, pooled_db):
         """iteration_status='completed' appears in response header."""
         from research_agent.results import ResearchResult
 

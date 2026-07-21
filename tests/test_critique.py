@@ -1,6 +1,5 @@
 """Tests for research_agent.critique module."""
 
-import yaml
 import pytest
 from contextlib import nullcontext
 from pathlib import Path
@@ -10,7 +9,6 @@ from research_agent.critique import (
     CritiqueResult,
     evaluate_report,
     save_critique,
-    save_critique_file,
     _parse_critique_response,
 )
 from research_agent.errors import ConfigError, StateError
@@ -265,50 +263,6 @@ class TestSaveCritiqueDb:
         first = save_critique(db, self._cr())
         second = save_critique(db, self._cr())
         assert second > first
-
-
-# --- save_critique_file (legacy disk archive, MCP-only until Session 4) ---
-
-class TestSaveCritiqueFile:
-    def test_yaml_roundtrip(self, tmp_path):
-        cr = CritiqueResult(
-            source_diversity=4, claim_support=3, coverage=5,
-            geographic_balance=2, actionability=4,
-            weaknesses="weak spot", suggestions="try harder",
-        )
-        path = save_critique_file(cr, tmp_path)
-
-        assert path.exists()
-        assert path.name.startswith("critique-")
-        assert path.suffix == ".yaml"
-
-        data = yaml.safe_load(path.read_text())
-        assert data["source_diversity"] == 4
-        assert data["coverage"] == 5
-        assert data["weaknesses"] == "weak spot"
-        assert data["overall_pass"] is True
-        assert data["mean_score"] == 3.6
-
-    def test_filename_is_timestamp_only(self, tmp_path):
-        cr = CritiqueResult(
-            source_diversity=3, claim_support=3, coverage=3,
-            geographic_balance=3, actionability=3, weaknesses="", suggestions="",
-        )
-        path = save_critique_file(cr, tmp_path)
-        # Format: critique-{timestamp}.yaml — no slug
-        assert path.name.startswith("critique-")
-        parts = path.stem.split("-", 1)
-        assert parts[1].isdigit()
-
-    def test_creates_meta_dir(self, tmp_path):
-        nested = tmp_path / "reports" / "meta"
-        cr = CritiqueResult(
-            source_diversity=3, claim_support=3, coverage=3,
-            geographic_balance=3, actionability=3, weaknesses="", suggestions="",
-        )
-        path = save_critique_file(cr, nested)
-        assert path.exists()
-        assert nested.exists()
 
 
 # --- Agent integration: _run_critique ---

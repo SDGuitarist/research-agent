@@ -13,7 +13,6 @@ from .context_result import ContextProfile, ContextResult, ReportTemplate
 from .critique import DIMENSIONS
 from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT, StateError
 from .modes import AUTO_DETECT_MODEL, DEFAULT_MODEL
-from .report_store import REPORTS_DIR
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)
@@ -635,86 +634,6 @@ def load_critique_history(conn, limit: int = 10) -> ContextResult:
         if _validate_critique_yaml(row) and row["overall_pass"] is True
     ]
 
-    if len(passing) < _MIN_CRITIQUES_FOR_GUIDANCE:
-        return ContextResult.not_configured(source=source)
-
-    summary = _summarize_patterns(passing)
-    if not summary:
-        return ContextResult.not_configured(source=source)
-
-    return ContextResult.loaded(summary, source=source)
-
-
-def load_critique_history_files(
-    meta_dir: Path,
-    limit: int = 10,
-) -> ContextResult:
-    """Load recent critique YAMLs and return summarized patterns.
-
-    Legacy disk-archive reader (pre-Postgres). The MCP server still uses it
-    until Session 4 cuts critique history over to the DB; deleted then.
-
-    Args:
-        meta_dir: Directory containing critique-*.yaml files.
-        limit: Maximum number of critique files to read.
-
-    Returns:
-        ContextResult:
-            - NOT_CONFIGURED if fewer than 3 valid passing critiques found.
-            - LOADED with summary text if enough passing history exists.
-    """
-    source = str(meta_dir)
-    literal_reports_root = _literal_path(REPORTS_DIR)
-    literal_meta_root = literal_reports_root / "meta"
-    literal_meta_dir = _literal_path(meta_dir)
-
-    if literal_meta_dir.is_relative_to(literal_reports_root) and not _resolves_within_literal_root(
-        literal_meta_dir, literal_meta_root
-    ):
-        logger.warning(
-            "Ignoring critique history outside literal reports/meta/: %s", meta_dir
-        )
-        return ContextResult.not_configured(source=source)
-
-    if not meta_dir.exists():
-        return ContextResult.not_configured(source=source)
-
-    # Glob and sort by mtime (newest first)
-    files = []
-    for path in sorted(
-        meta_dir.glob("critique-*.yaml"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    ):
-        if literal_meta_dir.is_relative_to(literal_reports_root) and not _resolves_within_literal_root(
-            path, literal_meta_root
-        ):
-            logger.warning(
-                "Skipping critique file outside literal reports/meta/: %s", path
-            )
-            continue
-        files.append(path)
-        if len(files) >= limit:
-            break
-
-    if not files:
-        return ContextResult.not_configured(source=source)
-
-    valid_critiques: list[dict] = []
-    for f in files:
-        try:
-            data = yaml.safe_load(f.read_text())
-        except (yaml.YAMLError, OSError):
-            logger.debug("Skipping corrupt critique file: %s", f)
-            continue
-
-        if not _validate_critique_yaml(data):
-            logger.debug("Skipping invalid critique file: %s", f)
-            continue
-
-        valid_critiques.append(data)
-
-    passing = [c for c in valid_critiques if c.get("overall_pass") is True]
     if len(passing) < _MIN_CRITIQUES_FOR_GUIDANCE:
         return ContextResult.not_configured(source=source)
 

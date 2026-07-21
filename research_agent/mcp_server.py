@@ -1,5 +1,6 @@
 """MCP server for the research agent."""
 
+import asyncio
 import logging
 import os
 import re
@@ -21,7 +22,7 @@ mcp = FastMCP(
         "Use list_research_modes to see available modes before running research. "
         "Use list_contexts to discover domain-specific context files. "
         "Reports auto-save for standard/deep modes — use list_saved_reports to find them. "
-        "Use get_report to retrieve a saved report by filename. "
+        "Use get_report to retrieve a saved report by report key. "
         "Use critique_report to evaluate report quality after research completes. "
         "Use generate_followups to suggest what to research next based on a report. "
         "Use get_critique_history to review patterns across past research runs. "
@@ -64,9 +65,7 @@ async def run_research(
     from fastmcp.exceptions import ToolError
 
     from research_agent import ResearchError, run_research_async
-    from research_agent.errors import StateError
-    from research_agent.report_store import REPORTS_DIR, get_auto_save_path
-    from research_agent.safe_io import atomic_write
+    from research_agent.errors import ConfigError, StateError
 
     if len(query) > MAX_QUERY_LENGTH:
         raise ToolError(
@@ -114,12 +113,16 @@ async def run_research(
     saved_to = None
     if result.mode in ("standard", "deep"):
         try:
-            save_path = get_auto_save_path(query)
-            save_path.parent.mkdir(parents=True, exist_ok=True)
-            atomic_write(save_path, result.report)
-            saved_to = save_path.name
-        except (OSError, StateError) as e:
-            logger.warning("Auto-save failed: %s", e)
+            saved_to = await asyncio.to_thread(
+                _save_report_db,
+                query=result.query,
+                mode=result.mode,
+                content=result.report,
+                gate_decision=result.status,
+                sources_used=result.sources_used,
+            )
+        except (ConfigError, StateError) as exc:
+            raise _storage_tool_error("Save report", exc) from exc
 
     # Format metadata header
     save_info = saved_to or "(not auto-saved, use mode=standard to save)"
@@ -143,11 +146,15 @@ def list_saved_reports() -> str:
 
     Returns a formatted list of reports available for retrieval via get_report.
     """
-    # Session 3 interim: MCP still lists the read-only reports/ disk archive.
-    # Session 4 cuts this tool over to the DB (report_key-based).
-    from research_agent.report_store import get_archived_reports
+    from research_agent.db import pooled_connection
+    from research_agent.errors import ConfigError, StateError
+    from research_agent.report_store import get_reports
 
-    reports = get_archived_reports()
+    try:
+        with pooled_connection() as conn:
+            reports = get_reports(conn)
+    except (ConfigError, StateError) as exc:
+        raise _storage_tool_error("List reports", exc) from exc
     if not reports:
         return "No saved reports found. Run research in standard or deep mode to auto-save."
     lines = []
@@ -158,57 +165,72 @@ def list_saved_reports() -> str:
 
 
 @mcp.tool
-def get_report(filename: str) -> str:
-    """Retrieve a saved research report by filename.
+def get_report(report_key: str) -> str:
+    """Retrieve a saved research report by canonical report key.
 
     Args:
-        filename: Report filename (e.g., "query_name_2026-02-28_143052.md").
-                  Use list_saved_reports to see available files.
+        report_key: Canonical key returned by list_saved_reports.
     """
     from fastmcp.exceptions import ToolError
+    from research_agent.errors import ConfigError, StateError
 
     try:
-        path = _validate_report_filename(filename)
-    except (ValueError, FileNotFoundError) as e:
+        report_key = _validate_report_key(report_key)
+    except ValueError as e:
         raise ToolError(str(e))
-    return path.read_text()
+    try:
+        content = _load_report_db(report_key)
+    except (ConfigError, StateError) as exc:
+        raise _storage_tool_error("Retrieve report", exc) from exc
+    if content is None:
+        raise ToolError(f"Report not found: {report_key}")
+    return content
 
 
 @mcp.tool
-def critique_report(filename: str) -> str:
+def critique_report(report_key: str) -> str:
     """Evaluate quality of a saved research report.
 
     Returns scores (1-5) on 5 dimensions, weaknesses, and suggestions.
     Requires ANTHROPIC_API_KEY.
 
     Args:
-        filename: Report filename (e.g., "query_name_2026-02-28_143052.md").
-                  Use list_saved_reports to see available files.
+        report_key: Canonical key returned by list_saved_reports.
     """
     from anthropic import Anthropic
     from fastmcp.exceptions import ToolError
 
-    from research_agent import critique_report_file
-    # Session 3 interim: MCP still writes critiques to the reports/meta/
-    # disk archive. Session 4 cuts this tool over to the DB.
-    from research_agent.critique import save_critique_file
-    from research_agent.report_store import META_DIR
+    from research_agent.critique import critique_report_text, save_critique
+    from research_agent.db import pooled_connection
+    from research_agent.errors import ConfigError, StateError
     from research_agent.modes import DEFAULT_MODEL
 
     try:
-        path = _validate_report_filename(filename)
-    except (ValueError, FileNotFoundError) as e:
+        report_key = _validate_report_key(report_key)
+    except ValueError as e:
         raise ToolError(str(e))
+    try:
+        report_text = _load_report_db(report_key)
+    except (ConfigError, StateError) as exc:
+        raise _storage_tool_error("Retrieve report", exc) from exc
+    if report_text is None:
+        raise ToolError(f"Report not found: {report_key}")
 
     try:
         client = Anthropic()
-        result = critique_report_file(client, path, model=DEFAULT_MODEL, temperature=0.8)
-        save_critique_file(result, META_DIR)
+        result = critique_report_text(
+            client, report_text, model=DEFAULT_MODEL, temperature=0.8
+        )
     except Exception:
         logger.exception("Unexpected error in critique_report")
         raise ToolError(
             "Critique failed. Check that ANTHROPIC_API_KEY is configured."
         )
+    try:
+        with pooled_connection() as conn:
+            save_critique(conn, result)
+    except (ConfigError, StateError) as exc:
+        raise _storage_tool_error("Save critique", exc) from exc
 
     lines = [
         f"Overall: {'PASS' if result.overall_pass else 'FAIL'} ({result.mean_score:.1f}/5.0)",
@@ -227,7 +249,7 @@ def critique_report(filename: str) -> str:
 
 @mcp.tool
 def generate_followups(
-    query: str, report_filename: str, num_questions: int = 3
+    query: str, report_key: str, num_questions: int = 3
 ) -> str:
     """Generate follow-up research questions for a completed report.
 
@@ -236,13 +258,14 @@ def generate_followups(
 
     Args:
         query: The original research query.
-        report_filename: Report to analyze. Use list_saved_reports to find files.
+        report_key: Report to analyze. Use list_saved_reports to find keys.
         num_questions: Number of follow-up questions (1-5, default 3).
     """
     from anthropic import Anthropic
     from fastmcp.exceptions import ToolError
 
     from research_agent.iterate import generate_followup_questions
+    from research_agent.errors import ConfigError, StateError
     from research_agent.modes import AUTO_DETECT_MODEL
 
     if not query or not query.strip():
@@ -251,11 +274,15 @@ def generate_followups(
     num_questions = max(1, min(5, num_questions))
 
     try:
-        path = _validate_report_filename(report_filename)
-    except (ValueError, FileNotFoundError) as e:
+        report_key = _validate_report_key(report_key)
+    except ValueError as e:
         raise ToolError(str(e))
-
-    report_text = path.read_text()
+    try:
+        report_text = _load_report_db(report_key)
+    except (ConfigError, StateError) as exc:
+        raise _storage_tool_error("Retrieve report", exc) from exc
+    if report_text is None:
+        raise ToolError(f"Report not found: {report_key}")
 
     try:
         client = Anthropic()
@@ -340,19 +367,15 @@ def get_critique_history() -> str:
     do not count toward this threshold.
     """
     from fastmcp.exceptions import ToolError
-    # Session 3 interim: MCP still reads the reports/meta/ disk archive.
-    # Session 4 cuts this tool over to the DB.
-    from research_agent.context import load_critique_history_files
-    from research_agent.report_store import META_DIR
+    from research_agent.context import load_critique_history
+    from research_agent.db import pooled_connection
+    from research_agent.errors import ConfigError, StateError
 
     try:
-        result = load_critique_history_files(META_DIR)
-    except Exception:
-        logger.exception("Unexpected error in get_critique_history")
-        raise ToolError(
-            "Failed to load critique history. Check that the research-agent "
-            "project root is accessible."
-        )
+        with pooled_connection() as conn:
+            result = load_critique_history(conn)
+    except (ConfigError, StateError) as exc:
+        raise _storage_tool_error("Load critique history", exc) from exc
     if result.content:
         return result.content
     return (
@@ -362,27 +385,46 @@ def get_critique_history() -> str:
     )
 
 
-def _validate_report_filename(filename: str) -> Path:
-    """Validate and resolve a report filename, preventing path traversal."""
-    from research_agent.report_store import REPORTS_DIR, _resolves_within_reports_root
+def _validate_report_key(report_key: str) -> str:
+    """Validate the canonical report-key character contract."""
+    if not report_key:
+        raise ValueError("Invalid report key: must not be empty")
+    if "\x00" in report_key:
+        raise ValueError("Invalid report key: contains null byte")
+    if len(report_key) > 255:
+        raise ValueError(f"Report key too long: {len(report_key)} characters")
+    if not re.fullmatch(r"[a-zA-Z0-9_\-]+", report_key):
+        raise ValueError(f"Invalid report key: {report_key!r}")
+    return report_key
 
-    if "/" in filename or "\\" in filename or filename.startswith("."):
-        raise ValueError(f"Invalid filename: {filename!r}")
-    if "\x00" in filename:
-        raise ValueError("Invalid filename: contains null byte")
-    if len(filename) > 255:
-        raise ValueError(f"Filename too long: {len(filename)} characters")
-    if not filename.endswith(".md"):
-        raise ValueError("Only .md report files can be retrieved")
-    if not re.match(r'^[a-zA-Z0-9_\-\.]+$', filename):
-        raise ValueError(f"Invalid filename characters: {filename!r}")
-    path = REPORTS_DIR / filename
-    if not _resolves_within_reports_root(path):
-        raise ValueError("Filename resolves outside the literal reports/ directory")
-    path = path.resolve()
-    if not path.exists():
-        raise FileNotFoundError(f"Report not found: {filename}")
-    return path
+
+def _load_report_db(report_key: str) -> str | None:
+    """Load report content while keeping connection ownership at the boundary."""
+    from research_agent.db import pooled_connection
+    from research_agent.report_store import get_report as get_report_from_db
+
+    with pooled_connection() as conn:
+        return get_report_from_db(conn, report_key)
+
+
+def _save_report_db(**report_fields) -> str:
+    """Save an MCP-created report through the shared Postgres store."""
+    from research_agent.db import pooled_connection
+    from research_agent.report_store import save_report
+
+    with pooled_connection() as conn:
+        return save_report(conn, **report_fields)
+
+
+def _storage_tool_error(action: str, exc: Exception):
+    """Translate expected storage failures without leaking DB internals."""
+    from fastmcp.exceptions import ToolError
+    from research_agent.errors import ConfigError
+
+    if isinstance(exc, ConfigError):
+        return ToolError(str(exc))
+    logger.warning("%s failed: %s", action, exc)
+    return ToolError(f"{action} failed because the database is unavailable.")
 
 
 def main():
