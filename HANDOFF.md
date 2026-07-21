@@ -1,8 +1,8 @@
 # HANDOFF — Research Agent
 
 **Date:** 2026-07-21
-**Phase:** Plan Review (external Codex review pending)
-**Branch:** `main` (no feature branch yet — Work hasn't started)
+**Phase:** Work — **Session 1 (Foundations) COMPLETE**; next is Session 2 (Gaps → DB)
+**Branch:** `feat/headless-service-core` (not pushed) — 2 commits: planning docs + Session 1
 
 ## New arc: "Robust internal tool"
 
@@ -23,27 +23,29 @@ Turning the research-agent CLI into a **deployed internal web service** (FastAPI
 - **Minimal reaper** + heartbeat-decoupled lease + `claim_id`/`UNIQUE(job_id)` guards in Phase A (~80% conf).
 - 7 sessions, **gaps-first** (Cycle 17 lesson). `verify_first: true`.
 
-## Next phase: Plan Review (Codex)
+## Progress
 
-1. Paste the clipboard handoff into Codex (fresh context).
-2. Bring Codex's P0/P1/P2 findings back here.
-3. Fold the valid ones into the plan (note any rejected + why).
-4. Then `/workflows:work` **Session 1 (Foundations)**.
+- **Plan Review (Codex): DONE.** Two findings folded into the plan — P1 finish-txn orphan-report (raise/rollback on lost claim) and P2 `report_key` collision-proof derivation (`slug-{uuid8}`). Plus a self-review fix (heartbeat daemon thread). No P0/P1 remained.
+- **Session 1 (Foundations): DONE** (commit `3a379c0`). Files: `config.py`, `db.py`, `migrate.py`, `migrations/001_init.sql`, `errors.py` (+`ConfigError`), `tests/conftest.py` (opt-in Postgres fixtures), `tests/test_{config,migrate,db}.py`. Deps added: `psycopg[binary,pool]`, `testcontainers[postgres]` (fastapi/uvicorn already present). **1134 tests pass; MCP lint 8/8.** DB tests run against a real Postgres via testcontainers (Docker).
 
-## Three Questions (Plan phase)
+## Next: Session 2 — Gaps → DB (prove the state machine first; `verify_first`)
 
-Full answers in the plan's "Three Questions (Plan phase)" section. **Least confident going into work:** Session 2's blast radius on `agent.py`'s gap logic once `schema_path` disappears — hence `verify_first: true` and gaps-first sequencing. The other flagged uncertainty is decision #3 (sync-storage model, ~75%) — explicitly handed to Codex to challenge.
+Rewrite `load_schema`/`save_schema`/`log_flip` to Postgres (per-gap rows), keep the pure functions (`mark_verified`/`mark_checked`/`detect_stale`/`select_batch`/`_parse_gap`) untouched, update `agent.py` (drop `schema_path`/`schema_path.parent`), and add `scripts/migrate_gaps.py` (idempotent, timestamp-preserving, post-import equality assertion). Storage functions take an **injected `conn`**.
+
+## Three Questions (Work phase — Session 1)
+
+1. **Hardest implementation decision?** Getting the rollback-per-test fixture right: the constraint tests initially left the transaction aborted (`InFailedSqlTransaction`) because `pytest.raises` was *inside* the savepoint. Fix: wrap the savepoint *with* `pytest.raises` so the error rolls the savepoint back and the outer fixture transaction survives. Also chose partial indexes over the composite queue index (per Impl. Notes §1).
+2. **What did you consider changing but left alone?** Ripping out the scattered `os.environ.get`/`load_dotenv` sites to route everything through `config.py` now — left alone to keep Session 1 additive and non-breaking; that migration happens when the CLI/web/worker wire it in (Sessions 5–7). The existing `report_store`/`state` file code is likewise untouched (Sessions 2–3 migrate it).
+3. **Least confident going into Session 2?** Whether the injected-`conn` rewrite of the gap I/O cleanly accommodates `agent.py`'s gap logic once `schema_path` disappears (the flagged blast radius), and whether `migrate.py`'s multi-statement `execute()` stays robust for a future migration containing dollar-quoted function bodies (worked fine for pure DDL).
 
 ### Prompt for Next Session
 
 ```
-Read docs/plans/2026-07-21-feat-headless-service-core-plan.md and
-docs/plans/2026-07-21-codex-plan-review-handoff.md. I ran the Codex plan review —
-here are its findings:
-
-[PASTE CODEX FINDINGS]
-
-Fold the valid ones into the plan (note any you reject and why), then let's start
-/workflows:work Session 1 (Foundations: deps + config.py + db.py + migrate.py +
-migrations/001_init.sql + pytest DB fixtures).
+Read docs/plans/2026-07-21-feat-headless-service-core-plan.md (Session 2 + "Call-Site
+Inventory" + Impl. Notes §5). Implement ONLY Session 2 (Gaps → DB): rewrite load_schema/
+save_schema/log_flip to Postgres per-gap rows with an injected conn, keep the pure gap
+functions untouched, update agent.py to drop schema_path, add scripts/migrate_gaps.py
+(idempotent + timestamp-preserving + equality assertion), migrate the gap storage tests to
+the db fixtures. Do ONLY Session 2 — commit and stop. Prove the gap state machine against
+Postgres before wiring anything else. After committing, stop and say DONE.
 ```
