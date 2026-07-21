@@ -1,8 +1,8 @@
 # HANDOFF — Research Agent
 
 **Date:** 2026-07-21
-**Phase:** Work — **Session 2 (Gaps → DB) COMPLETE**; next is independent Session 2 code review
-**Branch:** `feat/headless-service-core` (not pushed) — Session 2 landed in `47e0bb1`, `eb43f5b`, `a032968`, `579db8f`
+**Phase:** Work — **Session 2 COMPLETE + review fixes applied & second-reviewed**; next is Session 3 (Reports + critiques → DB)
+**Branch:** `feat/headless-service-core` (not pushed) — Session 2 in `47e0bb1`, `eb43f5b`, `a032968`, `579db8f`; review fixes in `c4370b4`, `a4dbe39`, `5eb7fbc`
 
 > ⚠️ **Concurrency note (2026-07-21):** Session 2 was worked by **two sessions in parallel** on
 > this branch (a handoff that ran concurrently instead of sequentially). It resolved cleanly —
@@ -51,10 +51,35 @@ Turning the research-agent CLI into a **deployed internal web service** (FastAPI
 **Acceptance met:** gap state machine passes against Postgres · `gaps/pfe.yaml` imports, re-run is a
 no-op, staleness verdict identical pre/post · **1140 tests pass** · MCP lint 8/8.
 
-**Follow-up (optional, low priority):** the committed `migrate_gaps.py` uses bare `assert` for its
-post-import self-checks (stripped under `python -O`). A hardened version using an explicit
-`MigrationError` + a graceful `main()` for a missing source is saved off-repo in the session
-scratchpad (`migrate_gaps.MY-VERSION.py`, `my-migrate-gaps-divergence.patch`) if you want it.
+## Session 2 Review Fixes (Codex review → applied → second-reviewed) ✅
+
+Codex's independent review returned 3 findings; all applied and self-reviewed:
+
+- **`5eb7fbc` (fix 1)** — profile-driven gap-tracking activation restored: `gap_tracking_enabled`
+  is now a tri-state override (`None` = auto → on only when the effective context's profile
+  declares `gap_schema`; `True`/`False` force). CLI + `run_research_async` stop forcing it.
+  New `_gap_tracking_active()` guards the pre-research check and all 3 post-research sites —
+  unrelated queries can never be short-circuited by global gap rows. +8 tests (boundary units,
+  pipeline activation both ways, public-API construction).
+- **`c4370b4` (fix 2)** — importer self-checks hardened: bare `assert` → explicit `MigrationError`
+  (survives `python -O`, rolls the import transaction back); staleness equivalence now verified
+  for EVERY imported gap; injectable `now` for deterministic tests. (This supersedes the
+  scratchpad follow-up — the hardened version is now in-tree.)
+- **`a4dbe39` (fix 3)** — save-failure test proves atomicity: after a real `log_flip` insert and a
+  failing `save_schema` in one transaction, no `gap_audit` row persists and the gap row is unchanged.
+
+**Second review (against plan / Call-Site Inventory / What must NOT change):** pure functions +
+dataclasses byte-for-byte identical (`git diff` empty on state/staleness/schema); all 4
+`asyncio.to_thread` boundaries intact; injected-conn/caller-owns-txn preserved; no S3/S4 drift.
+**1148 tests pass · MCP lint 8/8.**
+
+**Remaining risks (reported, accepted):**
+1. `migrate_gaps.main()` surfaces `SchemaError`/`MigrationError` as a traceback (exit ≠ 0,
+   rollback still guaranteed) — graceful CLI messaging deliberately left out of the fix scope.
+2. `profile.gap_schema` is now purely declarative (the old file-existence check is gone — the DB
+   is the store). A gap-declaring context over an empty `gaps` table proceeds as a normal query.
+3. If a context fails to load (FAILED status), auto mode leaves tracking off for that run —
+   mirrors the pre-S2 behavior when the profile was unavailable.
 
 ## Three Questions (Work phase — Session 2)
 
@@ -80,29 +105,46 @@ scratchpad (`migrate_gaps.MY-VERSION.py`, `my-migrate-gaps-divergence.patch`) if
   but `True` through CLI/public API is the right compatibility boundary, and whether importer
   assertions should become explicit runtime errors.
 
-### Prompt for Next Session (independent Codex code review)
+### Prompt for Next Session (Claude Code — implement Session 3)
 
 ```
-Read docs/plans/2026-07-21-feat-headless-service-core-plan.md. Review ONLY Session 2
-(Gaps → DB) on branch feat/headless-service-core; do not implement Session 3. Relevant files:
-HANDOFF.md, research_agent/{schema,state,staleness,agent,cli,__init__}.py,
-scripts/migrate_gaps.py, gaps/pfe.yaml, and tests/test_{schema,state,staleness,agent,migrate_gaps}.py.
+FIRST: confirm no other session / auto-continue is live on this branch — run
+`git log --oneline -3` and `git status --short`. Expect HEAD 5eb7fbc (or the HANDOFF-update
+commit directly on top of it) and a clean worktree before writing anything.
 
-First confirm no other writer/auto-continue is live. Review commits 47e0bb1..579db8f against
-the plan's Session 2, Call-Site Inventory, Implementation Notes §5, What must NOT change,
-Acceptance Tests, and Feed-Forward risk. Focus on:
-1. injected-connection transaction ownership and targeted per-gap updates;
-2. every former schema_path call site and asyncio.to_thread boundary;
-3. timestamp/idempotency/staleness equivalence in the one-time importer;
-4. pure functions and dataclasses remaining byte-for-byte unchanged;
-5. scope drift into Sessions 3–4 or files that should not have changed.
+Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — specifically "Implementation
+Phases (Sessions)" → Session 3, the "Call-Site Inventory", the "Report identity & report_key"
+section, and "What must NOT change" + "Acceptance Tests (EARS)". Also skim HANDOFF.md.
 
-Known review questions: Is gap_tracking_enabled=false for direct ResearchAgent construction but
-true through CLI/public API the correct boundary? Should bare import assertions become explicit
-runtime errors? Verification already passed: python3 -m pytest tests/ -q → 1140 passed;
-python3 scripts/lint_mcp_parity.py → 8/8.
+We are on branch feat/headless-service-core (nothing pushed). Sessions 1–2 are DONE, reviewed,
+and review-fixed — 1148 tests pass; MCP lint 8/8. The DB foundation (config.py, db.py pool with
+INJECTED conn, migrate.py, migrations/001_init.sql with the reports + critiques tables ALREADY
+EXISTING) and the gap cutover are in place. Storage functions take an INJECTED conn; caller owns
+the transaction (never conn.commit() inside — use `with conn.transaction():`). conftest gives you
+db (rollback-per-test injected conn) and committed_db (TRUNCATE). Test cmd: python3 -m pytest tests/ -q.
 
-Output findings ordered by severity plus a Claude Code fix prompt that instructs Claude Code to:
-apply the fixes, run a second review of its own changes, and report remaining risks before this
-task is complete.
+Implement ONLY Session 3 (Reports + critiques → DB) — then commit and stop. Do NOT proceed to S4.
+
+Session 3 scope:
+1. report_store.get_reports → DB query (injected conn). save_report(conn, ...) replaces
+   get_auto_save_path + atomic_write; generate report_key = f"{sanitize_filename(query)[:50]}-{uuid8}"
+   as a stored UNIQUE column (never re-derived on read); regenerate + retry on UniqueViolation.
+2. load_critique_history: glob+parse → SQL query (min 3). save_critique → DB insert (injected conn).
+3. Update cli.py (--list, auto-save path, --critique-history) and agent.py:222/445 to the new
+   signatures. Old reports/ + reports/meta/ files become a read-only disk archive (do NOT migrate them).
+4. Migrate storage-coupled tests (test_report_store, test_critique/critique-history, cli assertions)
+   to the db fixture; keep pure/format tests on mocks.
+
+Acceptance: CLI --list reads report rows from the DB; a CLI run writes ONE report row (report_key
+UNIQUE) and NOT a file under reports/; identical query submitted twice → two rows, distinct
+report_keys; full suite green; MCP lint 8/8 (python3 scripts/lint_mcp_parity.py).
+
+Guardrails: don't touch the MCP server report/key cutover (S4) or web/worker (S5–6); reuse
+sanitize_content on every DB write path; don't edit 001_init.sql (add 002_*.sql only if truly
+needed); follow "What must NOT change"; SMALL COMMITS, one writer per branch. After committing
+Session 3, stop, update HANDOFF with the Codex code-review baton, and say DONE. Do NOT proceed
+to Session 4.
+
+Session 1 review residuals (still open, none block S3): disposable-DB guard is convention-based;
+open_pool doesn't close a half-open pool on failure (latent until S5–6).
 ```
