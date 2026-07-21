@@ -477,7 +477,7 @@ class TestGenerateFollowups:
 
 
 class TestGetCritiqueHistory:
-    @patch("research_agent.context.load_critique_history")
+    @patch("research_agent.context.load_critique_history_files")
     async def test_returns_summary_when_history_available(self, mock_load, client):
         """Should return critique summary text when enough passing critiques exist."""
         from research_agent.context_result import ContextResult
@@ -492,7 +492,7 @@ class TestGetCritiqueHistory:
         assert "Weakest dimensions" in text
         assert "source_diversity" in text
 
-    @patch("research_agent.context.load_critique_history")
+    @patch("research_agent.context.load_critique_history_files")
     async def test_no_history_message_mentions_passing_threshold(self, mock_load, client):
         """Should return user-friendly message mentioning passing critiques when none available."""
         from research_agent.context_result import ContextResult
@@ -504,7 +504,7 @@ class TestGetCritiqueHistory:
         assert "3 passing" in text
         assert "overall_pass: true" in text
 
-    @patch("research_agent.context.load_critique_history")
+    @patch("research_agent.context.load_critique_history_files")
     async def test_three_failing_critiques_still_no_history(self, mock_load, client):
         """3 failing critiques should not produce history — threshold is passing critiques."""
         from research_agent.context_result import ContextResult
@@ -514,7 +514,7 @@ class TestGetCritiqueHistory:
         result = await client.call_tool("get_critique_history", {})
         assert "No critique history available" in result.data
 
-    @patch("research_agent.context.load_critique_history")
+    @patch("research_agent.context.load_critique_history_files")
     async def test_empty_context_result_returns_no_history(self, mock_load, client):
         """ContextResult.empty() should fall through to no-history message."""
         from research_agent.context_result import ContextResult
@@ -523,7 +523,7 @@ class TestGetCritiqueHistory:
         result = await client.call_tool("get_critique_history", {})
         assert "No critique history available" in result.data
 
-    @patch("research_agent.context.load_critique_history")
+    @patch("research_agent.context.load_critique_history_files")
     async def test_unexpected_exception_returns_tool_error(self, mock_load, client):
         """Unexpected exceptions should be caught and returned as ToolError."""
         from fastmcp.exceptions import ToolError

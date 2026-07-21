@@ -7,8 +7,6 @@ import logging
 import time
 from pathlib import Path
 
-import yaml
-
 from anthropic import Anthropic, AsyncAnthropic, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
 from .search import search, refine_query, extract_noun_phrases, filter_blocked_urls, SearchResult
@@ -23,12 +21,11 @@ from .context_result import ContextResult, ContextStatus
 from .skeptic import run_deep_skeptic_pass, run_skeptic_combined
 from .cascade import cascade_recover
 from .coverage import identify_coverage_gaps
-from .errors import ResearchError, SearchError, SkepticError, StateError, IterationError, SynthesisError, VagueQueryError, GateDecision
+from .errors import ConfigError, ResearchError, SearchError, SkepticError, StateError, IterationError, SynthesisError, VagueQueryError, GateDecision
 from .query_validation import check_query_vagueness
 from .critique import evaluate_report, save_critique, CritiqueResult
 from .iterate import generate_refined_queries, generate_followup_questions
 from .modes import ResearchMode
-from .report_store import META_DIR
 from .sanitize import sanitize_content
 from .cycle_config import CycleConfig
 
@@ -177,6 +174,20 @@ class ResearchAgent:
         with open_pool().connection() as conn:
             return load_gaps(conn)
 
+    def _load_critique_history_db(self) -> ContextResult | None:
+        """Borrow a pooled connection and load critique history.
+
+        Critique history is an optional prompt enhancement — when the
+        database is unconfigured or unreachable, degrade to no history
+        rather than failing the research run.
+        """
+        try:
+            with open_pool().connection() as conn:
+                return load_critique_history(conn)
+        except (ConfigError, StateError) as e:
+            logger.warning("Skipping critique history (database unavailable): %s", e)
+            return None
+
     def _update_gap_states(self, decision: str) -> None:
         """Persist targeted gap updates after research completes.
 
@@ -244,12 +255,13 @@ class ResearchAgent:
                 model=self.mode.planning_model,
                 temperature=self.mode.planning_temperature,
             )
-            save_critique(result, META_DIR)
+            with open_pool().connection() as conn:
+                save_critique(conn, result)
             self._last_critique = result
             logger.info(
                 "Self-critique: mean=%.1f pass=%s", result.mean_score, result.overall_pass
             )
-        except (OSError, yaml.YAMLError) as e:
+        except (OSError, ConfigError, StateError) as e:
             logger.warning("Self-critique failed: %s", e)
 
     def _filter_blocked(self, results: list[SearchResult]) -> list[SearchResult]:
@@ -467,7 +479,7 @@ class ResearchAgent:
 
         critique_context: str | None = None
         if not self.mode.is_quick:
-            critique_ctx = await asyncio.to_thread(load_critique_history, META_DIR)
+            critique_ctx = await asyncio.to_thread(self._load_critique_history_db)
             if critique_ctx:
                 critique_context = critique_ctx.content
                 logger.info("Loaded critique history for adaptive prompts")

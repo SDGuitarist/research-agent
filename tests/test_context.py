@@ -9,6 +9,7 @@ import yaml
 from research_agent.context import (
     load_full_context,
     load_critique_history,
+    load_critique_history_files,
     resolve_context_path,
     auto_detect_context,
     list_available_contexts,
@@ -18,6 +19,7 @@ from research_agent.context import (
     parse_context_file,
 )
 from research_agent.context_result import ContextResult, ContextStatus, ReportTemplate
+from research_agent.critique import CritiqueResult, save_critique
 
 
 SAMPLE_CONTEXT = """# Research Context
@@ -887,19 +889,19 @@ class TestValidateCritiqueYaml:
         assert _validate_critique_yaml(data) is False
 
 
-class TestLoadCritiqueHistory:
+class TestLoadCritiqueHistoryFiles:
     def test_empty_dir_returns_not_configured(self, tmp_path):
-        result = load_critique_history(tmp_path)
+        result = load_critique_history_files(tmp_path)
         assert result.status == ContextStatus.NOT_CONFIGURED
 
     def test_nonexistent_dir_returns_not_configured(self, tmp_path):
-        result = load_critique_history(tmp_path / "nope")
+        result = load_critique_history_files(tmp_path / "nope")
         assert result.status == ContextStatus.NOT_CONFIGURED
 
     def test_fewer_than_3_returns_not_configured(self, tmp_path):
         _make_critique(tmp_path, ts=1)
         _make_critique(tmp_path, slug="b", ts=2)
-        result = load_critique_history(tmp_path)
+        result = load_critique_history_files(tmp_path)
         assert result.status == ContextStatus.NOT_CONFIGURED
 
     def test_corrupt_yaml_skipped(self, tmp_path):
@@ -908,7 +910,7 @@ class TestLoadCritiqueHistory:
             _make_critique(tmp_path, slug=f"v{i}", ts=1000 + i)
         corrupt = tmp_path / "critique-bad_999.yaml"
         corrupt.write_text("{{{{invalid yaml")
-        result = load_critique_history(tmp_path)
+        result = load_critique_history_files(tmp_path)
         assert result.status == ContextStatus.LOADED
 
     def test_schema_invalid_skipped(self, tmp_path):
@@ -918,7 +920,7 @@ class TestLoadCritiqueHistory:
         bad_scores = {"source_diversity": 9, "claim_support": 3, "coverage": 3,
                       "geographic_balance": 3, "actionability": 3}
         _make_critique(tmp_path, slug="bad", ts=1003, scores=bad_scores)
-        result = load_critique_history(tmp_path)
+        result = load_critique_history_files(tmp_path)
         # Only 2 valid, below threshold
         assert result.status == ContextStatus.NOT_CONFIGURED
 
@@ -926,7 +928,7 @@ class TestLoadCritiqueHistory:
         for i in range(3):
             _make_critique(tmp_path, slug=f"v{i}", ts=1000 + i,
                            weaknesses="Limited US sources")
-        result = load_critique_history(tmp_path)
+        result = load_critique_history_files(tmp_path)
         assert result.status == ContextStatus.LOADED
         assert "3 recent self-critiques" in result.content
 
@@ -936,13 +938,13 @@ class TestLoadCritiqueHistory:
             _make_critique(tmp_path, slug=f"f{i}", ts=1000 + i, overall_pass=False)
         for i in range(2):
             _make_critique(tmp_path, slug=f"p{i}", ts=2000 + i, overall_pass=True)
-        result = load_critique_history(tmp_path)
+        result = load_critique_history_files(tmp_path)
         assert result.status == ContextStatus.NOT_CONFIGURED
 
     def test_limit_respected(self, tmp_path):
         for i in range(10):
             _make_critique(tmp_path, slug=f"v{i}", ts=1000 + i)
-        result = load_critique_history(tmp_path, limit=5)
+        result = load_critique_history_files(tmp_path, limit=5)
         assert result.status == ContextStatus.LOADED
 
     def test_symlinked_critique_files_outside_meta_are_skipped(self, tmp_path, monkeypatch):
@@ -970,7 +972,70 @@ class TestLoadCritiqueHistory:
             }))
             (meta_dir / f"critique-{i}.yaml").symlink_to(target)
 
-        result = load_critique_history(meta_dir)
+        result = load_critique_history_files(meta_dir)
+        assert result.status == ContextStatus.NOT_CONFIGURED
+
+
+def _save_db_critique(db, weaknesses="", passing=True):
+    """Insert a critique row; all-4 scores pass, all-2 scores fail."""
+    score = 4 if passing else 2
+    return save_critique(db, CritiqueResult(
+        source_diversity=score, claim_support=score, coverage=score,
+        geographic_balance=score, actionability=score,
+        weaknesses=weaknesses, suggestions="",
+    ))
+
+
+class TestLoadCritiqueHistoryDb:
+    """Tests for the DB-backed load_critique_history()."""
+
+    def test_empty_table_returns_not_configured(self, db):
+        result = load_critique_history(db)
+        assert result.status == ContextStatus.NOT_CONFIGURED
+
+    def test_fewer_than_3_passing_returns_not_configured(self, db):
+        for _ in range(2):
+            _save_db_critique(db)
+        result = load_critique_history(db)
+        assert result.status == ContextStatus.NOT_CONFIGURED
+
+    def test_3_passing_returns_loaded_with_summary(self, db):
+        for _ in range(3):
+            _save_db_critique(db, weaknesses="Limited US sources")
+        result = load_critique_history(db)
+        assert result.status == ContextStatus.LOADED
+        assert "3 recent self-critiques" in result.content
+
+    def test_failing_critiques_do_not_count(self, db):
+        for _ in range(3):
+            _save_db_critique(db, passing=False)
+        for _ in range(2):
+            _save_db_critique(db)
+        result = load_critique_history(db)
+        assert result.status == ContextStatus.NOT_CONFIGURED
+
+    def test_window_is_newest_limit_rows_not_newest_passing(self, db):
+        """Recent failures push older passing critiques out of the window,
+        mirroring the legacy file semantics."""
+        for _ in range(3):
+            _save_db_critique(db)  # older, passing
+        for _ in range(10):
+            _save_db_critique(db, passing=False)  # newer, failing
+        result = load_critique_history(db, limit=10)
+        assert result.status == ContextStatus.NOT_CONFIGURED
+
+    def test_limit_respected(self, db):
+        for _ in range(10):
+            _save_db_critique(db)
+        result = load_critique_history(db, limit=5)
+        assert result.status == ContextStatus.LOADED
+
+    def test_db_error_degrades_to_not_configured(self, db):
+        import psycopg
+        from unittest.mock import MagicMock
+        broken = MagicMock()
+        broken.execute.side_effect = psycopg.OperationalError("connection lost")
+        result = load_critique_history(broken)
         assert result.status == ContextStatus.NOT_CONFIGURED
 
 

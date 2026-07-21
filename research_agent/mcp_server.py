@@ -189,7 +189,9 @@ def critique_report(filename: str) -> str:
     from fastmcp.exceptions import ToolError
 
     from research_agent import critique_report_file
-    from research_agent.critique import save_critique
+    # Session 3 interim: MCP still writes critiques to the reports/meta/
+    # disk archive. Session 4 cuts this tool over to the DB.
+    from research_agent.critique import save_critique_file
     from research_agent.report_store import META_DIR
     from research_agent.modes import DEFAULT_MODEL
 
@@ -201,7 +203,7 @@ def critique_report(filename: str) -> str:
     try:
         client = Anthropic()
         result = critique_report_file(client, path, model=DEFAULT_MODEL, temperature=0.8)
-        save_critique(result, META_DIR)
+        save_critique_file(result, META_DIR)
     except Exception:
         logger.exception("Unexpected error in critique_report")
         raise ToolError(
@@ -338,11 +340,13 @@ def get_critique_history() -> str:
     do not count toward this threshold.
     """
     from fastmcp.exceptions import ToolError
-    from research_agent.context import load_critique_history
+    # Session 3 interim: MCP still reads the reports/meta/ disk archive.
+    # Session 4 cuts this tool over to the DB.
+    from research_agent.context import load_critique_history_files
     from research_agent.report_store import META_DIR
 
     try:
-        result = load_critique_history(META_DIR)
+        result = load_critique_history_files(META_DIR)
     except Exception:
         logger.exception("Unexpected error in get_critique_history")
         raise ToolError(

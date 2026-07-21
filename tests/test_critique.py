@@ -2,6 +2,7 @@
 
 import yaml
 import pytest
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import MagicMock, patch, AsyncMock
 
@@ -9,8 +10,10 @@ from research_agent.critique import (
     CritiqueResult,
     evaluate_report,
     save_critique,
+    save_critique_file,
     _parse_critique_response,
 )
+from research_agent.errors import StateError
 
 
 # --- CritiqueResult gate logic ---
@@ -213,16 +216,65 @@ class TestEvaluateReport:
         assert result.source_diversity == 3
 
 
-# --- save_critique ---
+# --- save_critique (DB) ---
 
-class TestSaveCritique:
+class TestSaveCritiqueDb:
+    def _cr(self, **overrides):
+        base = dict(
+            source_diversity=4, claim_support=3, coverage=5,
+            geographic_balance=2, actionability=4,
+            weaknesses="weak spot", suggestions="try harder",
+        )
+        base.update(overrides)
+        return CritiqueResult(**base)
+
+    def test_row_roundtrip(self, db):
+        critique_id = save_critique(db, self._cr())
+        row = db.execute(
+            "SELECT * FROM critiques WHERE id = %s", (critique_id,)
+        ).fetchone()
+        assert row["source_diversity"] == 4
+        assert row["coverage"] == 5
+        assert row["weaknesses"] == "weak spot"
+        assert row["suggestions"] == "try harder"
+        assert row["overall_pass"] is True
+        assert row["mean_score"] == pytest.approx(3.6)
+        assert row["created_at"] is not None
+
+    def test_free_text_sanitized_on_write(self, db):
+        cr = self._cr(weaknesses="<script>bad</script> & more")
+        critique_id = save_critique(db, cr)
+        row = db.execute(
+            "SELECT weaknesses FROM critiques WHERE id = %s", (critique_id,)
+        ).fetchone()
+        assert "<" not in row["weaknesses"]
+        assert row["weaknesses"] == "&lt;script&gt;bad&lt;/script&gt; &amp; more"
+
+    def test_failing_critique_stores_pass_false(self, db):
+        cr = self._cr(source_diversity=1, claim_support=1, coverage=1,
+                      geographic_balance=1, actionability=1)
+        critique_id = save_critique(db, cr)
+        row = db.execute(
+            "SELECT overall_pass FROM critiques WHERE id = %s", (critique_id,)
+        ).fetchone()
+        assert row["overall_pass"] is False
+
+    def test_ids_increment_across_saves(self, db):
+        first = save_critique(db, self._cr())
+        second = save_critique(db, self._cr())
+        assert second > first
+
+
+# --- save_critique_file (legacy disk archive, MCP-only until Session 4) ---
+
+class TestSaveCritiqueFile:
     def test_yaml_roundtrip(self, tmp_path):
         cr = CritiqueResult(
             source_diversity=4, claim_support=3, coverage=5,
             geographic_balance=2, actionability=4,
             weaknesses="weak spot", suggestions="try harder",
         )
-        path = save_critique(cr, tmp_path)
+        path = save_critique_file(cr, tmp_path)
 
         assert path.exists()
         assert path.name.startswith("critique-")
@@ -240,7 +292,7 @@ class TestSaveCritique:
             source_diversity=3, claim_support=3, coverage=3,
             geographic_balance=3, actionability=3, weaknesses="", suggestions="",
         )
-        path = save_critique(cr, tmp_path)
+        path = save_critique_file(cr, tmp_path)
         # Format: critique-{timestamp}.yaml — no slug
         assert path.name.startswith("critique-")
         parts = path.stem.split("-", 1)
@@ -252,7 +304,7 @@ class TestSaveCritique:
             source_diversity=3, claim_support=3, coverage=3,
             geographic_balance=3, actionability=3, weaknesses="", suggestions="",
         )
-        path = save_critique(cr, nested)
+        path = save_critique_file(cr, nested)
         assert path.exists()
         assert nested.exists()
 
@@ -281,7 +333,9 @@ class TestAgentCritiqueIntegration:
             geographic_balance=3, actionability=3, weaknesses="", suggestions="",
         )
         with patch("research_agent.agent.evaluate_report", return_value=fake_result) as mock_eval, \
-             patch("research_agent.agent.save_critique") as mock_save:
+             patch("research_agent.agent.save_critique") as mock_save, \
+             patch("research_agent.agent.open_pool") as mock_pool:
+            mock_pool.return_value.connection.return_value = nullcontext(MagicMock())
             agent._run_critique("q", 5, 2, [], "full_report")
             mock_eval.assert_called_once()
             mock_save.assert_called_once()
@@ -297,6 +351,43 @@ class TestAgentCritiqueIntegration:
             # Should not raise
             agent._run_critique("q", 5, 2, [], "full_report")
             assert agent._last_critique is None
+
+    def test_db_save_failure_caught_gracefully(self):
+        """A StateError from the critique DB save must not crash the pipeline."""
+        from research_agent.agent import ResearchAgent
+        from research_agent.modes import ResearchMode
+
+        agent = ResearchAgent(mode=ResearchMode.standard())
+        fake_result = CritiqueResult(
+            source_diversity=3, claim_support=3, coverage=3,
+            geographic_balance=3, actionability=3, weaknesses="", suggestions="",
+        )
+        with patch("research_agent.agent.evaluate_report", return_value=fake_result), \
+             patch("research_agent.agent.open_pool",
+                   side_effect=StateError("db down")):
+            # Should not raise
+            agent._run_critique("q", 5, 2, [], "full_report")
+            assert agent._last_critique is None
+
+    def test_saves_critique_to_db(self, db):
+        """_run_critique persists a critiques row through the injected pool."""
+        from research_agent.agent import ResearchAgent
+        from research_agent.modes import ResearchMode
+
+        agent = ResearchAgent(mode=ResearchMode.standard())
+        fake_result = CritiqueResult(
+            source_diversity=4, claim_support=4, coverage=4,
+            geographic_balance=4, actionability=4,
+            weaknesses="w", suggestions="s",
+        )
+        with patch("research_agent.agent.evaluate_report", return_value=fake_result), \
+             patch("research_agent.agent.open_pool") as mock_pool:
+            mock_pool.return_value.connection.return_value = nullcontext(db)
+            agent._run_critique("q", 5, 2, [], "full_report")
+        row = db.execute("SELECT * FROM critiques").fetchone()
+        assert row["overall_pass"] is True
+        assert row["weaknesses"] == "w"
+        assert agent._last_critique is fake_result
 
 
 class TestCritiqueContextThreading:

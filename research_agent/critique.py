@@ -12,10 +12,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from psycopg import Error as PsycopgError
 
 from anthropic import Anthropic
 
-from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT
+from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT, StateError
 from .modes import DEFAULT_MODEL
 from .sanitize import sanitize_content
 from .safe_io import atomic_write
@@ -300,8 +301,45 @@ SUGGESTIONS: [one sentence, max 200 chars]"""
     return CritiqueResult.from_parsed(parsed, weaknesses=weaknesses, suggestions=suggestions)
 
 
-def save_critique(result: CritiqueResult, meta_dir: Path) -> Path:
+def save_critique(conn, result: CritiqueResult) -> int:
+    """Insert a critique row using an injected connection; return its row id.
+
+    The caller owns the outer transaction — the nested transaction here is a
+    savepoint when one already exists; never conn.commit() inside. Free-text
+    fields are sanitized on write; sanitize_content is idempotent, so the
+    read-side sanitization in context._summarize_patterns stays safe.
+
+    Raises:
+        StateError: On database failure.
+    """
+    try:
+        with conn.transaction():
+            row = conn.execute(
+                """INSERT INTO critiques
+                       (overall_pass, mean_score, source_diversity,
+                        claim_support, coverage, geographic_balance,
+                        actionability, weaknesses, suggestions)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   RETURNING id""",
+                (result.overall_pass, round(result.mean_score, 2),
+                 result.source_diversity, result.claim_support,
+                 result.coverage, result.geographic_balance,
+                 result.actionability,
+                 sanitize_content(result.weaknesses),
+                 sanitize_content(result.suggestions)),
+            ).fetchone()
+    except PsycopgError as exc:
+        raise StateError(f"Failed to save critique: {exc}") from exc
+    critique_id = row["id"]
+    logger.info("Saved critique #%d", critique_id)
+    return critique_id
+
+
+def save_critique_file(result: CritiqueResult, meta_dir: Path) -> Path:
     """Serialize CritiqueResult to YAML and write atomically.
+
+    Legacy disk-archive writer (pre-Postgres). The MCP server still uses it
+    until Session 4 cuts critique storage over to the DB; deleted then.
 
     Args:
         result: The critique to save.

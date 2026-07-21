@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 from anthropic import Anthropic
+from psycopg import Error as PsycopgError
 
 from .context_result import ContextProfile, ContextResult, ReportTemplate
 from .critique import DIMENSIONS
@@ -579,11 +580,67 @@ def _summarize_patterns(passing_critiques: list[dict]) -> str:
     return sanitize_content(summary)
 
 
-def load_critique_history(
+def load_critique_history(conn, limit: int = 10) -> ContextResult:
+    """Load recent critiques from the DB and return summarized patterns.
+
+    Mirrors the legacy file semantics: look at the newest ``limit``
+    critiques (passing or not), keep the passing ones, and require at
+    least 3 before producing guidance — so a run of recent failures
+    correctly yields no guidance even if older passing critiques exist.
+
+    Critique history is an optional prompt enhancement, so a database
+    error degrades to NOT_CONFIGURED (with a warning) instead of raising.
+
+    Args:
+        conn: Injected psycopg connection (caller owns the transaction).
+        limit: Maximum number of recent critique rows to consider.
+
+    Returns:
+        ContextResult:
+            - NOT_CONFIGURED if fewer than 3 passing critiques in the window.
+            - LOADED with summary text if enough passing history exists.
+    """
+    source = "critiques"
+    try:
+        rows = conn.execute(
+            """SELECT source_diversity, claim_support, coverage,
+                      geographic_balance, actionability, weaknesses,
+                      overall_pass
+               FROM critiques
+               ORDER BY created_at DESC, id DESC
+               LIMIT %s""",
+            (limit,),
+        ).fetchall()
+    except PsycopgError as exc:
+        logger.warning("Failed to load critique history: %s", exc)
+        return ContextResult.not_configured(source=source)
+
+    passing = []
+    for row in rows:
+        if row["overall_pass"] is not True:
+            continue
+        if any(row[dim] is None for dim in DIMENSIONS):
+            continue
+        passing.append({**row, "weaknesses": row["weaknesses"] or ""})
+
+    if len(passing) < _MIN_CRITIQUES_FOR_GUIDANCE:
+        return ContextResult.not_configured(source=source)
+
+    summary = _summarize_patterns(passing)
+    if not summary:
+        return ContextResult.not_configured(source=source)
+
+    return ContextResult.loaded(summary, source=source)
+
+
+def load_critique_history_files(
     meta_dir: Path,
     limit: int = 10,
 ) -> ContextResult:
     """Load recent critique YAMLs and return summarized patterns.
+
+    Legacy disk-archive reader (pre-Postgres). The MCP server still uses it
+    until Session 4 cuts critique history over to the DB; deleted then.
 
     Args:
         meta_dir: Directory containing critique-*.yaml files.

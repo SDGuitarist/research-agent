@@ -12,7 +12,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from research_agent import ResearchAgent
-from research_agent.report_store import META_DIR
 from research_agent.context import (
     CONTEXTS_DIR,
     list_available_contexts,
@@ -247,11 +246,16 @@ Examples:
 
     # --critique-history: print aggregated critique patterns and exit
     if args.critique_history:
-        result = load_critique_history(META_DIR)
+        try:
+            with open_pool().connection() as conn:
+                result = load_critique_history(conn)
+        except ResearchError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
         if result.content:
             print(result.content)
         else:
-            print(f"No critique history available (need at least 3 critiques in {META_DIR}/).")
+            print("No critique history available (need at least 3 passing critiques).")
         sys.exit(0)
 
     # --critique: evaluate a saved report file and exit
@@ -263,13 +267,14 @@ Examples:
         try:
             client = Anthropic()
             result = critique_report_file(client, args.critique)
-            path = save_critique(result, META_DIR)
+            with open_pool().connection() as conn:
+                critique_id = save_critique(conn, result)
             status = "pass" if result.overall_pass else "FAIL"
             print(f"Self-critique: mean={result.mean_score:.1f}, {status}")
             print(f"  Weaknesses: {result.weaknesses}")
             print(f"  Suggestions: {result.suggestions}")
-            print(f"  Saved to: {path}")
-        except OSError as e:
+            print(f"  Saved critique #{critique_id} to the database")
+        except (OSError, ResearchError) as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
         sys.exit(0)
