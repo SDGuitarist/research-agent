@@ -70,6 +70,16 @@ scratchpad (`migrate_gaps.MY-VERSION.py`, `my-migrate-gaps-divergence.patch`) if
    direct `ResearchAgent` construction, true through CLI/public API) is the intended compatibility
    boundary, and whether the importer's bare post-import assertions should be explicit runtime errors.
 
+## Feed-Forward
+
+- **Hardest decision:** Keep gap row updates and audit inserts atomic while borrowing connections
+  from the sync pool inside an async pipeline, without changing the pure state machine.
+- **Rejected alternatives:** Retaining `schema_path`, rewriting the whole schema document, or
+  continuing into Session 3 before an independent review; each would violate the locked plan.
+- **Least confident:** Whether `gap_tracking_enabled=False` for direct `ResearchAgent` construction
+  but `True` through CLI/public API is the right compatibility boundary, and whether importer
+  assertions should become explicit runtime errors.
+
 ### Prompt for Next Session (independent Codex code review)
 
 ```
