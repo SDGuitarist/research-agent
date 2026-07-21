@@ -37,6 +37,46 @@ def test_disposable_guard_rejects_nondisposable(url):
         _assert_disposable_db_url(url)
 
 
+def test_open_pool_is_thread_safe(monkeypatch):
+    """Concurrent first-callers build the pool exactly once (no DB needed)."""
+    import threading
+
+    import research_agent.db as db_module
+
+    db_module.close_pool()  # clean slate (the autouse fixture also does this)
+    built: list[str] = []
+
+    class _FakePool:
+        def open(self, *a, **k):
+            pass
+
+        def close(self):
+            pass
+
+    def _fake_make(conninfo):
+        built.append(conninfo)
+        return _FakePool()
+
+    monkeypatch.setattr(db_module, "_make_pool", _fake_make)
+
+    barrier = threading.Barrier(8)
+    results: list[object] = []
+
+    def _worker():
+        barrier.wait()  # release all threads together to maximise contention
+        results.append(db_module.open_pool("postgresql://x/y"))
+
+    threads = [threading.Thread(target=_worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(built) == 1, "pool must be built exactly once under contention"
+    assert len({id(r) for r in results}) == 1, "all callers get the same pool"
+    db_module.close_pool()
+
+
 def test_db_roundtrip(db):
     assert db.execute("SELECT 1 AS n").fetchone()["n"] == 1
 
