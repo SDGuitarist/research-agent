@@ -6,6 +6,36 @@ Require Docker (testcontainers) or a TEST_DATABASE_URL; skipped otherwise.
 import psycopg
 import pytest
 
+from tests.conftest import _assert_disposable_db_url
+
+
+# --- disposable-DB guard (no database needed) ------------------------------
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "postgresql://u:p@localhost:5432/research_agent_test",
+        "postgresql://u:p@db.example.com/test",
+        "postgresql://u:p@host/app-test",
+    ],
+)
+def test_disposable_guard_accepts_test_databases(url):
+    _assert_disposable_db_url(url)  # must not raise
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "postgresql://u:testpw@localhost:5432/research_agent",  # 'test' only in password
+        "postgresql://u:p@localhost/maindb",                    # real local dev DB
+        "postgresql://u:p@prod-host/app",
+        "postgresql://u:p@host/",                               # empty database name
+    ],
+)
+def test_disposable_guard_rejects_nondisposable(url):
+    with pytest.raises(AssertionError):
+        _assert_disposable_db_url(url)
+
 
 def test_db_roundtrip(db):
     assert db.execute("SELECT 1 AS n").fetchone()["n"] == 1

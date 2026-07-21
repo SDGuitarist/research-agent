@@ -10,6 +10,7 @@ this module only owns the pool's lifecycle.
 from __future__ import annotations
 
 import atexit
+import threading
 
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -22,6 +23,9 @@ POOL_MIN_SIZE = 1
 POOL_MAX_SIZE = 2
 
 _pool: ConnectionPool | None = None
+# Serializes pool init/teardown so concurrent startup callers (FastAPI
+# threadpool + worker + heartbeat thread) can't build or clear it twice.
+_pool_lock = threading.Lock()
 
 
 def _make_pool(conninfo: str) -> ConnectionPool:
@@ -40,12 +44,19 @@ def _make_pool(conninfo: str) -> ConnectionPool:
 
 
 def open_pool(conninfo: str | None = None) -> ConnectionPool:
-    """Open the shared pool (idempotent). Fails fast if the DB is unreachable."""
+    """Open the shared pool (idempotent, thread-safe). Fails fast if unreachable.
+
+    Double-checked locking: skip the lock on the hot path once the pool exists,
+    but serialize first-call initialization so two concurrent callers cannot
+    each build (and leak) a pool.
+    """
     global _pool
     if _pool is None:
-        pool = _make_pool(conninfo or require_database_url())
-        pool.open(wait=True, timeout=30)
-        _pool = pool
+        with _pool_lock:
+            if _pool is None:
+                pool = _make_pool(conninfo or require_database_url())
+                pool.open(wait=True, timeout=30)
+                _pool = pool
     return _pool
 
 
@@ -57,11 +68,12 @@ def get_pool() -> ConnectionPool:
 
 
 def close_pool() -> None:
-    """Close the shared pool if open (idempotent)."""
+    """Close the shared pool if open (idempotent, thread-safe)."""
     global _pool
-    if _pool is not None:
-        _pool.close()
-        _pool = None
+    with _pool_lock:
+        if _pool is not None:
+            _pool.close()
+            _pool = None
 
 
 atexit.register(close_pool)

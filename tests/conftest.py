@@ -299,6 +299,8 @@ def mock_evaluate_insufficient(sample_summaries):
 # the job queue needs SELECT ... FOR UPDATE SKIP LOCKED.
 
 import os
+from urllib.parse import urlparse
+
 import psycopg
 from psycopg.rows import dict_row
 
@@ -306,16 +308,32 @@ from psycopg.rows import dict_row
 _CONCURRENCY_TABLES = ("gap_audit", "reports", "jobs", "gaps", "critiques")
 
 
+def _assert_disposable_db_url(url: str) -> None:
+    """Raise AssertionError unless the URL's *database name* marks it disposable.
+
+    The session setup runs ``DROP SCHEMA public CASCADE``, so the target must be
+    a throwaway DB. A substring heuristic on the whole URL is unsafe — a password
+    or hostname containing "test", or a real local dev DB on "localhost", would
+    pass. Instead we require the database *name itself* to be a test DB
+    ("test", or ending in "_test"/"-test"), which a prod/dev DB won't match.
+    """
+    dbname = urlparse(url).path.lstrip("/")
+    assert dbname and (
+        dbname == "test" or dbname.endswith("_test") or dbname.endswith("-test")
+    ), (
+        "Refusing destructive test setup: TEST_DATABASE_URL must point at a "
+        "disposable test database whose name is 'test' or ends with '_test'/'-test' "
+        f"(got database name {dbname!r})."
+    )
+
+
 @pytest.fixture(scope="session")
 def database_url():
-    """A disposable Postgres URL: TEST_DATABASE_URL if set, else an ephemeral
-    testcontainers Postgres (requires Docker)."""
+    """A disposable Postgres URL: TEST_DATABASE_URL (must name a *_test database)
+    if set, else an ephemeral testcontainers Postgres (requires Docker)."""
     url = os.environ.get("TEST_DATABASE_URL")
     if url:
-        assert (
-            any(tok in url for tok in ("test", "localhost", "127.0.0.1"))
-            and "prod" not in url
-        ), "TEST_DATABASE_URL must point at a disposable test database"
+        _assert_disposable_db_url(url)
         yield url
         return
     pytest.importorskip("testcontainers")
@@ -378,10 +396,12 @@ def committed_db(db_pool):
 @pytest.fixture(autouse=True)
 def _reset_db_pool():
     """Reset the app's module-global pool between tests (pre + post), mirroring
-    the existing _reset_tavily_cache pattern, so a test that opens the runtime
-    pool can't leak it into a neighbour."""
+    the existing _reset_tavily_cache pattern. Close any existing pool BEFORE
+    clearing it — close_pool() does close-then-clear atomically — so a leaked
+    runtime pool from a prior test is torn down deterministically, never
+    orphaned (which the old `_pool = None` pre-step did)."""
     import research_agent.db as db_module
 
-    db_module._pool = None
+    db_module.close_pool()
     yield
     db_module.close_pool()
