@@ -8,19 +8,41 @@ from pathlib import Path
 
 from research_agent.db import close_pool, open_pool
 from research_agent.errors import SchemaError
-from research_agent.schema import detect_cycles, load_gaps, load_schema_file
+from research_agent.schema import Gap, detect_cycles, load_gaps, load_schema_file
 from research_agent.staleness import detect_stale
 from research_agent.state import save_schema
 
 DEFAULT_GAPS_PATH = Path(__file__).resolve().parents[1] / "gaps" / "pfe.yaml"
 
 
-def _staleness_verdict(gap, now: datetime) -> bool:
-    return bool(detect_stale((gap,), now=now))
+class MigrationError(Exception):
+    """A post-import self-check failed and the import was rolled back.
+
+    Raised instead of bare ``assert`` so the checks stay active under
+    ``python -O`` (which strips assertions).
+    """
 
 
-def migrate_gaps(conn, path: Path | str = DEFAULT_GAPS_PATH) -> int:
-    """Validate and upsert a gap YAML, then assert migration equivalence."""
+def _stale_ids(gaps: tuple[Gap, ...], now: datetime) -> frozenset[str]:
+    """Return the set of gap ids that detect_stale flags at ``now``."""
+    return frozenset(gap.id for gap in detect_stale(gaps, now=now))
+
+
+def migrate_gaps(
+    conn, path: Path | str = DEFAULT_GAPS_PATH, now: datetime | None = None
+) -> int:
+    """Validate and upsert a gap YAML, then verify migration equivalence.
+
+    Returns the number of rows whose stored values actually changed (0 on an
+    idempotent re-run). Raises SchemaError for a bad source (missing/empty,
+    duplicate ids, dependency cycles) before any write. Raises MigrationError —
+    rolling the whole import back — if the post-import state does not match the
+    validated YAML: row count, per-gap equality, and the staleness verdict of
+    EVERY imported gap must be identical before and after.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
     source = load_schema_file(path)
     if not source.is_loaded:
         raise SchemaError(f"Gap import source is missing or empty: {path}")
@@ -34,27 +56,25 @@ def migrate_gaps(conn, path: Path | str = DEFAULT_GAPS_PATH) -> int:
         rendered = ", ".join(" -> ".join(cycle) for cycle in cycles)
         raise SchemaError(f"Gap import source contains dependency cycles: {rendered}")
 
-    checked_at = datetime.now(timezone.utc)
-    sample = source.gaps[0]
-    before_verdict = _staleness_verdict(sample, checked_at)
+    pre_stale = _stale_ids(source.gaps, now)
 
     with conn.transaction():
         changed = save_schema(conn, source.gaps)
         imported = load_gaps(conn)
-        row_count = conn.execute("SELECT count(*) AS count FROM gaps").fetchone()["count"]
 
-        assert row_count == len(source.gaps), (
-            f"Gap import row-count mismatch: YAML={len(source.gaps)}, DB={row_count}"
-        )
-
-        imported_by_id = {gap.id: gap for gap in imported.gaps}
-        assert imported_by_id == {gap.id: gap for gap in source.gaps}, (
-            "Gap import state differs from the validated YAML"
-        )
-        after_verdict = _staleness_verdict(imported_by_id[sample.id], checked_at)
-        assert after_verdict == before_verdict, (
-            f"Staleness verdict changed during import for gap {sample.id!r}"
-        )
+        if len(imported.gaps) != len(source.gaps):
+            raise MigrationError(
+                f"Gap import row-count mismatch: "
+                f"YAML={len(source.gaps)}, DB={len(imported.gaps)}"
+            )
+        if {g.id: g for g in imported.gaps} != {g.id: g for g in source.gaps}:
+            raise MigrationError("Gap import state differs from the validated YAML")
+        post_stale = _stale_ids(imported.gaps, now)
+        if post_stale != pre_stale:
+            raise MigrationError(
+                "Staleness verdicts changed during import: "
+                f"before={sorted(pre_stale)}, after={sorted(post_stale)}"
+            )
 
     return changed
 
@@ -64,7 +84,8 @@ def main() -> None:
     try:
         with pool.connection() as conn:
             changed = migrate_gaps(conn)
-        print(f"Imported {len(load_schema_file(DEFAULT_GAPS_PATH).gaps)} gaps; {changed} changed.")
+        total = len(load_schema_file(DEFAULT_GAPS_PATH).gaps)
+        print(f"Imported {total} gaps; {changed} changed.")
     finally:
         close_pool()
 

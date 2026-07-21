@@ -7,7 +7,7 @@ import pytest
 from research_agent.errors import SchemaError
 from research_agent.schema import load_gaps, load_schema_file
 from research_agent.staleness import detect_stale
-from scripts.migrate_gaps import migrate_gaps
+from scripts.migrate_gaps import MigrationError, migrate_gaps
 
 
 _VERIFIED_AT = "2026-01-15T08:30:00+00:00"
@@ -59,24 +59,27 @@ def test_default_pfe_yaml_imports_and_reruns_as_no_op(db):
     assert migrate_gaps(db) == 0
 
 
-def test_import_preserves_staleness_verdict(db, gap_yaml):
+def test_import_preserves_staleness_verdict_for_every_gap(db, gap_yaml):
     now = datetime(2026, 2, 15, tzinfo=timezone.utc)
-    source_gap = load_schema_file(gap_yaml).gaps[0]
-    before = bool(detect_stale((source_gap,), now=now))
+    source_gaps = load_schema_file(gap_yaml).gaps
+    before = {g.id for g in detect_stale(source_gaps, now=now)}
+    assert before == {"pricing"}  # verified 2026-01-15, ttl 14d → stale at now
 
-    migrate_gaps(db, gap_yaml)
-    imported = {gap.id: gap for gap in load_gaps(db).gaps}
-    after = bool(detect_stale((imported["pricing"],), now=now))
+    migrate_gaps(db, gap_yaml, now=now)
+    imported = load_gaps(db).gaps
+    after = {g.id for g in detect_stale(imported, now=now)}
 
     assert after == before
-    assert imported["pricing"].last_verified == _VERIFIED_AT
-    assert imported["pricing"].ttl_days == 14
+    assert len(imported) == len(source_gaps)
+    by_id = {gap.id: gap for gap in imported}
+    assert by_id["pricing"].last_verified == _VERIFIED_AT
+    assert by_id["pricing"].ttl_days == 14
 
 
-def test_row_count_equality_assertion_rolls_back(db, gap_yaml):
+def test_row_count_mismatch_raises_explicit_error_and_rolls_back(db, gap_yaml):
     db.execute("INSERT INTO gaps (id, category) VALUES ('extra', 'test')")
 
-    with pytest.raises(AssertionError, match="row-count mismatch"):
+    with pytest.raises(MigrationError, match="row-count mismatch"):
         migrate_gaps(db, gap_yaml)
 
     assert db.execute(
