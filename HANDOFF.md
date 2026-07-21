@@ -1,9 +1,9 @@
 # HANDOFF — Research Agent
 
 **Date:** 2026-07-21
-**Phase:** Work — **Session 3 COMPLETE + review fixes applied (P1, P2)**; next is Session 4 (MCP parity cutover)
-**Branch:** `feat/headless-service-core` (not pushed) — S3 review fixes in `a3e04af` (P1 error boundary), `30594e3` (P2 validation parity); Session 3 in `1d9856e` (reports), `83b1d2f` (critiques); Session 2 in `47e0bb1`, `eb43f5b`, `a032968`, `579db8f` + fixes `c4370b4`, `a4dbe39`, `5eb7fbc`
-**Tests:** 1188 pass · MCP lint 8/8
+**Phase:** Work — **Session 4 COMPLETE**; next is independent Codex review before Session 5
+**Branch:** `feat/headless-service-core` (not pushed) — Session 4 in `dc0e495`; S3 review fixes in `a3e04af` and `30594e3`; Session 3 in `1d9856e` and `83b1d2f`
+**Tests:** 1168 pass · MCP lint 8/8 + Postgres storage parity for CLI/MCP
 
 > ⚠️ **Concurrency note (2026-07-21):** Session 2 was worked by **two sessions in parallel** on
 > this branch (a handoff that ran concurrently instead of sequentially). It resolved cleanly —
@@ -35,6 +35,45 @@ Turning the research-agent CLI into a **deployed internal web service** (FastAPI
 - **Plan Review (Codex): DONE.** Two findings folded into the plan — P1 finish-txn orphan-report (raise/rollback on lost claim) and P2 `report_key` collision-proof derivation (`slug-{uuid8}`). Plus a self-review fix (heartbeat daemon thread). No P0/P1 remained.
 - **Session 1 (Foundations): DONE** (commit `3a379c0`). Files: `config.py`, `db.py`, `migrate.py`, `migrations/001_init.sql`, `errors.py` (+`ConfigError`), `tests/conftest.py` (opt-in Postgres fixtures), `tests/test_{config,migrate,db}.py`. Deps added: `psycopg[binary,pool]`, `testcontainers[postgres]` (fastapi/uvicorn already present). DB tests run against a real Postgres via testcontainers (Docker).
 - **Session 1 Code Review (Codex → fixes): DONE.** Applied 3 fixes — thread-safe `open_pool()` (double-checked lock), stricter test-DB disposability guard (checks the *database name*, not a URL substring), and correct pool-reset order (close-then-clear). +7 guard regression tests. **1141 tests pass; MCP lint 8/8.**
+
+## Session 4 — MCP parity cutover: COMPLETE ✅
+
+- **`dc0e495`** moves every MCP storage path to Postgres. Standard/deep `run_research`
+  auto-save uses `save_report` in `asyncio.to_thread`; `list_saved_reports` uses
+  `get_reports`; `get_report`, `critique_report`, and `generate_followups` load verbatim
+  content by canonical `report_key`; critique results save with `save_critique`; and
+  `get_critique_history` uses the DB history window.
+- All borrows go through `db.pooled_connection()`. Connections are released before the
+  Anthropic critique/follow-up calls, then a fresh short borrow persists the critique.
+  `ConfigError` and `StateError` become MCP `ToolError`; DB internals are not exposed.
+- `_validate_report_filename` is replaced by `_validate_report_key` with the planned
+  `[a-zA-Z0-9_-]+` contract. The MCP parameter names are now `report_key`, while all
+  identifiers remain strings and all 8 tool names remain unchanged.
+- Removed the three Session 3 bridge shims (`get_archived_reports`, `save_critique_file`,
+  `load_critique_history_files`) and their archive-only tests. Added the injected-connection
+  `report_store.get_report(conn, report_key)` and a storage-neutral
+  `critique_report_text(...)` so CLI file critique remains supported without MCP temp files.
+- Extended `scripts/lint_mcp_parity.py` to verify that active CLI/MCP consumers both import
+  **and call** their required shared Postgres operations and do not import removed file shims.
+  The declared web checks activate automatically when Session 5 adds `research_agent/web.py`.
+
+**Acceptance met:** all 8 MCP tools retain their names and use DB storage where applicable;
+report lookup is by canonical key; no interim file shim remains; `StateError`/`ConfigError`
+translate to `ToolError`; **1168 tests pass** against real Postgres; parity lint green.
+
+### Feed-Forward (Session 4)
+
+- **Hardest decision:** keeping database borrows short around `critique_report` and
+  `generate_followups`. The report is loaded and the connection released before the external
+  Anthropic call; critique persistence gets a separate borrow. This avoids holding a scarce
+  pool slot through a 30-second network call.
+- **Rejected alternatives:** direct SQL inside `mcp_server.py` (would bypass the injected-conn
+  storage contract); holding one connection across load/API/save (pool starvation risk);
+  leaving MCP auto-save on disk (two sources of truth); making the lint require a nonexistent
+  `web.py` immediately (would make Session 4 acceptance impossible).
+- **Least confident:** the phase-aware parity lint proves required storage functions are
+  imported and called, but it cannot prove semantic argument parity. Session 5 must activate
+  the web checks and its integration tests must verify verbatim-at-rest/render-safe behavior.
 
 ## Session 2 — Gaps → DB: COMPLETE ✅ (`verify_first` satisfied)
 
@@ -242,30 +281,33 @@ a connection failure per the fix's contract.
   unavailable (warning-logged, pipeline continues) — right locally, but a deploy misconfig loses
   critique data quietly.
 
-### Prompt for Next Session (Session 4 — MCP parity cutover)
-
-> Optional first: a fresh-context Codex re-review of the two fix commits `a3e04af`
-> (P1) and `30594e3` (P2), diff base `713d2a5`, focusing on the `pooled_connection`
-> boundary, the CLI-fails-fast / agent-degrades split, and DB↔file critique-history
-> parity. If clean, proceed to Session 4.
+### Prompt for Next Session (independent Codex review — Session 4)
 
 ```
 FIRST: confirm no other session / auto-continue is live on this branch — run
-`git log --oneline -3` and `git status --short`. Expect HEAD 30594e3 (or a HANDOFF/docs
+`git log --oneline -3` and `git status --short`. Expect HEAD dc0e495 (or a HANDOFF/docs
 commit directly on top of it) and a clean worktree before writing anything.
 
-Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — "Session 4 — MCP parity
-cutover", "Call-Site Inventory", "What must NOT change", EARS — and HANDOFF.md (Session 3
-section + Session 3 Review Fixes). Implement Session 4: cut get_report/critique_report/
-generate_followups/list_saved_reports/get_critique_history in mcp_server.py over to the DB
-(report_key, not filenames); _validate_report_filename → key validation; delete the interim
-file shims (get_archived_reports / save_critique_file / load_critique_history_files) and their
-legacy tests. Borrow DB connections through db.pooled_connection() and map StateError/
-ConfigError to MCP ToolError the way the CLI maps them to exit codes. Extend
-scripts/lint_mcp_parity.py to assert storage-op parity across CLI/MCP/web. Re-run
-python3 -m pytest tests/ -q and python3 scripts/lint_mcp_parity.py. Do only Session 4 — commit
-and stop.
+In /Users/alejandroguillen/Projects/research-agent on branch feat/headless-service-core,
+review commit dc0e495 against base a18107f and ONLY Session 4 of
+docs/plans/2026-07-21-feat-headless-service-core-plan.md. Read HANDOFF.md Session 4 first.
+Operate read-only.
+
+Scrutinize: all MCP storage paths use report_key/Postgres; injected-connection ownership and
+short pool borrows (especially no connection held during Anthropic calls); async run_research
+DB save is offloaded; ConfigError/StateError become non-leaking ToolError; key validation
+matches the planned character contract; the three interim file shims and legacy call sites are
+fully gone; all 8 MCP tool names and non-storage behavior remain compatible; and the extended
+lint meaningfully enforces active CLI/MCP storage parity without prematurely implementing
+Session 5. Check for scope drift into Sessions 5–6 and files that should not have changed.
+
+Verification already passed: python3 -m pytest tests/ -q -> 1168 passed;
+python3 scripts/lint_mcp_parity.py -> 8/8 plus CLI/MCP Postgres parity.
+
+Return findings ordered P0/P1/P2 plus a Claude Code fix prompt that instructs Claude Code to
+apply fixes, run a second review of its own changes, and report remaining risks before the task
+is complete. Do not implement fixes in the review session.
 ```
 
-Session 1 review residuals (still open, none block S4): disposable-DB guard is convention-based;
+Session 1 review residuals (still open, none block S5): disposable-DB guard is convention-based;
 open_pool doesn't close a half-open pool on failure (latent until S5–6).
