@@ -300,32 +300,53 @@ a connection failure per the fix's contract.
   unavailable (warning-logged, pipeline continues) — right locally, but a deploy misconfig loses
   critique data quietly.
 
-### Prompt for Next Session (independent Codex review — Session 4)
+> Session 4 review is DONE (Claude Code, clean — see "Session 4 Review" above). The next
+> step is Session 5 implementation.
+
+### Prompt for Next Session (Session 5 — FastAPI web service)
 
 ```
+Work in /Users/alejandroguillen/Projects/research-agent
+Branch: feat/headless-service-core · HEAD ffea869
+
 FIRST: confirm no other session / auto-continue is live on this branch — run
-`git log --oneline -3` and `git status --short`. Expect HEAD dc0e495 (or a HANDOFF/docs
-commit directly on top of it) and a clean worktree before writing anything.
+`git log --oneline -3` and `git status --short`. Expect HEAD ffea869 (or a HANDOFF/docs
+commit directly on top of it) and a clean worktree before writing anything. Session 4 is
+reviewed-clean; do only Session 5.
 
-In /Users/alejandroguillen/Projects/research-agent on branch feat/headless-service-core,
-review commit dc0e495 against base a18107f and ONLY Session 4 of
-docs/plans/2026-07-21-feat-headless-service-core-plan.md. Read HANDOFF.md Session 4 first.
-Operate read-only.
+Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — "Session 5 — FastAPI web
+service", Implementation Notes §4 (FastAPI), the "Session 5 requirement (render-boundary
+escaping)" block under "What must NOT change", and EARS — plus HANDOFF.md (Session 4 +
+Session 4 Review). Relevant files: research_agent/web.py (new), research_agent/db.py
+(pooled_connection + lifespan pool open/close), research_agent/report_store.py (get_reports,
+get_report), research_agent/query_validation.py (check_query_vagueness),
+research_agent/modes.py (list_modes), tests/conftest.py (db/committed_db fixtures),
+scripts/lint_mcp_parity.py (web checks activate once web.py exists).
 
-Scrutinize: all MCP storage paths use report_key/Postgres; injected-connection ownership and
-short pool borrows (especially no connection held during Anthropic calls); async run_research
-DB save is offloaded; ConfigError/StateError become non-leaking ToolError; key validation
-matches the planned character contract; the three interim file shims and legacy call sites are
-fully gone; all 8 MCP tool names and non-storage behavior remain compatible; and the extended
-lint meaningfully enforces active CLI/MCP storage parity without prematurely implementing
-Session 5. Check for scope drift into Sessions 5–6 and files that should not have changed.
+Implement Session 5: create research_agent/web.py (FastAPI; plain `def` routes so FastAPI
+threadpools them → call sync storage directly; lifespan opens/closes the pool on app.state;
+a get_conn yield-dependency borrows via db.pooled_connection()):
+- POST /research → validate with check_query_vagueness at POST (vague → 400, no job created);
+  insert a queued jobs row; return 202 + job UUID (+ Location header).
+- GET /jobs/{id:uuid} → auto-422 on malformed uuid / 404 unknown / running → status only /
+  done → status + report content.
+- GET /reports (list) and GET /reports/{key} (404 unknown).
+- GET /health → liveness only, NO DB ping; GET /health/ready → pings DB.
+- GET /modes → reuse list_modes() (not the MCP tool).
+- Central exception handlers: VagueQueryError → 400, not-found → 404,
+  OperationalError/PoolTimeout (and StateError/ConfigError) → 503.
+- RENDER-BOUNDARY ESCAPING (S3 P2 feed-forward): query/content/error are stored VERBATIM; the
+  web layer does the escaping. Return them as JSON (application/json, no HTML interpolation);
+  if any HTML/Markdown view exists, HTML-escape query/error and render report Markdown through
+  a sanitizing renderer (no raw HTML passthrough).
+- Add the research-agent-web entry point to pyproject.
 
-Verification already passed: python3 -m pytest tests/ -q -> 1168 passed;
-python3 scripts/lint_mcp_parity.py -> 8/8 plus CLI/MCP Postgres parity.
-
-Return findings ordered P0/P1/P2 plus a Claude Code fix prompt that instructs Claude Code to
-apply fixes, run a second review of its own changes, and report remaining risks before the task
-is complete. Do not implement fixes in the review session.
+Acceptance (TestClient vs a test DB): POST valid → 202 + queued job UUID; vague → 400, no job;
+GET unknown job → 404; malformed uuid → 422; DB down → 503; a query containing
+`<script>alert(1)</script>` is stored byte-identical (verbatim at rest) and returned
+escaped/non-executable, never as live markup. Extend scripts/lint_mcp_parity.py's web checks.
+Run python3 -m pytest tests/ -q and python3 scripts/lint_mcp_parity.py. Do only Session 5 —
+commit and stop.
 ```
 
 Session 1 review residuals (still open, none block S5): disposable-DB guard is convention-based;
