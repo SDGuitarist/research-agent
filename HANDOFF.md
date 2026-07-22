@@ -1,8 +1,8 @@
 # HANDOFF — Research Agent
 
 **Date:** 2026-07-22
-**Phase:** Work — **Session 6 COMPLETE**; next is independent Session 6 code review
-**Branch:** `feat/headless-service-core` — Session 6 in `c122e0d` (unpushed); S1–S5 reviewed clean
+**Phase:** Work — **Session 6 reviewed CLEAN** (Codex + Claude Code); next is Session 7 (Deploy + DoD)
+**Branch:** `feat/headless-service-core` — Session 6 in `c122e0d`, reviewed clean; S1–S5 reviewed clean
 **Tests:** 1193 pass · MCP lint 8/8 + Postgres storage parity for CLI/MCP/web/worker
 
 > ⚠️ **Concurrency note (2026-07-21):** Session 2 was worked by **two sessions in parallel** on
@@ -86,6 +86,48 @@ parity lint 8/8 + 4 consumers.**
   Fine for Phase A (Railway restarts the process; the lost-claim guard makes a late finish safe),
   but the review should confirm this single-worker liveness gap is acceptable and that no test
   silently depends on wall-clock timing.
+
+### Session 6 Review (independent, two-pass) — CLEAN ✅
+
+- **Codex (first pass, read-only):** `c122e0d` vs `46e1bc1` — no P0/P1/P2. `pytest` 1193/1193,
+  parity lint 8/8 (cli/mcp/web/worker), `git diff --check` clean.
+- **Claude Code (second pass, read-only, adversarial self-review):** re-verified the load-bearing
+  properties against the committed code; **no P0/P1/P2, no code changes.** Re-ran
+  `tests/test_worker.py` (16/16) + parity lint (8/8 + 4 consumers); HEAD `91e05a1`, worktree clean.
+
+Confirmed: `finish_job` is one transaction with the owner-checked `UPDATE` FIRST and a rowcount
+guard raising `ClaimLost` *before* `save_report`, so the reaper double-run race (A stalls → reaper
+requeues → B claims+finishes → A's stale finish) yields ClaimLost + rollback → no orphan, no
+duplicate. Reusing `save_report` (which raises on a `job_id` conflict) instead of `ON CONFLICT DO
+NOTHING` is a **safe stricter backstop**: Postgres names the job_id UNIQUE constraint
+`reports_job_id_key` (no `report_key` substring → save_report raises, not retried), while the
+report_key constraint `reports_report_key_key` does contain it (→ retried) — the invariant holds by
+construction. `claim_next_job` is a single SKIP-LOCKED statement, `attempts+1` at claim, agent never
+inside the claim txn. Heartbeat is `claim_id`-guarded (zombie → 0 rows), stopped in `finally` before
+the terminal write; no heartbeat/finish deadlock (single-row lock; a blocked tick no-ops once status
+flips). Reaper predicates are disjoint (`attempts < max` vs `≥ max`), leave `attempts` untouched, and
+skip fresh jobs. Pool `max_size=2` is never exceeded by the worker (main thread holds no connection
+during the run; heartbeat stopped before finish borrows). Injected-conn/caller-owns-txn preserved (no
+`conn.commit()`); the autocommit-pool + `with conn.transaction()` path is exercised by the app-pool
+integration tests. No scope drift into Session 7.
+
+**Remaining risks (accepted for Phase A; Session 7 to verify/close):**
+1. **Single-worker self-reap (explicitly assessed):** a lone worker that dies mid-job leaves the job
+   `running` until the process restarts and its poll loop runs the reaper. **Correctness is safe** —
+   the lost-claim guard means late recovery produces no orphan/duplicate — but recovery *latency* =
+   Railway restart + up to the 90s lease. If the process stays down (crash loop / failed deploy) no
+   reaper runs and the job sits `running` indefinitely (`GET /jobs/{id}` shows `running`). Documented
+   Phase-C fix: move the reaper to **pg_cron** (runs in Postgres, independent of the worker), which the
+   plan already recommends. Session 7 DoD should kill the worker mid-job and confirm
+   restart→reaper→requeue→completion.
+2. **No SIGTERM handler:** a Railway redeploy sends SIGTERM; Python's default handler does not raise
+   `KeyboardInterrupt`, so `main()`'s `finally: close_pool()` is skipped and an in-flight job stays
+   `running` (reaper recovers on the new instance). Safe but unclean on every deploy. Session 7 should
+   add a minimal SIGTERM → `run_forever(stop=…)` handler (let the current poll finish) or explicitly
+   accept ungraceful-kill + reaper recovery.
+3. **Keys not startup-validated:** `main()` fails fast on `DATABASE_URL` (open_pool) but not on
+   `ANTHROPIC_API_KEY`/`TAVILY_API_KEY`; a keyless worker marks each claimed job `failed` with a clear
+   error rather than refusing to boot. Session 7 shared-env config must include both keys.
 
 ## Session 4 — MCP parity cutover: COMPLETE ✅
 
@@ -480,51 +522,45 @@ commit and stop.
 Session 1 review residuals (still open, none block S5): disposable-DB guard is convention-based;
 open_pool doesn't close a half-open pool on failure (latent until S5–6).
 
-> Session 6 (Worker + reaper) is DONE (`c122e0d`, unpushed) and its kickoff prompt has been
-> consumed. Next is the independent Session 6 code review.
+> Session 6 (Worker + reaper) is DONE (`c122e0d`) and REVIEWED CLEAN — Codex first pass + Claude
+> Code second pass, see "Session 6 Review" above. All of S1–S6 are now reviewed clean. Next (and
+> final) is Session 7 (Deploy + DoD).
 
-### Prompt for Next Session (Session 6 — independent code review)
+### Prompt for Next Session (Session 7 — Deploy + DoD)
 
 ```
 Work in /Users/alejandroguillen/Projects/research-agent
-Branch: feat/headless-service-core
-Expected live HEAD: c122e0d, or a HANDOFF/docs-only commit directly on top of it.
+Branch: feat/headless-service-core · HEAD = the S6-review docs commit on top of c122e0d.
 
-FIRST: confirm the branch is settled by running `git log --oneline -3` and
-`git status --short`. Expect implementation commit c122e0d and a clean worktree. A running
-Claude/Codex process is not another writer; block only if HEAD moved unexpectedly or the
-worktree is dirty.
+FIRST: confirm the branch is settled — `git log --oneline -3` and `git status --short`. Expect the
+S6-review docs commit on top of c122e0d and a clean worktree. One writer per branch: stop and ask
+if HEAD moved or the worktree is dirty. Do only Session 7 — it is the LAST session of Phase A.
 
-Perform a read-only independent code review of Session 6. Review commit c122e0d against diff
-base 46e1bc1. Do not edit files, implement fixes, commit, or begin Session 7.
+Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — "Session 7 — Deploy + DoD",
+Implementation Notes §6 (Railway) and §3 (Supabase session pooler, port 5432) — plus HANDOFF.md
+"Session 6" + "Session 6 Review" (the three remaining risks below are Session 7's to close).
+Relevant files: research_agent/migrate.py, migrations/001_init.sql,
+research_agent/{web,worker}.py, pyproject.toml [project.scripts], README.md/CLAUDE.md,
+.env.example (new). The `use-railway` and `supabase` skills are available.
 
-Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — "Session 6 — Worker + reaper",
-"The transaction boundaries", Implementation Notes §1 (claim/heartbeat/finish/reaper), and the
-EARS crash/concurrency criteria — plus HANDOFF.md Session 6 + its Feed-Forward.
+Deploy is infra-driven — some steps need Alejandro's Railway/Supabase dashboards + secrets; do the
+repo-side config, then pause for the human steps.
+- Two Railway services from one repo: railway.web.json (uvicorn --host 0.0.0.0 --port $PORT,
+  healthcheckPath:/health, preDeployCommand: python -m research_agent.migrate, restart ON_FAILURE)
+  and railway.worker.json (research-agent-worker start, NO healthcheck, ON_FAILURE, 1 replica,
+  App Sleeping OFF, no PORT).
+- Project shared env on BOTH services: DATABASE_URL (Supabase SESSION pooler :5432, NOT the 6543
+  transaction pooler), ANTHROPIC_API_KEY, TAVILY_API_KEY. Add .env.example documenting them.
+- Supabase project + apply migrations (migrate.py runs via the web preDeployCommand only).
+- Close the Session 6 Review risks: (a) add a SIGTERM → run_forever(stop=…) handler to the worker
+  for graceful redeploys; (b) confirm both API keys are in the worker's env (not just the web's);
+  (c) exercise kill-worker-mid-job → restart → reaper requeue → completion on the deployed stack.
+- DoD smoke (deployed, mock search + LIVE Claude — Tavily key still parked): curl $API/health → 200;
+  POST /research → job UUID; worker runs it; GET /jobs/{id} → done + report content.
 
-The Session 6 implementation changed only research_agent/worker.py, tests/test_worker.py,
-pyproject.toml, and scripts/lint_mcp_parity.py. Scrutinize:
-1. claim_next_job: single-statement FOR UPDATE SKIP LOCKED, attempts incremented AT claim, the
-   agent never runs inside the claim txn; two workers never claim the same job.
-2. finish_job: ONE transaction, owner-checked UPDATE FIRST guarded on rowcount → raise ClaimLost
-   → rollback → NO orphan report; save_report shares the txn (nested savepoint); a job_id conflict
-   rolls back rather than duplicating. Confirm report exists ⇔ job done by its rightful owner, and
-   that reusing save_report (raise-on-job_id-conflict) instead of ON CONFLICT DO NOTHING preserves
-   the exactly-one-report-per-done-job invariant under the reaper double-run race.
-3. Heartbeat: claim_id-guarded UPDATE on a daemon thread, ticks concurrently with the blocking run,
-   stopped (finally) before the terminal write; a requeued/zombie claim no-ops (0 rows).
-4. reap_stale_jobs: requeue running past the lease (attempts < max) vs → failed (attempts >= max)
-   are disjoint; attempts untouched by the reaper; fresh jobs left alone; lease-vs-heartbeat reasoning.
-5. fail_job: owner-checked, never a partial report; a lost claim returns False.
-6. process_one/poll_once: heartbeat always stopped (finally); the single justified worker-boundary
-   except Exception fails the job and keeps the loop alive; poll-cycle DB errors back off without
-   crashing; no partial report on any failure path.
-7. Injected-conn / caller-owns-txn discipline (each helper owns one short txn; no conn.commit());
-   pool usage never holds a slot across the run; entry point correct; worker added to the parity
-   lint; tests use committed_db (not rollback) and don't depend on wall-clock timing; no scope
-   drift into Session 7 (deploy). Flag the single-worker self-reap liveness gap (Feed-Forward).
+Pitfalls (plan §6): a healthcheck on the worker HANGS the deploy; the direct db host is IPv6-only
+(use the pooler); do NOT scale the worker >1; a Procfile does NOT create two Railway services.
 
-You may run python3 -m pytest tests/ -q and python3 scripts/lint_mcp_parity.py. Return P0/P1/P2
-findings only, ordered by severity, with exact file/line references and concise impact. If clean,
-say so and identify remaining verification risk. Do not implement anything.
+Run python3 -m pytest tests/ -q and python3 scripts/lint_mcp_parity.py for any repo-side changes.
+After the DoD smoke passes, Phase A is COMPLETE — write the compound/solution doc. Commit and stop.
 ```
