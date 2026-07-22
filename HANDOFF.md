@@ -1,9 +1,9 @@
 # HANDOFF — Research Agent
 
 **Date:** 2026-07-22
-**Phase:** Work — **Session 5 reviewed CLEAN**; next is Session 6 (Worker + reaper)
-**Branch:** `feat/headless-service-core` — Session 5 in `d248462`, reviewed clean; Session 4 reviewed clean in `ffea869`
-**Tests:** 1177 pass · MCP lint 8/8 + Postgres storage parity for CLI/MCP/web
+**Phase:** Work — **Session 6 COMPLETE**; next is independent Session 6 code review
+**Branch:** `feat/headless-service-core` — Session 6 in `c122e0d` (unpushed); S1–S5 reviewed clean
+**Tests:** 1193 pass · MCP lint 8/8 + Postgres storage parity for CLI/MCP/web/worker
 
 > ⚠️ **Concurrency note (2026-07-21):** Session 2 was worked by **two sessions in parallel** on
 > this branch (a handoff that ran concurrently instead of sequentially). It resolved cleanly —
@@ -35,6 +35,57 @@ Turning the research-agent CLI into a **deployed internal web service** (FastAPI
 - **Plan Review (Codex): DONE.** Two findings folded into the plan — P1 finish-txn orphan-report (raise/rollback on lost claim) and P2 `report_key` collision-proof derivation (`slug-{uuid8}`). Plus a self-review fix (heartbeat daemon thread). No P0/P1 remained.
 - **Session 1 (Foundations): DONE** (commit `3a379c0`). Files: `config.py`, `db.py`, `migrate.py`, `migrations/001_init.sql`, `errors.py` (+`ConfigError`), `tests/conftest.py` (opt-in Postgres fixtures), `tests/test_{config,migrate,db}.py`. Deps added: `psycopg[binary,pool]`, `testcontainers[postgres]` (fastapi/uvicorn already present). DB tests run against a real Postgres via testcontainers (Docker).
 - **Session 1 Code Review (Codex → fixes): DONE.** Applied 3 fixes — thread-safe `open_pool()` (double-checked lock), stricter test-DB disposability guard (checks the *database name*, not a URL substring), and correct pool-reset order (close-then-clear). +7 guard regression tests. **1141 tests pass; MCP lint 8/8.**
+
+## Session 6 — Worker + reaper: COMPLETE ✅
+
+- **`c122e0d`** adds `research_agent/worker.py`: a sync poll loop that drains the Postgres
+  `jobs` queue out-of-band so research outlives the request and survives restarts. Each queue
+  helper takes an injected `conn` and owns ONE short transaction, so behaviour is identical on
+  the autocommit production pool and on non-autocommit test connections. Also adds the
+  `research-agent-worker` entry point and a `worker` entry in `scripts/lint_mcp_parity.py`
+  (shared `save_report` now enforced across CLI/MCP/web/worker).
+- `claim_next_job` — one short txn, single-statement `FOR UPDATE SKIP LOCKED`, `attempts+1` AT
+  claim (poison jobs hit their cap); the agent NEVER runs inside the claim txn.
+- `process_one` — `asyncio.run(run_research_async(query, mode))` per job with a **claim_id-guarded
+  heartbeat daemon thread** ticking `heartbeat_at` (~20s) concurrently with the blocking run; the
+  heartbeat is stopped (finally) before the terminal DB write. A single justified worker-boundary
+  `except Exception` marks the job failed and keeps the loop alive.
+- `finish_job` — ONE `with conn.transaction():`: owner-checked `UPDATE ... WHERE id=%s AND
+  claim_id=%s AND status='running'` guarded on rowcount → `raise ClaimLost` (rolls back → NO
+  orphan report), then `save_report(...)` in the SAME txn (nested savepoint). Reuses the shared
+  store; a `job_id` conflict rolls the whole finish back rather than duplicating a report.
+- `fail_job` — owner-checked `failed` + error text, never a partial report.
+- `reap_stale_jobs` — requeue `running` past the lease (`heartbeat_at < now()-90s`,
+  `attempts < max_attempts`), `→ failed` past `max_attempts`; disjoint predicates so the two
+  statements never touch the same row. Poll-loop step (pg_cron is an optional Phase C swap).
+
+**Acceptance met (real Postgres, `tests/test_worker.py` on `committed_db` — NOT the rollback
+fixture):** claim increments attempts + sets running; two concurrent workers → a single winner
+(SKIP LOCKED); finish → done + exactly one report; retry-finish → `ClaimLost`, no duplicate;
+**lost-claim finish leaves NO orphan report**; reaper requeues stale / fails past max_attempts /
+leaves fresh jobs alone; heartbeat advances and no-ops on a zombie `claim_id`; stubbed
+`process_one`/`poll_once` drive enqueue → done + report and research-error → failed. **1193 pass;
+parity lint 8/8 + 4 consumers.**
+
+### Feed-Forward (Session 6)
+
+- **Hardest decision:** reusing `save_report` inside the finish transaction instead of a bespoke
+  `INSERT ... ON CONFLICT (job_id) DO NOTHING`. The plan's snippet shows ON-CONFLICT, but the real
+  one-report-per-done-job guarantee is the owner-checked UPDATE-first + rollback: the first finish
+  flips status to `done`, so every other finish matches 0 rows → `ClaimLost` → `save_report` is
+  never even attempted. Reusing the shared store keeps `report_key` derivation + verbatim storage
+  identical across all four consumers and makes save_report's raise-on-job_id-conflict a stricter
+  backstop (surfaces an invariant breach rather than silently ignoring it).
+- **Rejected alternatives:** a raw INSERT in the worker (diverges from the shared store, duplicates
+  key logic, weakens the parity lint); holding a pool connection across the 30–180s run
+  (idle-in-transaction + pooler pinning); a heartbeat that keeps one connection for the whole run
+  (it borrows per-tick instead, slot-light); a pg_cron reaper (deferred — a poll-loop step suffices
+  for one Phase-A worker).
+- **Least confident going into review:** the reaper runs only as a poll-loop step, so a **single**
+  worker that dies mid-job cannot reap its own stale job until the process restarts and polls again.
+  Fine for Phase A (Railway restarts the process; the lost-claim guard makes a late finish safe),
+  but the review should confirm this single-worker liveness gap is acceptable and that no test
+  silently depends on wall-clock timing.
 
 ## Session 4 — MCP parity cutover: COMPLETE ✅
 
@@ -429,53 +480,51 @@ commit and stop.
 Session 1 review residuals (still open, none block S5): disposable-DB guard is convention-based;
 open_pool doesn't close a half-open pool on failure (latent until S5–6).
 
-> Session 5 review is DONE (CLEAN — see "Session 5 Review" above) and its review prompt has
-> been consumed. Next is Session 6 (Worker + reaper).
+> Session 6 (Worker + reaper) is DONE (`c122e0d`, unpushed) and its kickoff prompt has been
+> consumed. Next is the independent Session 6 code review.
 
-### Prompt for Next Session (Session 6 — Worker + reaper)
+### Prompt for Next Session (Session 6 — independent code review)
 
 ```
 Work in /Users/alejandroguillen/Projects/research-agent
-Branch: feat/headless-service-core · HEAD = the S5-review docs commit on top of d248462.
+Branch: feat/headless-service-core
+Expected live HEAD: c122e0d, or a HANDOFF/docs-only commit directly on top of it.
 
-FIRST: confirm no other session / auto-continue is live on this branch — run
-`git log --oneline -3` and `git status --short`. Expect the S5-review docs commit on top of
-d248462 and a clean worktree before writing anything. Session 5 is reviewed-clean; do only
-Session 6. A running Claude/Codex process is not another writer; block only if HEAD moved
-unexpectedly or the worktree is dirty.
+FIRST: confirm the branch is settled by running `git log --oneline -3` and
+`git status --short`. Expect implementation commit c122e0d and a clean worktree. A running
+Claude/Codex process is not another writer; block only if HEAD moved unexpectedly or the
+worktree is dirty.
+
+Perform a read-only independent code review of Session 6. Review commit c122e0d against diff
+base 46e1bc1. Do not edit files, implement fixes, commit, or begin Session 7.
 
 Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — "Session 6 — Worker + reaper",
-Implementation Notes §1 (Postgres queue: claim/heartbeat/finish/reaper SQL snippets), "The
-transaction boundaries" section, and the EARS crash/concurrency criteria — plus HANDOFF.md
-(Session 5 + Session 5 Review). Relevant files: research_agent/worker.py (new),
-research_agent/db.py (pooled_connection; pool is sync + autocommit=True),
-research_agent/report_store.py (save_report — one report per job, ON CONFLICT job_id),
-research_agent/agent.py (research_async — the coroutine the worker runs per job),
-tests/conftest.py (committed_db + TRUNCATE fixture for SKIP-LOCKED concurrency — the db
-rollback fixture CANNOT test committed cross-connection claims), scripts/lint_mcp_parity.py,
-pyproject.toml (add the research-agent-worker entry point).
+"The transaction boundaries", Implementation Notes §1 (claim/heartbeat/finish/reaper), and the
+EARS crash/concurrency criteria — plus HANDOFF.md Session 6 + its Feed-Forward.
 
-Implement Session 6 — a sync poll loop; NEVER run the agent inside the claim txn:
-- claim_next_job: short txn — UPDATE jobs SET status='running', attempts=attempts+1,
-  claim_id=gen_random_uuid(), claimed_at=now(), heartbeat_at=now()
-  WHERE id=(SELECT id FROM jobs WHERE status='queued' ORDER BY created_at
-  FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *  — commit, release the lock.
-- run: asyncio.run(research_async(job.query, mode)) (30–180s) with a heartbeat DAEMON thread
-  (its own pooled conn; claim_id-guarded UPDATE heartbeat_at every ~15–30s) started before and
-  stopped after the blocking run.
-- finish_job: ONE `with conn.transaction():` — owner-checked UPDATE jobs SET status='done',
-  finished_at=now() WHERE id=$1 AND claim_id=$2 AND status='running'; if rowcount==0 raise
-  ClaimLost (aborts the txn → NO orphan report); then INSERT reports (...) ON CONFLICT (job_id)
-  DO NOTHING. On ClaimLost, log and discard the result.
-- fail_job: set status='failed' + error; never a partial report.
-- reaper: requeue 'running' where heartbeat_at < now()-interval '90s', → 'failed' past
-  max_attempts (a poll-loop step is fine for Phase A; pg_cron is optional). Poll backoff 2–5s idle.
-- Entry point research-agent-worker in pyproject.
+The Session 6 implementation changed only research_agent/worker.py, tests/test_worker.py,
+pyproject.toml, and scripts/lint_mcp_parity.py. Scrutinize:
+1. claim_next_job: single-statement FOR UPDATE SKIP LOCKED, attempts incremented AT claim, the
+   agent never runs inside the claim txn; two workers never claim the same job.
+2. finish_job: ONE transaction, owner-checked UPDATE FIRST guarded on rowcount → raise ClaimLost
+   → rollback → NO orphan report; save_report shares the txn (nested savepoint); a job_id conflict
+   rolls back rather than duplicating. Confirm report exists ⇔ job done by its rightful owner, and
+   that reusing save_report (raise-on-job_id-conflict) instead of ON CONFLICT DO NOTHING preserves
+   the exactly-one-report-per-done-job invariant under the reaper double-run race.
+3. Heartbeat: claim_id-guarded UPDATE on a daemon thread, ticks concurrently with the blocking run,
+   stopped (finally) before the terminal write; a requeued/zombie claim no-ops (0 rows).
+4. reap_stale_jobs: requeue running past the lease (attempts < max) vs → failed (attempts >= max)
+   are disjoint; attempts untouched by the reaper; fresh jobs left alone; lease-vs-heartbeat reasoning.
+5. fail_job: owner-checked, never a partial report; a lost claim returns False.
+6. process_one/poll_once: heartbeat always stopped (finally); the single justified worker-boundary
+   except Exception fails the job and keeps the loop alive; poll-cycle DB errors back off without
+   crashing; no partial report on any failure path.
+7. Injected-conn / caller-owns-txn discipline (each helper owns one short txn; no conn.commit());
+   pool usage never holds a slot across the run; entry point correct; worker added to the parity
+   lint; tests use committed_db (not rollback) and don't depend on wall-clock timing; no scope
+   drift into Session 7 (deploy). Flag the single-worker self-reap liveness gap (Feed-Forward).
 
-Acceptance (real Postgres, tests/test_worker.py — use committed_db, NOT the rollback fixture):
-enqueue → tick → done + exactly one report; 2 workers → distinct jobs (SKIP LOCKED);
-killed-mid-job (injected delay) → reaper requeues within one lease; retry doesn't duplicate the
-report; lost-claim finish leaves NO orphan report (test_lost_claim_no_orphan_report). Run
-`python3 -m pytest tests/ -q` and `python3 scripts/lint_mcp_parity.py`. Do only Session 6 —
-commit and stop. Do NOT proceed to Session 7.
+You may run python3 -m pytest tests/ -q and python3 scripts/lint_mcp_parity.py. Return P0/P1/P2
+findings only, ordered by severity, with exact file/line references and concise impact. If clean,
+say so and identify remaining verification risk. Do not implement anything.
 ```
