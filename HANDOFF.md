@@ -1,9 +1,9 @@
 # HANDOFF — Research Agent
 
 **Date:** 2026-07-21
-**Phase:** Work — **Session 4 COMPLETE + reviewed clean (Claude Code)**; next is Session 5 (FastAPI web service)
-**Branch:** `feat/headless-service-core` (pushed) — Session 4 in `dc0e495`; S3 review fixes in `a3e04af` and `30594e3`; Session 3 in `1d9856e` and `83b1d2f`
-**Tests:** 1168 pass · MCP lint 8/8 + Postgres storage parity for CLI/MCP
+**Phase:** Work — **Session 5 COMPLETE**; next is independent Session 5 code review
+**Branch:** `feat/headless-service-core` — Session 5 in `d248462`; Session 4 reviewed clean in `ffea869`
+**Tests:** 1177 pass · MCP lint 8/8 + Postgres storage parity for CLI/MCP/web
 
 > ⚠️ **Concurrency note (2026-07-21):** Session 2 was worked by **two sessions in parallel** on
 > this branch (a handoff that ran concurrently instead of sequentially). It resolved cleanly —
@@ -93,6 +93,46 @@ report — consistent with CLI fail-fast, revisit UX in S5; (2) the parity lint 
 not argument semantics — S5 web integration tests must assert verbatim-at-rest/render-safe;
 (3) pre-existing (not S4): `report_store.get_auto_save_path` is now dead production code
 (tests-only) since S3 moved auto-save to the DB — candidate for a future cleanup.
+
+## Session 5 — FastAPI web service: COMPLETE ✅
+
+- **`d248462`** adds `research_agent/web.py` with plain synchronous FastAPI routes, an
+  application lifespan that opens/closes the shared pool on `app.state`, and an injected
+  `get_conn` yield dependency backed by `db.pooled_connection()`.
+- `POST /research` validates with `check_query_vagueness` before connection checkout, inserts
+  a `queued` job, and returns 202 with its UUID and `Location`. Job lookup uses a UUID path
+  type (malformed → 422), returns 404 for unknown IDs, status-only payloads while queued or
+  running, failure error text for failed jobs, and report key/content for done jobs.
+- Report list/detail routes reuse `get_reports`/`get_report` and expose canonical
+  `report_key`; `/health` is DB-free liveness, `/health/ready` executes `SELECT 1`, and
+  `/modes` reuses the public `list_modes()` function.
+- Central handlers map vague queries → 400, missing resources → 404, and
+  `OperationalError`/`PoolTimeout`/`StateError`/`ConfigError` → a non-leaking 503 response.
+- The service has JSON routes only. Query/content/error stay byte-identical at rest and are
+  returned as `application/json` data; no HTML or Markdown renderer exists in Session 5.
+- Added the `research-agent-web` entry point and 9 TestClient integration tests against the
+  rollback-isolated real Postgres fixture. Adding `web.py` activated the existing parity-lint
+  web checks.
+
+**Acceptance met:** valid POST → queued UUID + Location; vague → 400 and no row; unknown job
+→ 404; malformed UUID → 422; DB failure → 503; verbatim script-like query/content stays
+unchanged in Postgres and is returned only as non-executable JSON; **1177 tests pass**;
+parity lint checks CLI/MCP/web.
+
+### Feed-Forward (Session 5)
+
+- **Hardest decision:** guaranteeing vague-query validation happens before the database is
+  borrowed while retaining FastAPI dependency injection. The request validation is its own
+  dependency and appears before `get_conn`; a DB-down test pins vague → 400 before checkout.
+- **Rejected alternatives:** `async def` routes around sync psycopg (would block the event
+  loop); direct connection management in every route (duplicates lifecycle/error behavior);
+  an HTML/Markdown view (creates a sanitizer surface Phase A does not need); a new job
+  repository abstraction before Session 6 defines the queue operations.
+- **Least confident:** JSON `application/json` makes verbatim `<script>` strings data rather
+  than executable markup, as the plan requires, but it intentionally does not mutate or
+  HTML-entity-escape the returned string. The independent review should verify that this
+  boundary remains safe for the intended browser consumer and that no content-sniffing or
+  future interpolation assumption requires an additional response header.
 
 ## Session 2 — Gaps → DB: COMPLETE ✅ (`verify_first` satisfied)
 
@@ -300,10 +340,9 @@ a connection failure per the fix's contract.
   unavailable (warning-logged, pipeline continues) — right locally, but a deploy misconfig loses
   critique data quietly.
 
-> Session 4 review is DONE (Claude Code, clean — see "Session 4 Review" above). The next
-> step is Session 5 implementation.
+> Session 4 review is DONE and the Session 5 implementation below has been consumed.
 
-### Prompt for Next Session (Session 5 — FastAPI web service)
+### Consumed Prompt (Session 5 — FastAPI web service)
 
 ```
 Work in /Users/alejandroguillen/Projects/research-agent
@@ -351,3 +390,44 @@ commit and stop.
 
 Session 1 review residuals (still open, none block S5): disposable-DB guard is convention-based;
 open_pool doesn't close a half-open pool on failure (latent until S5–6).
+
+### Prompt for Next Session (Session 5 — independent code review)
+
+```
+Work in /Users/alejandroguillen/Projects/research-agent
+Branch: feat/headless-service-core
+Expected live HEAD: d248462, or a HANDOFF/docs-only commit directly on top of it.
+
+FIRST: confirm the branch is settled by running `git log --oneline -3` and
+`git status --short`. Expect implementation commit d248462 and a clean worktree. A running
+Claude or Codex process is not evidence of another writer; block only if HEAD moved
+unexpectedly or the worktree is dirty.
+
+Perform a read-only independent code review of Session 5. Review commit d248462 against diff
+base a9cb47c. Do not edit files, implement fixes, commit, or begin Session 6.
+
+Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — Session 5, Implementation
+Notes §4, the render-boundary escaping requirement under What must NOT change, and EARS —
+plus HANDOFF.md Session 4 Review and Session 5.
+
+The Session 5 implementation changed only research_agent/web.py, pyproject.toml, and
+tests/test_web.py. Scrutinize:
+1. POST /research validates vagueness before borrowing a connection or inserting a row.
+2. Lifespan pool ownership on app.state, the pooled_connection-backed get_conn yield
+   dependency, caller-owned transactions, and plain def database routes.
+3. Vague → 400, missing → 404, malformed UUID → 422, and DB/config/pool failures → a
+   non-leaking 503.
+4. Query/content/error remain verbatim at rest and are returned only as application/json
+   data. Verify script-like strings cannot execute and no HTML/Markdown renderer exists.
+5. Exact status-dependent job payloads, canonical report_key behavior, report list/detail,
+   DB-free /health, DB-pinging /health/ready, and reuse of the public list_modes() function
+   rather than the MCP tool.
+6. Adding web.py actually activates useful CLI/MCP/web storage checks in
+   scripts/lint_mcp_parity.py, including its known import+call semantic blind spot.
+7. The research-agent-web entry point, test coverage, pool cleanup, and any scope drift into
+   Session 6.
+
+You may run python3 -m pytest tests/ -q and python3 scripts/lint_mcp_parity.py. Return P0/P1/P2
+findings only, ordered by severity, with exact file and line references and concise impact. If
+clean, say so and identify remaining verification risk. Do not implement anything.
+```
