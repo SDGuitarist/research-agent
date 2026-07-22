@@ -1,8 +1,8 @@
 # HANDOFF — Research Agent
 
-**Date:** 2026-07-21
-**Phase:** Work — **Session 5 COMPLETE**; next is independent Session 5 code review
-**Branch:** `feat/headless-service-core` — Session 5 in `d248462`; Session 4 reviewed clean in `ffea869`
+**Date:** 2026-07-22
+**Phase:** Work — **Session 5 reviewed CLEAN**; next is Session 6 (Worker + reaper)
+**Branch:** `feat/headless-service-core` — Session 5 in `d248462`, reviewed clean; Session 4 reviewed clean in `ffea869`
 **Tests:** 1177 pass · MCP lint 8/8 + Postgres storage parity for CLI/MCP/web
 
 > ⚠️ **Concurrency note (2026-07-21):** Session 2 was worked by **two sessions in parallel** on
@@ -133,6 +133,44 @@ parity lint checks CLI/MCP/web.
   HTML-entity-escape the returned string. The independent review should verify that this
   boundary remains safe for the intended browser consumer and that no content-sniffing or
   future interpolation assumption requires an additional response header.
+
+### Session 5 Review (Claude Code, independent) — CLEAN ✅
+
+Second-agent read-only review of `d248462` against diff base `a9cb47c` (only
+`research_agent/web.py`, `pyproject.toml`, `tests/test_web.py` changed). **No P0/P1 findings;
+no edits made.** Independently re-ran the suite (**1177 pass**) and `lint_mcp_parity.py`
+(8/8 + CLI/MCP/web storage parity).
+
+Verified all 11 scrutiny points: vagueness validation resolves **before** `get_conn` (pinned
+by the DB-down→400 test — a broken connection still yields 400, not 503, proving no connection
+is borrowed for vague input); `lifespan` opens/closes the pool with fail-fast startup;
+`get_conn` is a `pooled_connection()`-backed yield dependency; all DB routes are plain `def`
+(threadpooled); `VagueQueryError`→400, `NotFoundError`→404, path-uuid→422, and
+`OperationalError`/`PoolTimeout`/`StateError`/`ConfigError`→ non-leaking 503 (secret detail
+never in the body); JSON-only surface with **no HTML/Markdown renderer** — `<script>`
+query/content stored byte-identical and returned as `application/json` data; exact
+status-dependent job payloads (queued/running→status only, failed→+error, done→+report_key/
+content); canonical `report_key` list/detail; DB-free `/health` vs DB-pinging `/health/ready`;
+`/modes` reuses the public `list_modes()` (not the MCP tool); the `research-agent-web` entry
+point + pool lifecycle; and no Session 6 worker/claim/reaper/heartbeat scope drift.
+
+**One P2 (defense-in-depth, non-blocking — the item S5's Feed-Forward flagged):** the JSON
+responses carry no `X-Content-Type-Options: nosniff` header. Not a live vulnerability today
+(modern browsers don't MIME-sniff an explicit `application/json` body into executable HTML,
+and the payload is JSON-string-encoded), so the plan's stated acceptance — content-type
+`application/json`, no HTML interpolation — is met as written. Adding `nosniff` is cheap
+insurance before **Phase B** puts a browser UI in front of these endpoints; carry it into Phase B.
+
+Accepted verification risks (non-blocking): (1) validate-before-borrow holds by parameter order
+and is locked only by the DB-down→400 test — a future param reorder would regress it silently;
+(2) rollback-per-test observes the INSERT on the injected connection, so it proves the write
+happens, not that the production `autocommit=True` pool commits it (covered by S1 pool tests);
+(3) missing-`DATABASE_URL` fail-fast rides on `lifespan → open_pool()` but is not web-tested
+(S1 config/db tests cover the mechanism); (4) `get_job`'s LEFT JOIN would return null
+`report_key/content` for a `done` job with no report — impossible in Phase A (the app never
+sets `done`; S6's finish-txn enforces report ⇔ done), re-verify after S6; (5) the parity lint
+proves import+call presence, not argument semantics or call-site — the verbatim/render-safe
+guarantee is proven by the integration tests, not the lint.
 
 ## Session 2 — Gaps → DB: COMPLETE ✅ (`verify_first` satisfied)
 
@@ -391,43 +429,53 @@ commit and stop.
 Session 1 review residuals (still open, none block S5): disposable-DB guard is convention-based;
 open_pool doesn't close a half-open pool on failure (latent until S5–6).
 
-### Prompt for Next Session (Session 5 — independent code review)
+> Session 5 review is DONE (CLEAN — see "Session 5 Review" above) and its review prompt has
+> been consumed. Next is Session 6 (Worker + reaper).
+
+### Prompt for Next Session (Session 6 — Worker + reaper)
 
 ```
 Work in /Users/alejandroguillen/Projects/research-agent
-Branch: feat/headless-service-core
-Expected live HEAD: d248462, or a HANDOFF/docs-only commit directly on top of it.
+Branch: feat/headless-service-core · HEAD = the S5-review docs commit on top of d248462.
 
-FIRST: confirm the branch is settled by running `git log --oneline -3` and
-`git status --short`. Expect implementation commit d248462 and a clean worktree. A running
-Claude or Codex process is not evidence of another writer; block only if HEAD moved
+FIRST: confirm no other session / auto-continue is live on this branch — run
+`git log --oneline -3` and `git status --short`. Expect the S5-review docs commit on top of
+d248462 and a clean worktree before writing anything. Session 5 is reviewed-clean; do only
+Session 6. A running Claude/Codex process is not another writer; block only if HEAD moved
 unexpectedly or the worktree is dirty.
 
-Perform a read-only independent code review of Session 5. Review commit d248462 against diff
-base a9cb47c. Do not edit files, implement fixes, commit, or begin Session 6.
+Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — "Session 6 — Worker + reaper",
+Implementation Notes §1 (Postgres queue: claim/heartbeat/finish/reaper SQL snippets), "The
+transaction boundaries" section, and the EARS crash/concurrency criteria — plus HANDOFF.md
+(Session 5 + Session 5 Review). Relevant files: research_agent/worker.py (new),
+research_agent/db.py (pooled_connection; pool is sync + autocommit=True),
+research_agent/report_store.py (save_report — one report per job, ON CONFLICT job_id),
+research_agent/agent.py (research_async — the coroutine the worker runs per job),
+tests/conftest.py (committed_db + TRUNCATE fixture for SKIP-LOCKED concurrency — the db
+rollback fixture CANNOT test committed cross-connection claims), scripts/lint_mcp_parity.py,
+pyproject.toml (add the research-agent-worker entry point).
 
-Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — Session 5, Implementation
-Notes §4, the render-boundary escaping requirement under What must NOT change, and EARS —
-plus HANDOFF.md Session 4 Review and Session 5.
+Implement Session 6 — a sync poll loop; NEVER run the agent inside the claim txn:
+- claim_next_job: short txn — UPDATE jobs SET status='running', attempts=attempts+1,
+  claim_id=gen_random_uuid(), claimed_at=now(), heartbeat_at=now()
+  WHERE id=(SELECT id FROM jobs WHERE status='queued' ORDER BY created_at
+  FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *  — commit, release the lock.
+- run: asyncio.run(research_async(job.query, mode)) (30–180s) with a heartbeat DAEMON thread
+  (its own pooled conn; claim_id-guarded UPDATE heartbeat_at every ~15–30s) started before and
+  stopped after the blocking run.
+- finish_job: ONE `with conn.transaction():` — owner-checked UPDATE jobs SET status='done',
+  finished_at=now() WHERE id=$1 AND claim_id=$2 AND status='running'; if rowcount==0 raise
+  ClaimLost (aborts the txn → NO orphan report); then INSERT reports (...) ON CONFLICT (job_id)
+  DO NOTHING. On ClaimLost, log and discard the result.
+- fail_job: set status='failed' + error; never a partial report.
+- reaper: requeue 'running' where heartbeat_at < now()-interval '90s', → 'failed' past
+  max_attempts (a poll-loop step is fine for Phase A; pg_cron is optional). Poll backoff 2–5s idle.
+- Entry point research-agent-worker in pyproject.
 
-The Session 5 implementation changed only research_agent/web.py, pyproject.toml, and
-tests/test_web.py. Scrutinize:
-1. POST /research validates vagueness before borrowing a connection or inserting a row.
-2. Lifespan pool ownership on app.state, the pooled_connection-backed get_conn yield
-   dependency, caller-owned transactions, and plain def database routes.
-3. Vague → 400, missing → 404, malformed UUID → 422, and DB/config/pool failures → a
-   non-leaking 503.
-4. Query/content/error remain verbatim at rest and are returned only as application/json
-   data. Verify script-like strings cannot execute and no HTML/Markdown renderer exists.
-5. Exact status-dependent job payloads, canonical report_key behavior, report list/detail,
-   DB-free /health, DB-pinging /health/ready, and reuse of the public list_modes() function
-   rather than the MCP tool.
-6. Adding web.py actually activates useful CLI/MCP/web storage checks in
-   scripts/lint_mcp_parity.py, including its known import+call semantic blind spot.
-7. The research-agent-web entry point, test coverage, pool cleanup, and any scope drift into
-   Session 6.
-
-You may run python3 -m pytest tests/ -q and python3 scripts/lint_mcp_parity.py. Return P0/P1/P2
-findings only, ordered by severity, with exact file and line references and concise impact. If
-clean, say so and identify remaining verification risk. Do not implement anything.
+Acceptance (real Postgres, tests/test_worker.py — use committed_db, NOT the rollback fixture):
+enqueue → tick → done + exactly one report; 2 workers → distinct jobs (SKIP LOCKED);
+killed-mid-job (injected delay) → reaper requeues within one lease; retry doesn't duplicate the
+report; lost-claim finish leaves NO orphan report (test_lost_claim_no_orphan_report). Run
+`python3 -m pytest tests/ -q` and `python3 scripts/lint_mcp_parity.py`. Do only Session 6 —
+commit and stop. Do NOT proceed to Session 7.
 ```
