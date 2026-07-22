@@ -113,6 +113,46 @@ Costs vary by research mode (using Claude Sonnet for summarization and synthesis
 - **Standard**: ~$0.20 per query
 - **Deep**: ~$0.50 per query
 
+## Deployment (Phase A — headless service)
+
+Beyond the CLI, the agent runs as a small always-on service: a **FastAPI web app**
+enqueues research jobs and a **separate worker** runs them out-of-band, so work
+outlives the request and survives restarts. State (reports, gaps, critiques) lives in
+Postgres (Supabase); the CLI and MCP server share the same database.
+
+```
+POST /research      -> 202 + {job_id}   (enqueue; vague queries -> 400)
+GET  /jobs/{id}     -> status; report content once done
+GET  /reports       -> list saved reports (by canonical report_key)
+GET  /reports/{key} -> a saved report's content
+GET  /health        -> liveness (no DB);  GET /health/ready -> pings the DB
+GET  /modes         -> the research modes
+```
+
+### Run locally
+
+```bash
+pip install -e ".[test]"
+cp .env.example .env               # fill in DATABASE_URL + API keys
+python -m research_agent.migrate   # apply the schema
+research-agent-web                 # FastAPI on :8000 (override with $PORT)
+research-agent-worker              # in a second shell: drains the job queue
+```
+
+### Deploy (Railway + Supabase)
+
+Two Railway services from this one repo, each pointing at its own config file:
+
+| Service | Config | Start command | Health check | Notes |
+|---------|--------|---------------|--------------|-------|
+| web    | `railway.web.json`    | `research-agent-web`    | `/health` | runs migrations via `preDeployCommand` |
+| worker | `railway.worker.json` | `research-agent-worker` | none      | 1 replica, App Sleeping OFF |
+
+Set `DATABASE_URL` (Supabase **session pooler**, port 5432), `ANTHROPIC_API_KEY`, and
+`TAVILY_API_KEY` as project **Shared Variables** on both services. Pitfalls: a health
+check on the worker hangs the deploy; the direct Supabase host is IPv6-only (use the
+pooler); don't scale the worker past 1 replica.
+
 ## License
 
 MIT

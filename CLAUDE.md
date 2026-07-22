@@ -34,6 +34,8 @@ research_agent/
 
 ## Running
 
+CLI:
+
 ```bash
 python3 main.py --quick "query"       # 4 sources, fast
 python3 main.py --standard "query"    # 10 sources, auto-saves
@@ -41,6 +43,14 @@ python3 main.py --deep "query"        # 12 sources, 2-pass with full summarize
 python3 main.py --standard "query" -v # Verbose logging
 python3 main.py --cost                # Show estimated costs
 python3 main.py --list                # List saved reports
+```
+
+Service (Phase A — headless):
+
+```bash
+python -m research_agent.migrate      # apply the Postgres schema (needs DATABASE_URL)
+research-agent-web                     # FastAPI: enqueue jobs + read reports (:8000 / $PORT)
+research-agent-worker                  # drains the job queue, runs research out-of-band
 ```
 
 ## Testing
@@ -60,7 +70,8 @@ pip install -e ".[test]"   # install package + test deps in editable mode
 ## Environment
 
 - Python 3.14
-- `.env` must contain: `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`
+- `.env` must contain: `DATABASE_URL` (Supabase session pooler, port 5432), `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`
+- Deploy: two Railway services (`railway.web.json` + `railway.worker.json`); see README "Deployment (Phase A)"
 - `contexts/` directory — optional research context files with YAML templates
 - All models use `claude-sonnet-4-20250514`
 

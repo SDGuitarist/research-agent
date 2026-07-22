@@ -329,17 +329,41 @@ def run_forever(
 
 def main() -> None:
     """Entry point for the research-agent-worker console script."""
-    from dotenv import load_dotenv
+    import signal
 
-    load_dotenv()
+    from research_agent.config import get_settings
+
+    settings = get_settings()  # loads .env once
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    # API keys are validated at point of use (a keyless worker fails each job with
+    # a clear error rather than refusing to boot), but warn loudly at startup so a
+    # misconfigured deploy is obvious in the logs instead of silently failing jobs.
+    for name, value in (
+        ("ANTHROPIC_API_KEY", settings.anthropic_api_key),
+        ("TAVILY_API_KEY", settings.tavily_api_key),
+    ):
+        if not value:
+            logger.warning("%s is not set — jobs will fail until it is configured.", name)
+
     open_pool()  # fail fast if DATABASE_URL is missing or Postgres is unreachable
+
+    stop = threading.Event()
+
+    def _request_shutdown(signum, _frame):
+        # SIGTERM (e.g. a Railway redeploy): stop after the current poll finishes.
+        # A job already running keeps running to completion; if the platform
+        # SIGKILLs before it finishes, the reaper requeues it on the next instance.
+        logger.info("Signal %s received; shutting down after the current poll.", signum)
+        stop.set()
+
+    signal.signal(signal.SIGTERM, _request_shutdown)
+
     try:
-        run_forever()
-    except KeyboardInterrupt:
+        run_forever(stop=stop)
+    except KeyboardInterrupt:  # local Ctrl-C: stop promptly
         logger.info("Worker interrupted; shutting down.")
     finally:
         close_pool()

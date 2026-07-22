@@ -337,3 +337,11 @@ def test_poll_once_claims_and_processes(app_pool, monkeypatch):
 
 def test_poll_once_returns_false_when_queue_empty(app_pool):
     assert worker.poll_once(heartbeat_interval=0.02) is False
+
+
+def test_run_forever_exits_when_stop_is_set():
+    """The SIGTERM handler sets this event; a set stop ends the loop promptly
+    (loop body never runs, so no pool/DB is needed)."""
+    stop = threading.Event()
+    stop.set()
+    worker.run_forever(stop=stop, poll_idle=0.01)  # returns immediately
