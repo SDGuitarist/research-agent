@@ -1,9 +1,9 @@
 # HANDOFF — Research Agent
 
 **Date:** 2026-07-22
-**Phase:** Work — **Session 6 reviewed CLEAN** (Codex + Claude Code); next is Session 7 (Deploy + DoD)
-**Branch:** `feat/headless-service-core` — Session 6 in `c122e0d`, reviewed clean; S1–S5 reviewed clean
-**Tests:** 1193 pass · MCP lint 8/8 + Postgres storage parity for CLI/MCP/web/worker
+**Phase:** Work — **Session 7 repo config DONE** (`1400a57`); deploy + DoD are human-gated (dashboards + secrets)
+**Branch:** `feat/headless-service-core` — Session 7 config in `1400a57` (pushed); S1–S6 reviewed clean
+**Tests:** 1194 pass · MCP lint 8/8 + Postgres storage parity for CLI/MCP/web/worker
 
 > ⚠️ **Concurrency note (2026-07-21):** Session 2 was worked by **two sessions in parallel** on
 > this branch (a handoff that ran concurrently instead of sequentially). It resolved cleanly —
@@ -35,6 +35,46 @@ Turning the research-agent CLI into a **deployed internal web service** (FastAPI
 - **Plan Review (Codex): DONE.** Two findings folded into the plan — P1 finish-txn orphan-report (raise/rollback on lost claim) and P2 `report_key` collision-proof derivation (`slug-{uuid8}`). Plus a self-review fix (heartbeat daemon thread). No P0/P1 remained.
 - **Session 1 (Foundations): DONE** (commit `3a379c0`). Files: `config.py`, `db.py`, `migrate.py`, `migrations/001_init.sql`, `errors.py` (+`ConfigError`), `tests/conftest.py` (opt-in Postgres fixtures), `tests/test_{config,migrate,db}.py`. Deps added: `psycopg[binary,pool]`, `testcontainers[postgres]` (fastapi/uvicorn already present). DB tests run against a real Postgres via testcontainers (Docker).
 - **Session 1 Code Review (Codex → fixes): DONE.** Applied 3 fixes — thread-safe `open_pool()` (double-checked lock), stricter test-DB disposability guard (checks the *database name*, not a URL substring), and correct pool-reset order (close-then-clear). +7 guard regression tests. **1141 tests pass; MCP lint 8/8.**
+
+## Session 7 — Deploy + DoD: repo config COMPLETE; deploy pending ⏳
+
+Repo-side deploy config is done and committed (`1400a57`, pushed). The actual provisioning
+(Supabase + Railway) and the deployed DoD smoke are **human-gated** (dashboards + secrets) and
+remain open — Claude can't create the accounts or enter the secrets.
+
+**Shipped (`1400a57`):**
+- `railway.web.json` — `research-agent-web`, `/health` healthcheck, migrations via
+  `preDeployCommand: python -m research_agent.migrate`, `ON_FAILURE` restart.
+- `railway.worker.json` — `research-agent-worker`, **NO healthcheck** (a worker healthcheck hangs
+  the deploy), `numReplicas: 1`, `ON_FAILURE`.
+- `.env.example` — `DATABASE_URL` (Supabase **session** pooler :5432, IPv4-safe) + both API keys,
+  with the pooler / Railway shared-variables notes.
+- `worker.main()` — SIGTERM → `run_forever(stop=…)` graceful shutdown (**closes S6 review risk #2**);
+  startup WARNING when `ANTHROPIC_API_KEY`/`TAVILY_API_KEY` are missing (**risk #3**). +1 test locks
+  the stop contract.
+- README + CLAUDE.md service/deploy docs. **1194 pass; parity lint 8/8 + 4 consumers.**
+
+**Remaining (human-gated) — deploy runbook:**
+1. **Supabase:** create a project; copy the **Session pooler** URI (port 5432,
+   `aws-<region>.pooler.supabase.com`) → `DATABASE_URL`. Migrations apply automatically via the web
+   `preDeployCommand`, or run once locally: `DATABASE_URL=… python -m research_agent.migrate`.
+2. **Railway:** new project → connect the GitHub repo → create **two services** from it, setting each
+   service's *Config-as-code path* to `railway.web.json` and `railway.worker.json`. Set project
+   **Shared Variables** (`DATABASE_URL`, `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`) on both. Worker: 1
+   replica, App Sleeping OFF, no `PORT`. (If Nixpacks doesn't expose the console scripts on PATH, use
+   `uvicorn research_agent.web:app --host 0.0.0.0 --port $PORT` and `python -m research_agent.worker`.)
+3. **DoD smoke (deployed):** `curl $WEB/health` → 200; `POST /research` → 202 + job_id; `GET /jobs/{id}`
+   → the worker picks it up. Also exercise **kill-worker-mid-job → restart → reaper requeue →
+   completion** (**S6 review risk #1**).
+
+**⚠ DoD search decision (Tavily parked):** a *full* end-to-end research run needs a live
+`TAVILY_API_KEY`; the plan marks a real research run as **out of the Phase A DoD by design** (blocked
+on Tavily), and there is **no deploy-time "mock search" seam** in the worker (the mock seam is
+test-only). Decide before calling Phase A done: **(a)** unpark a Tavily key and run the full smoke, or
+**(b)** accept a reduced DoD — deploy healthy + enqueue + worker-claims/heartbeats/reaper — and defer
+the full research run.
+
+Once deployed + smoke passes → **Phase A COMPLETE** → `/workflows:compound` + `/update-learnings`.
 
 ## Session 6 — Worker + reaper: COMPLETE ✅
 
@@ -522,45 +562,42 @@ commit and stop.
 Session 1 review residuals (still open, none block S5): disposable-DB guard is convention-based;
 open_pool doesn't close a half-open pool on failure (latent until S5–6).
 
-> Session 6 (Worker + reaper) is DONE (`c122e0d`) and REVIEWED CLEAN — Codex first pass + Claude
-> Code second pass, see "Session 6 Review" above. All of S1–S6 are now reviewed clean. Next (and
-> final) is Session 7 (Deploy + DoD).
+> Session 7 REPO CONFIG is DONE (`1400a57`, pushed) — Railway/Supabase config files, `.env.example`,
+> worker graceful shutdown + key-warning, README/CLAUDE docs. What remains is the **human-gated
+> deploy** (Supabase + Railway dashboards + secrets) and the deployed **DoD smoke**. See
+> "Session 7 — Deploy + DoD" above for the full runbook and the Tavily/DoD decision.
 
-### Prompt for Next Session (Session 7 — Deploy + DoD)
+### Prompt for Next Session (Session 7 — finish deploy + DoD, then compound)
 
 ```
 Work in /Users/alejandroguillen/Projects/research-agent
-Branch: feat/headless-service-core · HEAD = the S6-review docs commit on top of c122e0d.
+Branch: feat/headless-service-core · HEAD 1400a57 (Session 7 repo config, pushed).
 
-FIRST: confirm the branch is settled — `git log --oneline -3` and `git status --short`. Expect the
-S6-review docs commit on top of c122e0d and a clean worktree. One writer per branch: stop and ask
-if HEAD moved or the worktree is dirty. Do only Session 7 — it is the LAST session of Phase A.
+FIRST: confirm the branch is settled — `git log --oneline -3` and `git status --short`. Expect
+1400a57 (or a docs commit on top) and a clean worktree. One writer per branch.
 
-Read docs/plans/2026-07-21-feat-headless-service-core-plan.md — "Session 7 — Deploy + DoD",
-Implementation Notes §6 (Railway) and §3 (Supabase session pooler, port 5432) — plus HANDOFF.md
-"Session 6" + "Session 6 Review" (the three remaining risks below are Session 7's to close).
-Relevant files: research_agent/migrate.py, migrations/001_init.sql,
-research_agent/{web,worker}.py, pyproject.toml [project.scripts], README.md/CLAUDE.md,
-.env.example (new). The `use-railway` and `supabase` skills are available.
+Repo-side deploy config is ALREADY committed (railway.web.json, railway.worker.json, .env.example,
+worker SIGTERM/key-warning, README/CLAUDE docs). Do NOT rebuild it. This session = drive/verify the
+deploy and, once green, write the Phase A compound doc.
 
-Deploy is infra-driven — some steps need Alejandro's Railway/Supabase dashboards + secrets; do the
-repo-side config, then pause for the human steps.
-- Two Railway services from one repo: railway.web.json (uvicorn --host 0.0.0.0 --port $PORT,
-  healthcheckPath:/health, preDeployCommand: python -m research_agent.migrate, restart ON_FAILURE)
-  and railway.worker.json (research-agent-worker start, NO healthcheck, ON_FAILURE, 1 replica,
-  App Sleeping OFF, no PORT).
-- Project shared env on BOTH services: DATABASE_URL (Supabase SESSION pooler :5432, NOT the 6543
-  transaction pooler), ANTHROPIC_API_KEY, TAVILY_API_KEY. Add .env.example documenting them.
-- Supabase project + apply migrations (migrate.py runs via the web preDeployCommand only).
-- Close the Session 6 Review risks: (a) add a SIGTERM → run_forever(stop=…) handler to the worker
-  for graceful redeploys; (b) confirm both API keys are in the worker's env (not just the web's);
-  (c) exercise kill-worker-mid-job → restart → reaper requeue → completion on the deployed stack.
-- DoD smoke (deployed, mock search + LIVE Claude — Tavily key still parked): curl $API/health → 200;
-  POST /research → job UUID; worker runs it; GET /jobs/{id} → done + report content.
+Read HANDOFF.md "Session 7 — Deploy + DoD" (the runbook + the ⚠ Tavily/DoD decision) and
+docs/plans/2026-07-21-feat-headless-service-core-plan.md §6 (Railway) / §3 (Supabase pooler).
 
-Pitfalls (plan §6): a healthcheck on the worker HANGS the deploy; the direct db host is IPv6-only
-(use the pooler); do NOT scale the worker >1; a Procfile does NOT create two Railway services.
+Human (Alejandro, via dashboards — Claude can't create accounts or enter secrets):
+1. Supabase project → Session pooler URI (:5432) = DATABASE_URL.
+2. Railway project → connect repo → two services with Config-as-code paths railway.web.json /
+   railway.worker.json → Shared Variables (DATABASE_URL, ANTHROPIC_API_KEY, TAVILY_API_KEY) on both;
+   worker = 1 replica, App Sleeping OFF, no PORT.
 
-Run python3 -m pytest tests/ -q and python3 scripts/lint_mcp_parity.py for any repo-side changes.
-After the DoD smoke passes, Phase A is COMPLETE — write the compound/solution doc. Commit and stop.
+Claude (once URLs/secrets exist, or to assist):
+- Verify: curl $WEB/health → 200; curl $WEB/health/ready → 200 (DB reachable); POST /research →
+  202 + job_id; GET /jobs/{id} → worker picks it up.
+- Exercise the S6 risk-#1 recovery: kill the worker mid-job → confirm restart → reaper requeue →
+  completion.
+- DECIDE the Tavily/DoD question (unpark a key for a full research run, or accept the reduced DoD).
+- When green: Phase A is COMPLETE → run /workflows:compound (solution doc in docs/solutions/) and
+  /update-learnings. Then this arc can merge to main.
+
+Pitfalls (plan §6): a worker healthcheck HANGS the deploy; the direct db host is IPv6-only (use the
+pooler); do NOT scale the worker >1; a Procfile does NOT create two Railway services.
 ```
