@@ -28,6 +28,11 @@ CONSUMER_STORAGE_OPS = {
         "path": ROOT / "research_agent/web.py",
         "required": {"get_reports", "get_report"},
     },
+    # Session 6 worker persists finished reports through the shared store.
+    "worker": {
+        "path": ROOT / "research_agent/worker.py",
+        "required": {"save_report"},
+    },
 }
 STORAGE_MODULES = {
     "research_agent.report_store",

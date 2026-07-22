@@ -36,6 +36,7 @@ test = [
 research-agent = "research_agent.cli:main"
 research-agent-mcp = "research_agent.mcp_server:main"
 research-agent-web = "research_agent.web:main"
+research-agent-worker = "research_agent.worker:main"
 
 [tool.setuptools.packages.find]
 include = ["research_agent*"]
