@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from anthropic import Anthropic
 
+from .api_helpers import response_text
 from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT, IterationError
 from .modes import DEFAULT_MODEL
 from .query_validation import validate_query_list
@@ -103,7 +104,7 @@ def generate_refined_queries(
         logger.warning("Empty response from refined query generation")
         return QueryGenerationResult(items=(), rationale="empty API response")
 
-    text = response.content[0].text.strip()
+    text = response_text(response).strip()
     return _parse_refined_response(text, query)
 
 
@@ -227,7 +228,7 @@ def generate_followup_questions(
         logger.warning("Empty response from follow-up question generation")
         return QueryGenerationResult(items=(), rationale="empty API response")
 
-    text = response.content[0].text.strip()
+    text = response_text(response).strip()
     return _parse_followup_response(text, query, num_questions)
 
 

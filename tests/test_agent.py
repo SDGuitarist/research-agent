@@ -1874,6 +1874,13 @@ class TestCoverageGapRetry:
         agent._start_time = 0.0
         agent._step_num = 0
         agent._step_total = 10
+        # Follow-up question generation runs for real in these tests, so the
+        # mocked client needs a response shaped like the API's: a list of
+        # blocks whose .text is a string. A bare MagicMock only worked while
+        # the code reached in with content[0].
+        agent.client.messages.create.return_value = MagicMock(
+            content=[MagicMock(text="1. First follow-up?\n2. Second follow-up?")]
+        )
         return agent
 
     def _make_summaries(self, count=2):

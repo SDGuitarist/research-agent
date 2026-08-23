@@ -9,7 +9,7 @@ import asyncio
 
 from anthropic import AsyncAnthropic, APIConnectionError, APIError, APITimeoutError, RateLimitError
 
-from .api_helpers import retry_api_call, process_in_batches
+from .api_helpers import retry_api_call, process_in_batches, response_text
 from .errors import ANTHROPIC_ERRORS, GateDecision
 from .summarize import Summary
 from .modes import DEFAULT_MODEL, ResearchMode
@@ -274,8 +274,7 @@ EXPLANATION: [one sentence explaining why]"""
             logger.warning("Empty response when scoring %s", summary.url)
             score, explanation = 3, "Empty response from scoring, defaulting to include"
         else:
-            response_text = response.content[0].text
-            score, explanation = _parse_score_response(response_text)
+            score, explanation = _parse_score_response(response_text(response))
 
     except RateLimitError:
         score, explanation = 3, "Rate limited during scoring, defaulting to include"
@@ -563,7 +562,7 @@ Do NOT pad the response. Keep it concise and honest."""
         if not response.content:
             return _fallback_insufficient_response(query, refined_query, dropped_sources, surviving_sources)
 
-        result = response.content[0].text.strip()
+        result = response_text(response).strip()
         if not result:
             return _fallback_insufficient_response(query, refined_query, dropped_sources, surviving_sources)
 

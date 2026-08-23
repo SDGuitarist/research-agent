@@ -9,6 +9,7 @@ import yaml
 from anthropic import Anthropic
 from psycopg import Error as PsycopgError
 
+from .api_helpers import response_text
 from .context_result import ContextProfile, ContextResult, ReportTemplate
 from .critique import DIMENSIONS
 from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT, StateError
@@ -439,7 +440,7 @@ def auto_detect_context(
             ),
             messages=[{"role": "user", "content": prompt}],
         )
-        answer = response.content[0].text.strip().lower()
+        answer = response_text(response).strip().lower()
     except ANTHROPIC_ERRORS as e:
         logger.warning("Auto-detect context failed: %s", e)
         return None

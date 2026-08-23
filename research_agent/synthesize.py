@@ -17,6 +17,7 @@ from anthropic import (
     RateLimitError,
 )
 
+from .api_helpers import response_text
 from .context_result import ReportTemplate
 from .modes import DEFAULT_MODEL
 from .summarize import Summary
@@ -865,7 +866,7 @@ Write the section now:"""
     if not response.content:
         raise SynthesisError("Mini-report returned empty response")
 
-    text = response.content[0].text.strip()
+    text = response_text(response).strip()
     if not text:
         raise SynthesisError("Mini-report returned empty response")
 

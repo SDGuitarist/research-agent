@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from anthropic import AsyncAnthropic
 
+from .api_helpers import response_text
 from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT
 from .modes import DEFAULT_MODEL
 from .query_validation import validate_query_list
@@ -259,7 +260,7 @@ async def identify_coverage_gaps(
             logger.warning("Empty response from gap identification")
             return _SAFE_DEFAULT
 
-        text = response.content[0].text.strip()
+        text = response_text(response).strip()
         return _parse_gap_response(text, tried_queries)
 
     except ANTHROPIC_ERRORS as e:

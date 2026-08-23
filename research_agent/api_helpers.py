@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 from anthropic import RateLimitError
+from anthropic.types import Message
 
 from .errors import ANTHROPIC_ERRORS
 
@@ -18,6 +19,32 @@ R = TypeVar("R")
 DEFAULT_MAX_RETRIES = 1
 DEFAULT_RETRY_DELAY = 2.0
 DEFAULT_BATCH_BACKOFF = 2.0
+
+
+def response_text(response: Message) -> str:
+    """Return the text of a Claude response, skipping non-text blocks.
+
+    ``response.content`` is a list of blocks whose types vary. A plain reply is
+    a single TextBlock, but turning on extended thinking or tools puts a
+    ThinkingBlock or ToolUseBlock first, so ``content[0].text`` works only by
+    luck and raises AttributeError the day a call gains either one.
+
+    A string ``.text`` is the discriminator rather than ``.type == "text"``
+    because only TextBlock carries one: ThinkingBlock exposes ``.thinking``,
+    RedactedThinkingBlock ``.data``, and ToolUseBlock ``.input``.
+
+    Raises:
+        IndexError: if the response carries no text block. IndexError
+            specifically, because that is what ``content[0]`` raised on an
+            empty response, so the existing
+            ``except (KeyError, IndexError, AttributeError)`` handlers in the
+            callers keep catching it and behaviour is unchanged.
+    """
+    for block in response.content:
+        text = getattr(block, "text", None)
+        if isinstance(text, str):
+            return text
+    raise IndexError("Claude response contained no text block")
 
 
 async def retry_api_call(

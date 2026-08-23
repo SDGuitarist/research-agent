@@ -13,6 +13,7 @@ from psycopg import Error as PsycopgError
 
 from anthropic import Anthropic
 
+from .api_helpers import response_text
 from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT, StateError
 from .modes import DEFAULT_MODEL
 from .sanitize import sanitize_content
@@ -213,7 +214,7 @@ SUGGESTIONS: [one sentence, max 200 chars]"""
             logger.warning("Empty critique response, using defaults")
             return CritiqueResult.fallback()
 
-        parsed = _parse_critique_response(response.content[0].text)
+        parsed = _parse_critique_response(response_text(response))
 
     except ANTHROPIC_ERRORS as e:
         logger.warning(f"Critique API call failed: {e}, using defaults")
@@ -303,7 +304,7 @@ SUGGESTIONS: [one sentence, max 200 chars]"""
     if not response.content:
         return CritiqueResult.fallback()
 
-    parsed = _parse_critique_response(response.content[0].text)
+    parsed = _parse_critique_response(response_text(response))
 
     weaknesses = sanitize_content(parsed.get("weaknesses", ""))[:MAX_TEXT_LENGTH]
     suggestions = sanitize_content(parsed.get("suggestions", ""))[:MAX_TEXT_LENGTH]

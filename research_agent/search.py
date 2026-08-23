@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from anthropic import Anthropic
 from ddgs import DDGS
 
+from .api_helpers import response_text
 from .errors import ANTHROPIC_ERRORS
 from .modes import DEFAULT_MODEL
 from ddgs.exceptions import DDGSException, RatelimitException
@@ -273,7 +274,7 @@ Generate ONE follow-up search query that fills gaps in the research. Return ONLY
         if not response.content:
             logger.warning("Empty response from query refinement, using original query")
             return original_query
-        refined = response.content[0].text.strip().strip('"').strip("'")
+        refined = response_text(response).strip().strip('"').strip("'")
         if not refined:
             logger.warning("Empty refined query, using original query")
             return original_query

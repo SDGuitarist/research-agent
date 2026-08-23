@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from anthropic import Anthropic
 
+from .api_helpers import response_text
 from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT
 from .modes import DEFAULT_MODEL
 from .query_validation import validate_query_list
@@ -170,7 +171,7 @@ SUB_QUERIES:
             logger.warning("Empty response from decomposition, using original query")
             return DecompositionResult(sub_queries=(query,), is_complex=False, reasoning="")
 
-        text = response.content[0].text.strip()
+        text = response_text(response).strip()
         return _parse_decomposition_response(text, query)
 
     except ANTHROPIC_ERRORS as e:

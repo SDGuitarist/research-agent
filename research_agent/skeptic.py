@@ -13,7 +13,7 @@ from anthropic import (
     RateLimitError,
 )
 
-from .api_helpers import retry_api_call
+from .api_helpers import retry_api_call, response_text
 from .modes import DEFAULT_MODEL
 from .sanitize import sanitize_content, build_context_block
 from .errors import SkepticError
@@ -113,7 +113,7 @@ async def _call_skeptic(
         if not response.content:
             raise SkepticError(f"Skeptic ({lens}) returned empty response")
 
-        text = response.content[0].text.strip()
+        text = response_text(response).strip()
         if not text:
             raise SkepticError(f"Skeptic ({lens}) returned empty response")
 

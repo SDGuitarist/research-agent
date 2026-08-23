@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from anthropic import AsyncAnthropic
 
-from .api_helpers import retry_api_call, process_in_batches
+from .api_helpers import retry_api_call, process_in_batches, response_text
 from .errors import ANTHROPIC_ERRORS
 from .modes import DEFAULT_MODEL
 from .extract import ExtractedContent, SourceTier
@@ -175,7 +175,7 @@ Provide only a factual summary of the content above:"""
             context=f"Summarizing {url}",
         )
 
-        summary_text = response.content[0].text.strip()
+        summary_text = response_text(response).strip()
 
         return Summary(
             url=url,
