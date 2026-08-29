@@ -750,7 +750,7 @@ class TestCritiqueGuidanceParam:
     def test_none_produces_no_guidance_block(self):
         """critique_guidance=None should not add critique guidance block."""
         client = _make_streaming_client("## Competitive Implications\nContent")
-        result = synthesize_final(
+        synthesize_final(
             client=client,
             query="test",
             draft="## Executive Summary\nDraft",
@@ -765,7 +765,7 @@ class TestCritiqueGuidanceParam:
     def test_provided_adds_guidance_block(self):
         """critique_guidance should inject critique_guidance block into prompt."""
         client = _make_streaming_client("## Competitive Implications\nContent")
-        result = synthesize_final(
+        synthesize_final(
             client=client,
             query="test",
             draft="## Executive Summary\nDraft",

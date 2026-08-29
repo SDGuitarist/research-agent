@@ -551,7 +551,7 @@ class TestGenerateInsufficientDataResponse:
         )
 
         dropped = ()
-        result = await generate_insufficient_data_response(
+        await generate_insufficient_data_response(
             "original query", "refined query", dropped, mock_client
         )
 
@@ -1014,7 +1014,7 @@ class TestCritiqueGuidanceParam:
         mock_client.messages.create = AsyncMock(return_value=mock_response)
 
         summary = Summary(url="http://test.com", title="Test", summary="Content")
-        result = await score_source("query", summary, mock_client, critique_guidance=None)
+        await score_source("query", summary, mock_client, critique_guidance=None)
         prompt = mock_client.messages.create.call_args[1]["messages"][0]["content"]
         assert "<scoring_guidance>" not in prompt
 
@@ -1027,7 +1027,7 @@ class TestCritiqueGuidanceParam:
         mock_client.messages.create = AsyncMock(return_value=mock_response)
 
         summary = Summary(url="http://test.com", title="Test", summary="Content")
-        result = await score_source(
+        await score_source(
             "query", summary, mock_client,
             critique_guidance="Prioritize diverse sources",
         )
@@ -1302,7 +1302,7 @@ class TestSurvivingSourcesInResponse:
         dropped = (SourceScore(url="https://dropped.com", title="Dropped", score=2, explanation="weak"),)
         surviving = (Summary(url="https://relevant.com", title="Relevant Source", summary="Good content"),)
 
-        result = await generate_insufficient_data_response(
+        await generate_insufficient_data_response(
             "test query", None, dropped, mock_client,
             surviving_sources=surviving,
         )
@@ -1321,7 +1321,7 @@ class TestSurvivingSourcesInResponse:
 
         dropped = (SourceScore(url="https://dropped.com", title="Dropped", score=2, explanation="weak"),)
 
-        result = await generate_insufficient_data_response(
+        await generate_insufficient_data_response(
             "test query", None, dropped, mock_client,
         )
 

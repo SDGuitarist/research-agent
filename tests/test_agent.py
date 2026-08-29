@@ -551,7 +551,7 @@ class TestResearchAgentErrorHandling:
              patch("research_agent.agent.refine_query") as mock_refine, \
              patch("research_agent.agent.fetch_urls") as mock_fetch, \
              patch("research_agent.agent.extract_all") as mock_extract, \
-             patch("research_agent.agent.cascade_recover", new_callable=AsyncMock, return_value=[]) as mock_cascade, \
+             patch("research_agent.agent.cascade_recover", new_callable=AsyncMock, return_value=[]), \
              patch("research_agent.agent.asyncio.sleep", new_callable=AsyncMock):
 
             mock_search.return_value = [
@@ -853,7 +853,7 @@ class TestResearchAgentRelevanceGate:
             mock_final.return_value = "# Deep Report"
 
             agent = ResearchAgent(api_key="test-key", mode=ResearchMode.deep())
-            result = await agent.research_async("test query")
+            await agent.research_async("test query")
 
             # Verify evaluate_sources was called (gate ran)
             mock_evaluate.assert_called_once()
@@ -2427,7 +2427,7 @@ class TestQueryIteration:
              patch("research_agent.agent.synthesize_report", return_value="# Report\nContent"), \
              patch.object(agent, "_run_iteration", new_callable=AsyncMock) as mock_iteration:
 
-            result = await agent._evaluate_and_synthesize(
+            await agent._evaluate_and_synthesize(
                 "test query", summaries, "refined",
             )
 
@@ -2450,7 +2450,7 @@ class TestQueryIteration:
              patch.object(agent, "_run_iteration", new_callable=AsyncMock) as mock_iteration:
             mock_skeptic.return_value = MagicMock(critical_count=0, concern_count=0)
 
-            result = await agent._evaluate_and_synthesize(
+            await agent._evaluate_and_synthesize(
                 "test query", summaries, "refined",
             )
 
@@ -2496,7 +2496,7 @@ class TestQueryIteration:
              patch("research_agent.agent.generate_insufficient_data_response", new_callable=AsyncMock, return_value="# No Data"), \
              patch.object(agent, "_run_iteration", new_callable=AsyncMock) as mock_iteration:
 
-            result = await agent._evaluate_and_synthesize(
+            await agent._evaluate_and_synthesize(
                 "test query", summaries, "refined",
             )
 

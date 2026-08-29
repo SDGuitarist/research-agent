@@ -117,7 +117,7 @@ class TestExtractContent:
         page = FetchedPage(url="https://example.com", html=html, status_code=200)
 
         with patch("research_agent.extract._extract_with_trafilatura", return_value=None):
-            result = extract_content(page)
+            extract_content(page)
 
             # Should still extract via readability fallback
             # Result may be None if readability also can't extract enough
@@ -140,7 +140,7 @@ class TestExtractContent:
         page = FetchedPage(url="https://example.com", html=malformed_html, status_code=200)
 
         # Should not raise an exception
-        result = extract_content(page)
+        extract_content(page)
         # Result may be None or ExtractedContent, but no crash
 
     def test_extract_content_handles_unicode_content(self):

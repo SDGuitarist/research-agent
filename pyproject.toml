@@ -40,3 +40,9 @@ research-agent-worker = "research_agent.worker:main"
 
 [tool.setuptools.packages.find]
 include = ["research_agent*"]
+
+[tool.ruff.lint.per-file-ignores]
+# E402 = "module level import not at top of file".
+# This script must insert the project root on sys.path and call load_dotenv()
+# BEFORE importing research_agent.*, so its imports cannot move to the top.
+"scripts/validate_cutoff_ab.py" = ["E402"]

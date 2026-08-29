@@ -7,18 +7,6 @@ from unittest.mock import patch, MagicMock, AsyncMock
 import httpx
 
 import research_agent.search as _search_mod
-
-
-@pytest.fixture(autouse=True)
-def _reset_tavily_cache():
-    """Reset the Tavily client cache between tests to prevent cross-test leakage."""
-    _search_mod._tavily_client = None
-    _search_mod._tavily_client_key = None
-    yield
-    _search_mod._tavily_client = None
-    _search_mod._tavily_client_key = None
-
-
 from research_agent.cascade import (
     cascade_recover,
     _fetch_via_jina,
@@ -30,6 +18,17 @@ from research_agent.cascade import (
 )
 from research_agent.extract import ExtractedContent
 from research_agent.search import SearchResult
+
+
+@pytest.fixture(autouse=True)
+def _reset_tavily_cache():
+    """Reset the Tavily client cache between tests to prevent cross-test leakage."""
+    _search_mod._tavily_client = None
+    _search_mod._tavily_client_key = None
+    yield
+    _search_mod._tavily_client = None
+    _search_mod._tavily_client_key = None
+
 
 
 # --- Helpers ---

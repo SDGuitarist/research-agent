@@ -1,8 +1,13 @@
 """Shared fixtures for research_agent tests."""
 
+import os
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
+from urllib.parse import urlparse
+
+import psycopg
+from psycopg.rows import dict_row
 
 from research_agent.fetch import FetchedPage
 from research_agent.extract import ExtractedContent
@@ -297,12 +302,6 @@ def mock_evaluate_insufficient(sample_summaries):
 # OPT-IN: only tests that request `db` / `db_pool` / `committed_db` touch
 # Postgres, so the rest of the suite runs with no database. Never SQLite —
 # the job queue needs SELECT ... FOR UPDATE SKIP LOCKED.
-
-import os
-from urllib.parse import urlparse
-
-import psycopg
-from psycopg.rows import dict_row
 
 # TRUNCATE order (children before parents) for the committed/concurrency path.
 _CONCURRENCY_TABLES = ("gap_audit", "reports", "jobs", "gaps", "critiques")
