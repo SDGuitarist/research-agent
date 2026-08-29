@@ -14,7 +14,7 @@ from .fetch import fetch_urls
 from .extract import extract_all, ExtractedContent
 from .summarize import summarize_all, Summary
 from .synthesize import synthesize_report, synthesize_draft, synthesize_final, synthesize_mini_report
-from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, SourceScore, compute_gate_decision, check_domain_diversity
+from .relevance import evaluate_sources, generate_insufficient_data_response, RelevanceEvaluation, compute_gate_decision, check_domain_diversity
 from .decompose import decompose_query, DecompositionResult
 from .context import load_full_context, load_critique_history, new_context_cache, auto_detect_context, CONTEXTS_DIR
 from .context_result import ContextResult, ContextStatus

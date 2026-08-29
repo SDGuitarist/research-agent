@@ -12,7 +12,6 @@ from research_agent.summarize import (
     summarize_content,
     summarize_all,
     Summary,
-    CHUNK_SIZE,
     MAX_CHUNKS_PER_SOURCE,
     BATCH_SIZE,
     RATE_LIMIT_BACKOFF,

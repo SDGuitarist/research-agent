@@ -1,8 +1,6 @@
 """Tests for research_agent.decompose module."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 from research_agent.decompose import (
     decompose_query,
@@ -11,7 +9,7 @@ from research_agent.decompose import (
     _parse_decomposition_response,
 )
 from research_agent.context import load_full_context
-from research_agent.context_result import ContextResult, ContextStatus
+from research_agent.context_result import ContextStatus
 
 
 class TestLoadContext:

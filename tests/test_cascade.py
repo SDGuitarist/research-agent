@@ -27,7 +27,6 @@ from research_agent.cascade import (
     _is_extract_domain,
     _snippet_fallback,
     _extract_markdown_title,
-    MIN_CONTENT_LENGTH,
 )
 from research_agent.extract import ExtractedContent
 from research_agent.search import SearchResult

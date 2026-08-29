@@ -2,7 +2,7 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 
 from research_agent.fetch import FetchedPage
 from research_agent.extract import ExtractedContent

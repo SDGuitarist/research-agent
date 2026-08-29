@@ -1,7 +1,7 @@
 """Tests for research_agent.iterate module."""
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from research_agent.iterate import (
     generate_refined_queries,

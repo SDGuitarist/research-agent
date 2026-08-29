@@ -1,6 +1,5 @@
 """Tests for the public API: run_research, run_research_async, list_modes."""
 
-import asyncio
 import sys
 import warnings
 from unittest.mock import AsyncMock, patch

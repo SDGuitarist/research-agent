@@ -82,7 +82,7 @@ def test_open_pool_is_thread_safe(monkeypatch):
 def test_pooled_connection_yields_connection():
     """Happy path: the borrowed connection is handed straight through."""
     from contextlib import nullcontext
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
 
     from research_agent.db import pooled_connection
 

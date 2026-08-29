@@ -2,7 +2,6 @@
 
 import pytest
 from contextlib import nullcontext
-from pathlib import Path
 from unittest.mock import MagicMock, patch, AsyncMock
 
 from research_agent.critique import (

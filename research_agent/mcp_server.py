@@ -366,7 +366,6 @@ def get_critique_history() -> str:
     least 3 passing critiques (overall_pass: true) — failed critiques
     do not count toward this threshold.
     """
-    from fastmcp.exceptions import ToolError
     from research_agent.context import load_critique_history
     from research_agent.db import pooled_connection
     from research_agent.errors import ConfigError, StateError

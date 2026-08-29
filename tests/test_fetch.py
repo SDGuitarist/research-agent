@@ -2,7 +2,6 @@
 
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
-import asyncio
 
 from research_agent.fetch import (
     _is_private_ip,

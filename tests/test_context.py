@@ -1,10 +1,7 @@
 """Tests for research_agent.context module."""
 
 import pytest
-from pathlib import Path
-from unittest.mock import patch
 
-import yaml
 
 from research_agent.context import (
     load_full_context,
@@ -12,12 +9,11 @@ from research_agent.context import (
     resolve_context_path,
     auto_detect_context,
     list_available_contexts,
-    CONTEXTS_DIR,
     _validate_critique_yaml,
     _summarize_patterns,
     parse_context_file,
 )
-from research_agent.context_result import ContextResult, ContextStatus, ReportTemplate
+from research_agent.context_result import ContextResult, ContextStatus
 from research_agent.critique import CritiqueResult, save_critique
 from research_agent.errors import StateError
 

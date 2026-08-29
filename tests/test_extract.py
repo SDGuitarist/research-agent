@@ -1,13 +1,11 @@
 """Tests for research_agent.extract module."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from research_agent.extract import (
     extract_content,
     extract_all,
     ExtractedContent,
-    MAX_HTML_SIZE,
 )
 from research_agent.fetch import FetchedPage
 

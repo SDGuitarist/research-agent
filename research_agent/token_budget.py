@@ -4,7 +4,7 @@ Provides token counting with graceful fallback and priority-based budget
 allocation to prevent context window overflow (risk F5.2).
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .modes import DEFAULT_MODEL
 

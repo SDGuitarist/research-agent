@@ -1,15 +1,10 @@
 """Tests for research_agent.query_validation module."""
 
-import pytest
 
 from research_agent.query_validation import (
     meaningful_words,
-    strip_query,
-    has_near_duplicate,
     validate_query_list,
     check_query_vagueness,
-    VagueQueryResult,
-    VAGUE_WORDS,
 )
 
 

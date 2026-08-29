@@ -104,7 +104,7 @@ async def run_query(query_type, query, client, mode):
         return None
 
     if not results:
-        print(f"    No search results")
+        print("    No search results")
         return None
 
     pages = await fetch_urls([r.url for r in results])
@@ -117,7 +117,7 @@ async def run_query(query_type, query, client, mode):
         contents.extend(recovered)
 
     if not contents:
-        print(f"    No content extracted")
+        print("    No content extracted")
         return None
 
     summaries = await summarize_all(
@@ -126,7 +126,7 @@ async def run_query(query_type, query, client, mode):
     )
 
     if not summaries:
-        print(f"    No summaries generated")
+        print("    No summaries generated")
         return None
 
     agg_scores = await score_all_sources(query, summaries, client, mode)

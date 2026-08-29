@@ -1274,14 +1274,12 @@ class TestResearchAgentGapCheck:
              patch("research_agent.agent.AsyncAnthropic"):
             agent = ResearchAgent(api_key="test-key")
 
-        from research_agent.cycle_config import CycleConfig
         assert agent.cycle_config.max_gaps_per_run == CycleConfig().max_gaps_per_run
         assert agent.cycle_config.default_ttl_days == CycleConfig().default_ttl_days
         assert agent.gap_tracking_enabled is None  # auto: follow the context profile
 
     def test_init_custom_cycle_config(self):
         """Custom CycleConfig is stored on instance."""
-        from research_agent.cycle_config import CycleConfig
         config = CycleConfig(max_gaps_per_run=3, default_ttl_days=7)
 
         with patch("research_agent.agent.Anthropic"), \
@@ -1479,7 +1477,6 @@ class TestResearchAgentGapCheck:
     async def test_pre_research_batch_limit_respected(self):
         """With 10 stale gaps and max_gaps_per_run=3, only 3 selected."""
         from research_agent.schema import Gap, GapStatus, SchemaResult
-        from research_agent.cycle_config import CycleConfig
         from dataclasses import replace
 
         gaps = tuple(
@@ -2899,7 +2896,6 @@ class TestIterationSectionsPopulation(TestQueryIteration):
     @pytest.mark.asyncio
     async def test_run_iteration_sets_sections_from_mini_reports(self):
         """_run_iteration should store synthesized mini-reports as iteration_sections."""
-        from research_agent.iterate import QueryGenerationResult
 
         agent = self._make_agent()
         evaluation = self._make_evaluation(

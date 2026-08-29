@@ -8,7 +8,6 @@ from research_agent.errors import SchemaError
 from research_agent.schema import (
     Gap,
     GapStatus,
-    SchemaResult,
     detect_cycles,
     load_gaps,
     load_schema_file,

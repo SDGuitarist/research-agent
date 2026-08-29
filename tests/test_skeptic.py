@@ -1,7 +1,7 @@
 """Tests for research_agent.skeptic module."""
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock
 
 from anthropic import RateLimitError, APIError, APITimeoutError
 
@@ -13,8 +13,6 @@ from research_agent.skeptic import (
     _call_skeptic,
     extract_critical_findings,
     run_skeptic_evidence,
-    run_skeptic_timing,
-    run_skeptic_frame,
     run_skeptic_combined,
     run_deep_skeptic_pass,
 )

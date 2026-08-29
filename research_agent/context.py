@@ -13,7 +13,7 @@ from .api_helpers import response_text
 from .context_result import ContextProfile, ContextResult, ReportTemplate
 from .critique import DIMENSIONS
 from .errors import ANTHROPIC_ERRORS, ANTHROPIC_TIMEOUT, StateError
-from .modes import AUTO_DETECT_MODEL, DEFAULT_MODEL
+from .modes import AUTO_DETECT_MODEL
 from .sanitize import sanitize_content
 
 logger = logging.getLogger(__name__)

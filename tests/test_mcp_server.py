@@ -4,7 +4,7 @@ import subprocess
 import sys
 from contextlib import nullcontext
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastmcp.client import Client
