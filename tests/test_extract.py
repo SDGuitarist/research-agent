@@ -116,12 +116,17 @@ class TestExtractContent:
         """
         page = FetchedPage(url="https://example.com", html=html, status_code=200)
 
-        with patch("research_agent.extract._extract_with_trafilatura", return_value=None):
-            extract_content(page)
+        with patch(
+            "research_agent.extract._extract_with_trafilatura", return_value=None
+        ) as mock_trafilatura:
+            result = extract_content(page)
 
-            # Should still extract via readability fallback
-            # Result may be None if readability also can't extract enough
-            # This tests that the fallback path is attempted
+        # Trafilatura was tried and gave nothing back, so anything we got here
+        # came from the readability fallback.
+        mock_trafilatura.assert_called_once()
+        assert result is not None
+        assert "paragraph one" in result.text
+        assert "paragraph three" in result.text
 
     def test_extract_content_handles_malformed_html(self):
         """Parser should not crash on malformed HTML."""
